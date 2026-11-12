@@ -1,7 +1,7 @@
 # SmartCBT — Status Implementasi Fitur
 
 > Dokumen ini mencerminkan status implementasi yang berlaku pada build terbaru.
-> **Terakhir disinkronkan dengan kode: 2026-11-12 (build 137)** — seluruh status
+> **Terakhir disinkronkan dengan kode: 2026-11-12 (build 138)** — seluruh status
 > diverifikasi ulang langsung terhadap kode sumber (route `addRoute`, file, dan
 > diff terhadap snapshot `z134/`), mencakup pekerjaan yang selesai setelah build
 > 135 dan tercatat retroaktif di `CHANGELOG.md` sebagai build 136. Termasuk
@@ -102,7 +102,8 @@
 | Autosave jawaban per soal | ✅ | `src/pages/student/ExamTakingPage.tsx`, `POST /api/answers` |
 | Restore jawaban saat reload / resume sesi | ✅ | `existingAnswers` di `GET /api/exam/:id/questions/:studentId` |
 | Semua 5 tipe soal (PG, multiple answer, benar salah, menjodohkan, esai) | ✅ | `ExamTakingPage.tsx` |
-| Timer countdown + auto-submit saat waktu habis | ✅ | `ExamTakingPage.tsx` |
+| Timer countdown + auto-submit saat waktu habis — dihitung dari **deadline server** | ✅ | `ExamTakingPage.tsx` (`expiresAt` + koreksi selisih jam `serverTime`; tick ulang dari jam, bukan decrement) |
+| Penegakan durasi di SERVER (build 138): jawaban pasca-deadline → 409 `SESSION_EXPIRED`, sesi auto-close + dinilai | ✅ | `src/lib/server/session-time.ts` (grace 60 dtk), gate di `POST /api/answers` (`answers.ts`); submit telat tetap diterima (hanya menilai ulang yang tersimpan) |
 | Skor objektif dihitung server-side secara otoritatif | ✅ | `src/lib/server/scoring.ts` |
 | Verifikasi token ujian sebelum mulai sesi | ✅ | `POST /api/tokens/validate`, `verifyExamToken` |
 | Simpan IP, device_id, user_agent saat sesi dimulai | ✅ | `POST /api/sessions/start` |
@@ -110,7 +111,7 @@
 | Halaman hasil ujian dan analisis skor | ✅ | `GET /api/sessions/results/:sessionId` |
 | Penandaan soal / flag review | ✅ | `is_flagged` di model & UI |
 | Deteksi focus-loss / tab switch dengan keandalan yang lebih baik | ✅ | `visibilitychange`, `pagehide`, `sendBeacon`, `keepalive` |
-| Waktu tambahan (`extra_time_minutes`) diterapkan di timer siswa | ✅ | `GET /api/exam/:id/questions/:studentId` |
+| Waktu tambahan (`extra_time_minutes`) diterapkan di timer siswa — tersinkron **hidup** | ✅ | Echo `expiresAt` per saveAnswer → grant guru dari Monitoring terlihat tanpa reload; `reset` sesi kini restart jam (build 138) |
 | Progress belajar modul bisa disimpan dan disinkronkan saat scroll | ✅ | `POST /api/learning-modules/:id/progress` |
 | Anti-cheat klien: kiosk fullscreen, blokir shortcut copy/paste/devtools, violation tracker + auto-submit | ✅ | `src/lib/anticheat.ts` (policy engine, dedupe 700 ms, `maxViolations` 5/3, force-submit saat limit) — model ancaman "browser-honest": perangkat kedua tetap tidak terdeteksi |
 | Enforce `seb_required` saat ujian berjalan | ✅ | Gerbang keras server: `POST /api/sessions/start` 403 tanpa bukti SEB, `POST /api/answers` menolak sesi tanpa `seb_verified_at`, loop `POST /api/seb/enforce` tiap 15 dtk di `ExamTakingPage.tsx`. ⚠️ Overlay blokir klien (`sebBlocked`) di-set tapi tidak pernah dirender — UI "mahasiswa keluar SEB" masih bolong, meski server tetap menolak jawaban |
@@ -419,7 +420,7 @@
 | 3. Dashboard Admin & Aktivitas | 9 | 0 | 0 |
 | 4. Bank Soal, Media, dan AI Generate | 11 | 0 | 0 |
 | 5. Manajemen Ujian | 10 | 0 | 0 |
-| 6. Pelaksanaan Ujian (Siswa) | 18 | 1 | 0 |
+| 6. Pelaksanaan Ujian (Siswa) | 19 | 1 | 0 |
 | 7. Monitoring Real-Time & Pengawasan | 8 | 0 | 1 |
 | 8. Penilaian & Analisis | 7 | 0 | 3 |
 | 9. Penyimpanan File & Branding Sekolah | 12 | 0 | 0 |
@@ -435,8 +436,9 @@
 > monitoring SSE, penilaian manual + AI, modul belajar, tugas, berita,
 > penyimpanan berkas, branding, PWA, dan deployment Docker/standalone berada
 > pada level operasional. Anti-cheat sudah dua lapis (kebijakan klien +
-> gerbang server SEB/token/re-skoring), **tetapi** penegakan durasi dan
-> validasi kepemilikan sesi di server masih bolong (lihat Prioritas).
+> gerbang server SEB/token/re-skoring) **dan durasi ujian kini ditegakkan
+> server** (build 138). Gap server-side yang tersisa: validasi kepemilikan
+> `sessionId`/`studentId` terhadap token pemanggil (lihat Prioritas).
 >
 > **Catatan e-Rapor:** bagian 13 adalah rencana pengembangan dan seluruhnya
 > belum diimplementasikan (menu sidebar pun sudah dicabut sejak build 136).
@@ -448,10 +450,11 @@
 
 ## Prioritas Pengembangan yang Disarankan
 
-1. **Hardening server-side ujian** (paling penting, mengubah model kepercayaan):
-   tegakkan `end_time`/durasi + `extra_time` di `POST /api/sessions/submit`,
-   dan validasi kepemilikan `sessionId`/`studentId` terhadap token pemanggil
-   di semua endpoint sesi/hasil ujian siswa.
+1. **Hardening server-side ujian (lanjutan)** — penegakan durasi sudah beres
+   (build 138: gate `SESSION_EXPIRED` di `/api/answers`); tersisa validasi
+   kepemilikan `sessionId`/`studentId` terhadap token pemanggil di semua
+   endpoint sesi/hasil ujian siswa, lalu uji alur lewat-batas end-to-end di
+   DB staging (termasuk semantics `reset` = restart jam).
 2. Rotasi/jauhkan secret dari repo: key NVIDIA di `src/lib/server/ai-keys.ts`,
    kredensial DB default di `src/lib/db.ts`, password `postgres` di
    `docker-compose.yml`, kredensial demo di log instalasi, dan sisa token

@@ -1,5 +1,6 @@
 /** SmartCBT — Student Portal API handlers (server-side only) */
 import { query, queryOne, addRoute, json } from "./utils.js";
+import { SESSION_GRACE_SECONDS, sessionExpiresAtIso } from "./session-time.js";
 
 // re-export query so handler files can use it without circular-import issues
 
@@ -115,7 +116,8 @@ addRoute("GET", /^\/api\/exam\/[^/]+\/questions\/[^/]+$/, async (req, res) => {
     );
 
   const session = await queryOne(
-    `SELECT id, extra_time_minutes FROM student_sessions WHERE exam_id = $1 AND student_id = $2`,
+    `SELECT id, extra_time_minutes, started_at, status
+     FROM student_sessions WHERE exam_id = $1 AND student_id = $2`,
     [examId, studentId]
   );
 
@@ -135,5 +137,16 @@ addRoute("GET", /^\/api\/exam\/[^/]+\/questions\/[^/]+$/, async (req, res) => {
     existingAnswers: answers,
     sessionId: session?.id ?? null,
     extraTimeMinutes: session ? Number(session.extra_time_minutes) || 0 : 0,
+    // Build 138 — authoritative countdown source for resume/refresh. A
+    // completed session returns its (past) expiresAt; the client treats
+    // sessionStatus === "completed" as read-only.
+    serverTime: new Date().toISOString(),
+    graceSeconds: SESSION_GRACE_SECONDS,
+    sessionStatus: session?.status ?? null,
+    expiresAt: sessionExpiresAtIso({
+      startedAt: session?.started_at,
+      durationMinutes: exam.duration_minutes,
+      extraTimeMinutes: session?.extra_time_minutes,
+    }),
   });
 });

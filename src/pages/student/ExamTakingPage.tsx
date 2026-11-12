@@ -319,6 +319,57 @@ export default function ExamTakingPage() {
   // Latest handleSubmit — assigned after its useCallback declaration so the
   // countdown timer above never calls a stale closure.
   const handleSubmitRef = useRef((auto = false) => {})
+  // ── Server-authoritative deadline (build 138) ──────────────────────────
+  // Server menghitung deadline dari started_at + duration + extra_time.
+  // Klien memakainya sebagai sumber hitungan mundur agar rekayasa timer lokal
+  // tidak berguna, dan koreksi `clockOffset` menetralkan selisih jam perangkat.
+  const deadlineRef = useRef<number | null>(null)
+  const clockOffsetRef = useRef(0)
+  const [timeUpNotice, setTimeUpNotice] = useState<string | null>(null)
+
+  /**
+   * Sinkronkan countdown ke `expiresAt` (timestamp absolut versi server).
+   * `serverTime` hanya ada di respons load/start — dari situ diukur selisih
+   * jam perangkat; respons saveAnswer cukup mengirim expiresAt sehingga
+   * offset yang sudah terukur tidak boleh ditimpa. Return true bila sinkron.
+   */
+  const applyServerDeadline = useCallback(
+    (expiresAt?: string | null, serverTime?: string | null) => {
+      const expiry = expiresAt ? new Date(expiresAt).getTime() : NaN
+      if (!Number.isFinite(expiry)) return false
+      if (serverTime) {
+        const serverNow = new Date(serverTime).getTime()
+        if (Number.isFinite(serverNow)) clockOffsetRef.current = serverNow - Date.now()
+      }
+      deadlineRef.current = expiry
+      const remaining = Math.ceil(
+        (expiry - (Date.now() + clockOffsetRef.current)) / 1000,
+      )
+      setTimeLeft(Math.max(0, remaining))
+      return true
+    },
+    [],
+  )
+
+  /** Server menutup sesi karena waktu habis: buang antrean offline, langsung ke hasil. */
+  const handleServerTimeUp = useCallback(
+    (message?: string) => {
+      if (sessionId) {
+        try {
+          localStorage.removeItem(`smartcbt:pending-answers:${sessionId}`)
+        } catch {
+          /* storage unavailable */
+        }
+      }
+      setTimeLeft(0)
+      setSaveState("idle")
+      setTimeUpNotice(
+        message || "Waktu ujian sudah habis — sesi ditutup oleh server.",
+      )
+      setTimeout(() => handleSubmitRef.current(true), 0)
+    },
+    [sessionId],
+  )
   useEffect(() => {
     if (!examId || !studentId) {
       setErrorMsg(t("Missing exam or student ID"))
@@ -356,6 +407,7 @@ export default function ExamTakingPage() {
         setExam(data.exam)
         setQuestions(mappedQs)
         let sid: string | null = data.sessionId ?? null
+        let startRes: Awaited<ReturnType<typeof startSession>> | null = null
         if (!sid) {
           // Exams with an entry token: re-send the already-verified token (the
           // server re-verifies it in POST /api/sessions/start).
@@ -364,12 +416,12 @@ export default function ExamTakingPage() {
             : undefined
           const sebInfo = detectSeb()
           setSebDetected(sebInfo.detected)
-          const sessionRes = await startSession(examId, studentId, entryToken, {
+          startRes = await startSession(examId, studentId, entryToken, {
             deviceId: getDeviceId(),
             seb: sebInfo.detected,
             configKeyHash: sebInfo.configKeyHash ?? undefined,
           })
-          sid = sessionRes.session?.id ?? null
+          sid = startRes.session?.id ?? null
           if (entryToken) sessionStorage.removeItem(`smartcbt_token_${examId}`)
         }
         setSessionId(sid)
@@ -386,9 +438,17 @@ export default function ExamTakingPage() {
         }
         setAnswers(restored)
         setFlagged(restoredFlagged)
-        // Base duration + any teacher-granted extra time for this session.
+        // Hitungan mundur dari deadline SERVER (build 138) — untuk sesi lama
+        // lewat `data.expiresAt`, untuk sesi baru lewat respons start. Formula
+        // lokal hanya fallback bila server belum bisa menghitung (mis.
+        // started_at kosong atau ujian tanpa durasi).
         const extraMin = Number(data.extraTimeMinutes) || 0
-        setTimeLeft(data.exam.duration_minutes * 60 + extraMin * 60)
+        if (
+          !applyServerDeadline(data.expiresAt, data.serverTime) &&
+          !applyServerDeadline(startRes?.expiresAt, startRes?.serverTime)
+        ) {
+          setTimeLeft(data.exam.duration_minutes * 60 + extraMin * 60)
+        }
         setView("taking")
       } catch (err: any) {
         console.error(err)
@@ -405,13 +465,22 @@ export default function ExamTakingPage() {
     if (view !== "taking") return
     const timer = setInterval(() => {
       setTimeLeft((t) => {
-        if (t <= 1) {
+        // Build 138: dengan deadline server hitungan ULANG dari jam (bukan
+        // minus 1 per tick) — setInterval di tab background ter-throttle
+        // sehingga timer decrement bisa tertinggal jauh dari waktu nyata.
+        const next =
+          deadlineRef.current !== null
+            ? Math.ceil(
+                (deadlineRef.current - (Date.now() + clockOffsetRef.current)) / 1000,
+              )
+            : t - 1
+        if (next <= 0) {
           clearInterval(timer)
           // Defer so handleSubmit (declared below) is always the latest closure.
           setTimeout(() => handleSubmitRef.current(true), 0)
           return 0
         }
-        return t - 1
+        return next
       })
     }, 1000)
     return () => clearInterval(timer)
@@ -807,15 +876,23 @@ export default function ExamTakingPage() {
         try {
           // Only the raw response is sent — the server authoritatively computes
           // correctness & score (client-sent scores would be ignored anyway).
-          await saveAnswer(sessionId, qId, response)
+          const saveRes = await saveAnswer(sessionId, qId, response)
+          // Echo deadline server → timer ikut extra time yang baru diberikan
+          // guru tanpa perlu reload.
+          applyServerDeadline(saveRes?.expiresAt)
           setSaveState("saved")
           if (saveTimer.current) window.clearTimeout(saveTimer.current)
           saveTimer.current = window.setTimeout(
             () => setSaveState((s) => (s === "saved" ? "idle" : s)),
             2000,
           )
-        } catch (err) {
+        } catch (err: any) {
           console.error("Failed to save answer:", err)
+          if (err?.status === 409 && err?.payload?.code === "SESSION_EXPIRED") {
+            // Build 138: server menutup sesi (waktu habis + grace terlewat).
+            handleServerTimeUp(err?.payload?.error)
+            return
+          }
           setSaveState("offline")
         }
       }
@@ -839,9 +916,21 @@ export default function ExamTakingPage() {
       setSaveState("saving")
       for (const qId of ids) {
         try {
-          await saveAnswer(sessionId, qId, pending[qId])
+          const saveRes = await saveAnswer(sessionId, qId, pending[qId])
+          applyServerDeadline(saveRes?.expiresAt)
           delete pending[qId]
-        } catch {
+        } catch (err: any) {
+          if (err?.status === 409 && err?.payload?.code === "SESSION_EXPIRED") {
+            // Waktu sudah lewat selama offline — antrean tidak akan pernah
+            // diterima lagi; buang lalu serahkan ke alhasil waktu-habis.
+            try {
+              localStorage.removeItem(key)
+            } catch {
+              /* ignore */
+            }
+            handleServerTimeUp(err?.payload?.error)
+            return
+          }
           break
         }
       }
@@ -1027,6 +1116,14 @@ export default function ExamTakingPage() {
           >
             {t("Exam Submitted!")}
           </h1>
+          {timeUpNotice && (
+            <div
+              className="mb-4 rounded-lg px-3 py-2 text-xs font-semibold"
+              style={{ background: "#FEF3C7", color: "#92400E", border: "1px solid #FDE68A" }}
+            >
+              ⏰ {timeUpNotice}
+            </div>
+          )}
           <p className="text-sm mb-6" style={{ color: "#64748b" }}>
             {exam?.title} · {answeredCount}/{questions.length}{" "}
             {t("questions answered")}

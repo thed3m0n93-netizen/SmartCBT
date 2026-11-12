@@ -2,6 +2,7 @@
 import { query, queryOne, addRoute, json } from "./utils.js";
 import { recomputeExamResults } from "./results.js";
 import { ensureColumn } from "./schema.js";
+import { sessionExpiresAtIso } from "./session-time.js";
 
 /** Uniform handler result so URL-param and body-based routes can share logic. */
 interface ApiResult {
@@ -73,17 +74,25 @@ async function extraTimeCore(sessionId: string, minutes: unknown): Promise<ApiRe
 async function resetSessionCore(sessionId: string): Promise<ApiResult> {
   if (!sessionId) return failResult(400, { error: "Session id required" });
   const session = await queryOne(
-    `SELECT id, exam_id, student_id, status, started_at FROM student_sessions WHERE id = $1`,
+    `SELECT ss.id, ss.exam_id, ss.student_id, ss.status, ss.started_at,
+            ss.extra_time_minutes, e.duration_minutes
+     FROM student_sessions ss
+     JOIN exams e ON e.id = ss.exam_id
+     WHERE ss.id = $1`,
     [sessionId]
   );
   if (!session) return failResult(404, { error: "Sesi tidak ditemukan" });
   if (session.status === "completed") {
     return failResult(409, { error: "Sesi sudah selesai" });
   }
+  // Build 138: answers are now time-gated on the server
+  // (started_at + duration + extra_time). A reset therefore MUST restart the
+  // clock too — otherwise a session reopened long after its deadline would
+  // instantly reject every answer again.
   const updated = await queryOne(
     `UPDATE student_sessions
         SET status = 'in_progress', focus_loss_count = COALESCE(focus_loss_count, 0),
-            started_at = COALESCE(started_at, NOW()), updated_at = NOW()
+            started_at = NOW(), submitted_at = NULL, updated_at = NOW()
       WHERE id = $1
       RETURNING status, started_at`,
     [sessionId]
@@ -93,6 +102,11 @@ async function resetSessionCore(sessionId: string): Promise<ApiResult> {
     sessionId,
     status: updated?.status ?? "in_progress",
     startedAt: updated?.started_at ?? null,
+    expiresAt: sessionExpiresAtIso({
+      startedAt: updated?.started_at,
+      durationMinutes: session.duration_minutes,
+      extraTimeMinutes: session.extra_time_minutes,
+    }),
   });
 }
 

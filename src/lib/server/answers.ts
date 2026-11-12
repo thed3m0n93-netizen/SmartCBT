@@ -4,6 +4,11 @@ import { recomputeExamResults } from "./results.js";
 import { verifyExamToken } from "./tokens.js";
 import { scoreQuestion } from "./scoring.js";
 import { ensureColumn } from "./schema.js";
+import {
+  SESSION_GRACE_SECONDS,
+  isSessionExpired,
+  sessionExpiresAtIso,
+} from "./session-time.js";
 
 /**
  * SEB runtime proof gate.
@@ -65,7 +70,8 @@ addRoute("POST", /^\/api\/answers$/, async (req, res, body) => {
 
   // Session must exist and still be in progress (no answering after submit).
   const session = await queryOne(
-    `SELECT ss.status, ss.seb_verified_at, ss.started_at, e.bank_id,
+    `SELECT ss.status, ss.seb_verified_at, ss.started_at, ss.extra_time_minutes,
+            e.bank_id, e.duration_minutes,
             e.seb_required, e.seb_config_hash
      FROM student_sessions ss
      JOIN exams e ON e.id = ss.exam_id
@@ -77,6 +83,38 @@ addRoute("POST", /^\/api\/answers$/, async (req, res, body) => {
   }
   if (session.status === "completed") {
     return json(res, { error: "Ujian sudah disubmit" }, 409);
+  }
+
+  // ── Server-side time limit (build 138) ─────────────────────────────────
+  // deadline = started_at + duration + extra_time (+ grace). A client that
+  // tampers with its local timer (or replays /api/answers from a script) is
+  // rejected here, and the session is closed + re-scored so the student
+  // immediately sees their real result instead of a stuck exam screen.
+  const expiresAt = sessionExpiresAtIso(session);
+  if (isSessionExpired(session)) {
+    await query(
+      `UPDATE student_sessions
+          SET status = 'completed',
+              submitted_at = COALESCE(submitted_at, NOW())
+        WHERE id = $1
+          AND status IN ('not_started', 'in_progress', 'flagged', 'disrupted')`,
+      [sessionId]
+    );
+    try {
+      await recomputeExamResults(sessionId);
+    } catch (err) {
+      console.error("[answers] auto-complete on expiry failed:", err);
+    }
+    return json(
+      res,
+      {
+        error: "Waktu ujian sudah habis. Sesi ditutup server dan nilai dihitung dari jawaban terakhir.",
+        code: "SESSION_EXPIRED",
+        expiresAt,
+        graceSeconds: SESSION_GRACE_SECONDS,
+      },
+      409
+    );
   }
 
   // ── SEB runtime enforcement ────────────────────────────────────────────
@@ -145,7 +183,7 @@ addRoute("POST", /^\/api\/answers$/, async (req, res, body) => {
       [sessionId, questionId, JSON.stringify(response), isCorrect, score]
     );
   }
-  json(res, { success: true, isCorrect, score });
+  json(res, { success: true, isCorrect, score, expiresAt });
 });
 
 // POST /api/sessions/start — start or resume a student session
@@ -159,7 +197,7 @@ addRoute("POST", /^\/api\/sessions\/start$/, async (req, res, body) => {
 
   // Look up the exam to check seb_required flag
   const examRow = await queryOne(
-    `SELECT id, title, seb_required, seb_config_hash FROM exams WHERE id = $1`,
+    `SELECT id, title, duration_minutes, seb_required, seb_config_hash FROM exams WHERE id = $1`,
     [examId]
   );
   if (!examRow) {
@@ -249,7 +287,18 @@ addRoute("POST", /^\/api\/sessions\/start$/, async (req, res, body) => {
     }
   }
 
-  json(res, { session, sebVerified: sebProven });
+  json(res, {
+    session,
+    sebVerified: sebProven,
+    // Build 138 — authoritative deadline for the client countdown.
+    expiresAt: sessionExpiresAtIso({
+      startedAt: session?.started_at,
+      durationMinutes: examRow.duration_minutes,
+      extraTimeMinutes: session?.extra_time_minutes,
+    }),
+    serverTime: new Date().toISOString(),
+    graceSeconds: SESSION_GRACE_SECONDS,
+  });
 });
 
 // GET /api/sessions/results/:sessionId — get exam results for a completed session
@@ -268,11 +317,22 @@ addRoute("GET", /^\/api\/sessions\/results\/[^/]+$/, async (req, res) => {
 
 // POST /api/sessions/submit — complete a student session
 // Marks the session as completed and records the submission timestamp.
+// A submit that arrives AFTER the deadline is still accepted on purpose:
+// answers past the deadline can no longer be saved (POST /api/answers
+// rejects + auto-completes), so finalizing here just scores what is stored.
 addRoute("POST", /^\/api\/sessions\/submit$/, async (_req, res, body) => {
   const { sessionId } = body;
   if (!sessionId) {
     return json(res, { error: "sessionId required" }, 400);
   }
+  const session = await queryOne(
+    `SELECT ss.id, ss.exam_id, ss.student_id, ss.status, ss.started_at,
+            ss.extra_time_minutes, e.duration_minutes
+     FROM student_sessions ss
+     JOIN exams e ON e.id = ss.exam_id
+     WHERE ss.id = $1`,
+    [sessionId]
+  );
   await query(
     `UPDATE student_sessions
        SET status = 'completed', submitted_at = NOW()
@@ -280,12 +340,13 @@ addRoute("POST", /^\/api\/sessions\/submit$/, async (_req, res, body) => {
     [sessionId]
   );
   // Generate exam_results summary for the session
-  const session = await queryOne(
-    `SELECT id, exam_id, student_id FROM student_sessions WHERE id = $1`,
-    [sessionId]
-  );
   if (session) {
     await recomputeExamResults(sessionId);
   }
-  json(res, { success: true, session });
+  json(res, {
+    success: true,
+    session,
+    expiresAt: sessionExpiresAtIso(session ?? {}),
+    expiredAtSubmit: session ? isSessionExpired(session) : false,
+  });
 });

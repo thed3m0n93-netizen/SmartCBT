@@ -8,9 +8,9 @@
 SmartCBT adalah platform CBT (Computer Based Test) sekolah multi-peran yang fiturnya sudah melampaui sekadar ujian: manajemen database multi-engine, autentikasi single-session, bank soal (5 tipe + media + LaTeX + impor/ekspor + AI generate), pelaksanaan ujian dengan anti-cheat dua lapis, monitoring SSE real-time, penilaian manual + AI, modul belajar (LMS), tugas dengan AI grading batch, berita sekolah, penyimpanan berkas, branding, PWA, game mode trivia, dan deployment Docker/standalone.
 
 Status umum saat ini:
-- Fitur inti CBT: berjalan, dengan catatan hardening server-side (durasi & kepemilikan sesi)
+- Fitur inti CBT: berjalan; durasi ujian ditegakkan server sejak build 138, tersisa hardening kepemilikan sesi
 - Fitur pengawasan, AI, LMS, tugas, berita, storage: sudah terintegrasi & operasional
-- Gap utama: penegakan waktu ujian di server, validasi kepemilikan resource sesi, secret bawaan di repo, audit log, reset password, notifikasi
+- Gap utama: validasi kepemilikan resource sesi, secret bawaan di repo, audit log, reset password, notifikasi
 
 ---
 
@@ -113,7 +113,7 @@ Status umum saat ini:
 ## Gap yang masih ada
 
 ### Perlu segera (keamanan/keadilan ujian)
-- Penegakan durasi/`end_time` + extra time **di server** saat submit (kini murni klien)
+- ~~Penegakan durasi/`end_time` + extra time di server~~ — **selesai build 138** (gate `SESSION_EXPIRED` + auto-close di `POST /api/answers`, timer klien dari `expiresAt` server); perlu uji end-to-end di DB staging
 - Validasi kepemilikan `sessionId`/`studentId` di endpoint sesi/hasil ujian (identitas saat ini dipercaya dari klien)
 - Rotasi secret bawaan: key NVIDIA (`ai-keys.ts`), kredensial DB default (`db.ts`), password compose, akun demo, sisa `.env.local`
 - Overlay UI blokir SEB tidak dirender (`sebBlocked`); tombol stub di kartu ExamsPage (Regenerate/Monitor/Force End/Export)
@@ -135,4 +135,4 @@ Status umum saat ini:
 ---
 
 ## Kesimpulan
-SmartCBT sudah sangat kuat untuk kebutuhan utama platform CBT modern: pembuatan soal & ujian, pelaksanaan dengan anti-cheat dua lapis, monitoring real-time, penilaian (termasuk AI), LMS ringan, berita, dan opsi deployment lengkap (Docker/standalone/VPS). Fokus perbaikan berikutnya adalah **memindahkan lebih banyak kepercayaan dari klien ke server** (durasi & kepemilikan sesi), **bersih-bersih secret bawaan**, lalu fitur operasional lanjutan (audit log, notifikasi, reset password) sebelum memulai roadmap E-Rapor.
+SmartCBT sudah sangat kuat untuk kebutuhan utama platform CBT modern: pembuatan soal & ujian, pelaksanaan dengan anti-cheat dua lapis, monitoring real-time, penilaian (termasuk AI), LMS ringan, berita, dan opsi deployment lengkap (Docker/standalone/VPS). Pemindahan kepercayaan klien→server sudah mencapai tahap durasi ujian (build 138); fokus berikutnya adalah **kepemilikan resource sesi**, **bersih-bersih secret bawaan**, lalu fitur operasional lanjutan (audit log, notifikasi, reset password) sebelum memulai roadmap E-Rapor.

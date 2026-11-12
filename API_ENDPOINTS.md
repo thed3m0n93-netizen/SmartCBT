@@ -145,10 +145,18 @@ Dasar arsitektur:
 
 | Method | Endpoint | Deskripsi | Auth |
 |--------|----------|-----------|------|
-| POST | `/api/answers` | Simpan satu jawaban siswa (sessionId, questionId, response). | Ya |
-| POST | `/api/sessions/start` | Mulai / lanjutkan sesi ujian (gate token + SEB). | Ya |
+| POST | `/api/answers` | Simpan satu jawaban siswa (sessionId, questionId, response). **Build 138:** ditolak **409 `SESSION_EXPIRED`** bila lewat `started_at + duration + extra_time + grace` (60 dtk) — sesi otomatis ditutup & dinilai dari jawaban terakhir. Respons sukses menyertakan `expiresAt` (echo deadline server). | Ya |
+| POST | `/api/sessions/start` | Mulai / lanjutkan sesi ujian (gate token + SEB). **Build 138:** respons memuat `expiresAt`, `serverTime`, `graceSeconds` — sumber hitungan mundur resmi klien. | Ya |
 | GET | `/api/sessions/results/:sessionId` | Baca hasil sesi yang sudah selesai. | Ya |
-| POST | `/api/sessions/submit` | Akhiri sesi, hitung nilai, buat baris exam_results. | Ya |
+| POST | `/api/sessions/submit` | Akhiri sesi, hitung nilai, buat baris exam_results. Submit setelah deadline tetap diterima (jawaban pasca-deadline sudah diblokir `/api/answers`); respons memuat `expiresAt` + `expiredAtSubmit`. | Ya |
+
+> **Deadline sesi (build 138)** dihitung server dari data milik server:
+> `student_sessions.started_at + exams.duration_minutes +
+> student_sessions.extra_time_minutes` (+ toleransi `SESSION_GRACE_SECONDS`
+> = 60 detik untuk drift jam & latensi). Sumber: `src/lib/server/session-time.ts`.
+> Klien memakai `expiresAt` untuk timer (dengan koreksi selisih jam dari
+> `serverTime`), sehingga memanipulasi timer lokal atau mengirim jawaban dari
+> skrip setelah waktu habis tidak lagi efektif.
 
 ## Monitoring Ujian (Live Monitoring)
 
@@ -162,9 +170,9 @@ Dasar arsitektur:
 | GET | `/api/monitoring/:examId` | Monitoring rows untuk satu ujian. | Ya |
 | POST | `/api/sessions/:sessionId/force-submit` | Paksa submit sesi (override guru/admin). | Ya |
 | POST | `/api/sessions/:sessionId/extra-time` | Beri waktu tambahan (menit). | Ya |
-| POST | `/api/sessions/:sessionId/reset` | Reset sesi yang terganggu. | Ya |
+| POST | `/api/sessions/:sessionId/reset` | Reset sesi yang terganggu. **Build 138:** sekaligus mengulang jam sesi (`started_at = NOW()`, `submitted_at` dibersihkan) dan mengembalikan `expiresAt` baru — tanpa ini siswa hasil reset akan langsung tertolak gerbang waktu. | Ya |
 | POST | `/api/monitoring/force-submit` | Alias force-submit. | Ya |
-| POST | `/api/monitoring/extra-time` | Alias extra-time. | Ya |
+| POST | `/api/monitoring/extra-time` | Alias extra-time. **Build 138:** perpanjangan otomatis terlihat oleh siswa pada autosave berikutnya (echo `expiresAt`), tanpa reload. | Ya |
 | POST | `/api/monitoring/reset` | Alias reset. | Ya |
 
 **Fungsi tambahan (client-side helper, bukan route terpisah):**  

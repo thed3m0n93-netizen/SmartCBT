@@ -96,7 +96,7 @@ Variabel environment utama (nama saja): `PORT`, `HOST`, `STATIC_DIR`, `UPLOADS_D
 ## Catatan keamanan sebelum produksi
 
 - **Rotasi semua secret bawaan**: API key NVIDIA ter-bundle di `src/lib/server/ai-keys.ts`, kredensial DB default di `src/lib/db.ts`, password Postgres di `docker-compose.yml`, akun demo hasil seed, dan sisa token lama di `.env.local` (hapus filenya).
-- **Celah yang diketahui** (detail di `FEATURES.md` → Prioritas): durasi ujian belum ditegakkan server saat submit; endpoint sesi ujian belum memvalidasi kepemilikan `sessionId`/`studentId` terhadap pemanggil; sesi login & SSE in-memory (tidak bisa multi-instance).
+- **Celah yang diketahui** (detail di `FEATURES.md` → Prioritas): endpoint sesi ujian belum memvalidasi kepemilikan `sessionId`/`studentId` terhadap pemanggil; sesi login & SSE in-memory (tidak bisa multi-instance). Durasi ujian **sudah ditegakkan server sejak build 138** (gate `SESSION_EXPIRED` di `POST /api/answers` + timer klien dari `expiresAt`).
 - `public/uploads/` berisi berkas user sungguhan dan ikut ter-copy ke `dist/` saat build — pindahkan folder upload ke luar proyek (`UPLOADS_DIR`) sebelum deploy.
 
 ## Konvensi kode

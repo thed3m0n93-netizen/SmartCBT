@@ -1111,6 +1111,14 @@ export interface ExamTakingData {
   sessionId?: string | null;
   existingAnswers?: Record<string, any>;
   extraTimeMinutes?: number;
+  /** Build 138 — server-authoritative countdown (ISO; null when not computable). */
+  expiresAt?: string | null;
+  /** Server clock at response time, for client/server skew correction. */
+  serverTime?: string;
+  /** Seconds of network/clock tolerance the server applies before rejecting. */
+  graceSeconds?: number;
+  /** Status of the existing session, when any (`completed` = read-only). */
+  sessionStatus?: string | null;
 }
 
 /** One exam plus its ordered question list (answers stripped for students). */
@@ -1499,8 +1507,13 @@ export function startSession(
   studentId: string,
   token?: string,
   meta?: { deviceId?: string; seb?: boolean; configKeyHash?: string | null },
-): Promise<{ session: any }> {
-  return apiPost<{ session: any }>("/api/sessions/start", {
+): Promise<{
+  session: any;
+  expiresAt?: string | null;
+  serverTime?: string;
+  graceSeconds?: number;
+}> {
+  return apiPost("/api/sessions/start", {
     examId,
     studentId,
     token,
@@ -1516,7 +1529,13 @@ export function saveAnswer(
   questionId: string,
   response: unknown,
   _extra?: unknown,
-): Promise<{ success: boolean; isCorrect: boolean | null; score: number | null }> {
+): Promise<{
+  success: boolean;
+  isCorrect: boolean | null;
+  score: number | null;
+  /** Build 138 — authoritative deadline echo (also carries extra-time grants). */
+  expiresAt?: string | null;
+}> {
   return apiPost("/api/answers", { sessionId, questionId, response });
 }
 
