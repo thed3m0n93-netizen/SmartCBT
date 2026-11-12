@@ -1,0 +1,14 @@
+{
+  "name": "smartcbt-standalone-server",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Standalone SmartCBT API server — serves the same /api/* endpoints as the Vite dev middleware so a built frontend can run without uploading the source project.",
+  "main": "dist/server.mjs",
+  "scripts": {
+    "start": "node dist/server.mjs"
+  },
+  "engines": {
+    "node": ">=18.17"
+  }
+}

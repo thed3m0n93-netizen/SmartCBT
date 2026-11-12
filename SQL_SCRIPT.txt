@@ -1,0 +1,868 @@
+-- ============================================================
+--  SmartCBT - Computer-Based Testing Server
+--  PostgreSQL 13+ DDL & Seed Script
+--
+--  Cara pakai:
+--    1) Jalankan penuh (psql -f SQL_SCRIPT.txt atau pgAdmin Query Tool).
+--    2) Untuk re-run / reset pada database yang sama, jalankan dulu:
+--         DROP SCHEMA public CASCADE;
+--         CREATE SCHEMA public;
+--    3) Hash password diverifikasi sebagai bcrypt di aplikasi (bcryptjs),
+--       sehingga EKSTENSI pgcrypto TIDAK diperlukan lagi. Dulu seed dan login
+--       memakai crypt()/gen_salt() yang butuh pgcrypto; jika user DB bukan
+--       superuser, CREATE EXTENSION gagal dan login menjadi "500 Internal
+--       Server Error". (Opsional, butuh superuser untuk menginstall:
+--         CREATE EXTENSION IF NOT EXISTS "pgcrypto";)
+--    4) Tidak ingin menjalankan skrip ini manual? Buka halaman /setup pada
+--       aplikasi: panel "Install & Seed Database" membuat seluruh tabel +
+--       seed yang sama, dan panel "Update Database" menyelaraskan database
+--       lama dengan skema terbaru TANPA menghapus data (idempotent).
+-- ============================================================
+
+BEGIN;
+
+
+-- ============================================================
+-- 1. UTILITY: auto-updated updated_at TRIGGER FUNCTION
+-- ============================================================
+CREATE OR REPLACE FUNCTION fn_set_updated_at()
+RETURNS TRIGGER
+LANGUAGE plpgsql AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$;
+
+
+-- ============================================================
+-- 2. USER & ACCESS MANAGEMENT
+-- ============================================================
+
+-- 2.1 users
+CREATE TABLE users (
+    id            UUID        NOT NULL DEFAULT gen_random_uuid(),
+    username      VARCHAR(64) NOT NULL,
+    password_hash TEXT        NOT NULL,
+    full_name     VARCHAR(128) NOT NULL,
+    role          VARCHAR(16) NOT NULL
+                    CHECK (role IN ('super_admin', 'teacher', 'student')),
+    status        VARCHAR(10) NOT NULL DEFAULT 'active'
+                    CHECK (status IN ('active', 'inactive')),
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT pk_users        PRIMARY KEY (id),
+    CONSTRAINT uq_users_username UNIQUE (username)
+);
+
+CREATE INDEX idx_users_role   ON users (role);
+CREATE INDEX idx_users_status ON users (status);
+
+CREATE TRIGGER trg_users_updated_at
+    BEFORE UPDATE ON users
+    FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
+
+
+-- 2.2 classes
+CREATE TABLE classes (
+    id          BIGSERIAL    NOT NULL,
+    class_name  VARCHAR(64)  NOT NULL,
+    grade_level VARCHAR(32)  NOT NULL,
+    created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT pk_classes PRIMARY KEY (id)
+);
+
+CREATE INDEX idx_classes_grade_level ON classes (grade_level);
+
+
+-- 2.3 student_profiles
+CREATE TABLE student_profiles (
+    id             UUID        NOT NULL DEFAULT gen_random_uuid(),
+    user_id        UUID        NOT NULL,
+    class_id       BIGINT      NOT NULL,
+    student_number VARCHAR(20) NOT NULL,           -- NISN / NIS
+    email          VARCHAR(128),
+    phone          VARCHAR(32),
+    address        TEXT,
+    avatar_url     TEXT,                           -- URL foto profil siswa
+    graduated_at   TIMESTAMPTZ,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT pk_student_profiles          PRIMARY KEY (id),
+    CONSTRAINT fk_student_profiles_user     FOREIGN KEY (user_id)
+        REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_student_profiles_class    FOREIGN KEY (class_id)
+        REFERENCES classes (id) ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT uq_student_profiles_user     UNIQUE (user_id),
+    CONSTRAINT uq_student_number            UNIQUE (student_number)
+);
+
+CREATE INDEX idx_student_profiles_class_id ON student_profiles (class_id);
+
+
+-- 2.4 settings (school profile, branding, & AI Agent configuration)
+--     Dipakai oleh /api/settings, panel AI Agent, dan ekspor hasil ujian
+--     (school_name). Nilai default disemai pada bagian 7.4.
+CREATE TABLE settings (
+    key        VARCHAR(64) NOT NULL,              -- contoh: 'school_name'
+    value      TEXT        NOT NULL DEFAULT '',
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT pk_settings PRIMARY KEY (key)
+);
+
+
+-- ============================================================
+-- 3. DIGITAL QUESTION BANK (Bank Soal Engine)
+-- ============================================================
+
+-- 3.1 subjects
+CREATE TABLE subjects (
+    id           BIGSERIAL   NOT NULL,
+    subject_code VARCHAR(16) NOT NULL,
+    subject_name VARCHAR(100) NOT NULL,
+
+    CONSTRAINT pk_subjects          PRIMARY KEY (id),
+    CONSTRAINT uq_subject_code      UNIQUE (subject_code)
+);
+
+-- 3.1a subject_class_assignments (cakupan mapel per kelas)
+CREATE TABLE subject_class_assignments (
+    subject_id BIGINT      NOT NULL,
+    class_id   BIGINT      NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT pk_subject_class_assignments PRIMARY KEY (subject_id, class_id),
+    CONSTRAINT fk_subject_class_subject FOREIGN KEY (subject_id)
+        REFERENCES subjects (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_subject_class_class FOREIGN KEY (class_id)
+        REFERENCES classes (id) ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+-- 3.1b teacher_assignments (penugasan guru: kelas + mata pelajaran)
+CREATE TABLE teacher_assignments (
+    id          BIGSERIAL   NOT NULL,
+    teacher_id  UUID        NOT NULL,                  -- users.id (role='teacher')
+    class_id    BIGINT      NOT NULL,
+    subject_id  BIGINT      NOT NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT pk_teacher_assignments        PRIMARY KEY (id),
+    CONSTRAINT uq_teacher_assignment         UNIQUE (teacher_id, class_id, subject_id),
+    CONSTRAINT fk_ta_teacher                 FOREIGN KEY (teacher_id)
+        REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_ta_class                   FOREIGN KEY (class_id)
+        REFERENCES classes (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_ta_subject                 FOREIGN KEY (subject_id)
+        REFERENCES subjects (id) ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE INDEX idx_ta_class   ON teacher_assignments (class_id);
+CREATE INDEX idx_ta_subject ON teacher_assignments (subject_id);
+
+
+-- 3.2 question_banks
+CREATE TABLE question_banks (
+    id              UUID        NOT NULL DEFAULT gen_random_uuid(),
+    subject_id      BIGINT      NOT NULL,
+    teacher_id      UUID        NOT NULL,
+    title           VARCHAR(200) NOT NULL,
+    total_questions INT         NOT NULL DEFAULT 0
+                    CHECK (total_questions >= 0),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT pk_question_banks           PRIMARY KEY (id),
+    CONSTRAINT fk_question_banks_subject   FOREIGN KEY (subject_id)
+        REFERENCES subjects (id) ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT fk_question_banks_teacher   FOREIGN KEY (teacher_id)
+        REFERENCES users (id) ON DELETE RESTRICT ON UPDATE CASCADE
+);
+
+CREATE INDEX idx_question_banks_subject_id  ON question_banks (subject_id);
+CREATE INDEX idx_question_banks_teacher_id  ON question_banks (teacher_id);
+
+
+-- 3.3 questions
+-- options JSONB examples (sesuai normalisasi di src/lib/server/questions.ts):
+--   single_choice/multiple_choice: [{"key":"A","text":"..."},{"key":"B","text":"..."}]
+--   true_false:                    [{"key":"true","text":"Benar"},{"key":"false","text":"Salah"}]
+--   matching:                      {"left":[{"id":"L1","text":"..."}],"right":[{"id":"R1","text":"..."}]}
+--   essay:                         null
+-- correct_answer JSONB examples:
+--   single_choice: {"keys":["B"]}
+--   multiple_choice: {"keys":["A","C"]}
+--   true_false: {"keys":["true"]}
+--   matching: {"pairs":[{"left_id":"L1","right_id":"R2"}]}
+--   essay: null  (graded manually)
+
+CREATE TABLE questions (
+    id               UUID        NOT NULL DEFAULT gen_random_uuid(),
+    bank_id          UUID        NOT NULL,
+    question_type    VARCHAR(16) NOT NULL
+                     CHECK (question_type IN
+                            ('single_choice','multiple_choice','true_false','matching','essay')),
+    content          TEXT        NOT NULL,
+    media_type       VARCHAR(8)  NOT NULL DEFAULT 'none'
+                     CHECK (media_type IN ('none','image','audio','video')),
+    media_url        TEXT,
+    formula_latex    TEXT,
+    options          JSONB,
+    correct_answer   JSONB,
+    score_weight     NUMERIC(5,2) NOT NULL DEFAULT 1.0
+                     CHECK (score_weight >= 0),
+    difficulty_level VARCHAR(8)  NOT NULL DEFAULT 'medium'
+                     CHECK (difficulty_level IN ('easy','medium','hard')),
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT pk_questions         PRIMARY KEY (id),
+    CONSTRAINT fk_questions_bank    FOREIGN KEY (bank_id)
+        REFERENCES question_banks (id) ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+-- Critical performance indexes
+CREATE INDEX idx_questions_bank_id         ON questions (bank_id);
+CREATE INDEX idx_questions_question_type   ON questions (question_type);
+CREATE INDEX idx_questions_difficulty      ON questions (difficulty_level);
+-- GIN index for JSONB full-text / key searches
+CREATE INDEX idx_questions_options_gin     ON questions USING GIN (options);
+CREATE INDEX idx_questions_answer_gin      ON questions USING GIN (correct_answer);
+
+
+-- ============================================================
+-- 4. EXAM MANAGEMENT & SCHEDULING
+-- ============================================================
+
+-- 4.1 exams
+CREATE TABLE exams (
+    id                   UUID        NOT NULL DEFAULT gen_random_uuid(),
+    title                VARCHAR(200) NOT NULL,
+    bank_id              UUID        NOT NULL,
+    created_by           UUID        NOT NULL,
+    duration_minutes     INT         NOT NULL CHECK (duration_minutes > 0),
+    start_time           TIMESTAMPTZ NOT NULL,
+    end_time             TIMESTAMPTZ NOT NULL,
+    dynamic_token        VARCHAR(6),
+    is_token_active      BOOLEAN     NOT NULL DEFAULT FALSE,
+    randomize_questions  BOOLEAN     NOT NULL DEFAULT FALSE,
+    randomize_options    BOOLEAN     NOT NULL DEFAULT FALSE,
+    seb_required         BOOLEAN     NOT NULL DEFAULT FALSE,
+    seb_config_hash      TEXT,
+    status               VARCHAR(10) NOT NULL DEFAULT 'draft'
+                         CHECK (status IN ('draft','published','archived')),
+    created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT pk_exams             PRIMARY KEY (id),
+    CONSTRAINT fk_exams_bank        FOREIGN KEY (bank_id)
+        REFERENCES question_banks (id) ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT fk_exams_creator     FOREIGN KEY (created_by)
+        REFERENCES users (id) ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT chk_exams_time       CHECK (end_time > start_time)
+);
+
+CREATE INDEX idx_exams_status       ON exams (status);
+CREATE INDEX idx_exams_start_time   ON exams (start_time);
+CREATE INDEX idx_exams_bank_id      ON exams (bank_id);
+CREATE INDEX idx_exams_created_by   ON exams (created_by);
+
+
+-- 4.2 exam_class_assignments
+CREATE TABLE exam_class_assignments (
+    exam_id   UUID   NOT NULL,
+    class_id  BIGINT NOT NULL,
+
+    CONSTRAINT pk_exam_class_assignments PRIMARY KEY (exam_id, class_id),
+    CONSTRAINT fk_eca_exam               FOREIGN KEY (exam_id)
+        REFERENCES exams (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_eca_class              FOREIGN KEY (class_id)
+        REFERENCES classes (id) ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE INDEX idx_eca_class_id ON exam_class_assignments (class_id);
+
+
+-- ============================================================
+-- 5. STUDENT EXAM SESSIONS & REAL-TIME MONITORING
+-- ============================================================
+
+-- 5.1 student_sessions
+CREATE TABLE student_sessions (
+    id                 UUID        NOT NULL DEFAULT gen_random_uuid(),
+    exam_id            UUID        NOT NULL,
+    student_id         UUID        NOT NULL,
+    ip_address         VARCHAR(45),
+    device_id          TEXT,                           -- MAC address / fingerprint
+    user_agent         TEXT,
+    status             VARCHAR(12) NOT NULL DEFAULT 'not_started'
+                       CHECK (status IN
+                              ('not_started','in_progress','completed','disrupted','flagged')),
+    started_at         TIMESTAMPTZ,
+    submitted_at       TIMESTAMPTZ,
+    seb_verified_at    TIMESTAMPTZ,
+    extra_time_minutes INT         NOT NULL DEFAULT 0
+                       CHECK (extra_time_minutes >= 0),
+    focus_loss_count   INT         NOT NULL DEFAULT 0
+                       CHECK (focus_loss_count >= 0),
+    anticheat_violations INT       NOT NULL DEFAULT 0,
+
+    CONSTRAINT pk_student_sessions            PRIMARY KEY (id),
+    CONSTRAINT fk_student_sessions_exam       FOREIGN KEY (exam_id)
+        REFERENCES exams (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_student_sessions_student    FOREIGN KEY (student_id)
+        REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT uq_student_sessions            UNIQUE (exam_id, student_id)
+);
+
+-- Critical indexes for real-time monitoring dashboards
+CREATE INDEX idx_student_sessions_exam_id        ON student_sessions (exam_id);
+CREATE INDEX idx_student_sessions_student_id     ON student_sessions (student_id);
+CREATE INDEX idx_student_sessions_exam_status    ON student_sessions (exam_id, status);
+CREATE INDEX idx_student_sessions_status         ON student_sessions (status);
+
+
+-- 5.2 student_answers
+-- student_response JSONB examples:
+--   single_choice:   {"selected":"B"}
+--   multiple_choice: {"selected":["A","C"]}
+--   true_false:      {"selected":"true"}
+--   matching:        {"pairs":[{"left":"...","right":"..."}]}
+--   essay:           {"text":"Jawaban panjang siswa..."}
+
+CREATE TABLE student_answers (
+    id               UUID        NOT NULL DEFAULT gen_random_uuid(),
+    session_id       UUID        NOT NULL,
+    question_id      UUID        NOT NULL,
+    student_response JSONB,
+    is_correct       BOOLEAN,                       -- NULL for un-graded essays
+    score_obtained   NUMERIC(7,2),
+    is_flagged       BOOLEAN     NOT NULL DEFAULT FALSE,
+    updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT pk_student_answers           PRIMARY KEY (id),
+    CONSTRAINT fk_student_answers_session   FOREIGN KEY (session_id)
+        REFERENCES student_sessions (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_student_answers_question  FOREIGN KEY (question_id)
+        REFERENCES questions (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT uq_student_answers           UNIQUE (session_id, question_id)
+);
+
+-- Critical performance index for answer lookup and grading pipeline
+CREATE INDEX idx_student_answers_session_id   ON student_answers (session_id);
+CREATE INDEX idx_student_answers_question_id  ON student_answers (question_id);
+CREATE INDEX idx_student_answers_is_correct   ON student_answers (is_correct)
+    WHERE is_correct IS NOT NULL;
+CREATE INDEX idx_student_answers_flagged      ON student_answers (session_id)
+    WHERE is_flagged = TRUE;
+CREATE INDEX idx_student_answers_response_gin ON student_answers USING GIN (student_response);
+
+CREATE TRIGGER trg_student_answers_updated_at
+    BEFORE UPDATE ON student_answers
+    FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
+
+
+-- ============================================================
+-- 6. AUTOMATED ANALYTICS & GRADING SUMMARY
+-- ============================================================
+
+-- 6.1 exam_results
+CREATE TABLE exam_results (
+    id             UUID        NOT NULL DEFAULT gen_random_uuid(),
+    session_id     UUID        NOT NULL,
+    total_score    NUMERIC(7,2) NOT NULL DEFAULT 0,
+    objective_score NUMERIC(7,2) NOT NULL DEFAULT 0,
+    essay_score    NUMERIC(7,2) NOT NULL DEFAULT 0,
+    grade_status   VARCHAR(24) NOT NULL DEFAULT 'pending_essay_grading'
+                   CHECK (grade_status IN ('graded','pending_essay_grading')),
+    generated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT pk_exam_results           PRIMARY KEY (id),
+    CONSTRAINT fk_exam_results_session   FOREIGN KEY (session_id)
+        REFERENCES student_sessions (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT uq_exam_results_session   UNIQUE (session_id)
+);
+
+CREATE INDEX idx_exam_results_grade_status ON exam_results (grade_status);
+CREATE INDEX idx_exam_results_generated_at ON exam_results (generated_at);
+
+
+-- ============================================================
+-- 7. SEED / DUMMY DATA
+-- ============================================================
+
+-- -------------------------------------------------------
+-- 7.1  Users (password digests are bcrypt hashes, verified in Node.js)
+-- -------------------------------------------------------
+INSERT INTO users (id, username, password_hash, full_name, role, status)
+VALUES
+  -- Super Admin  |  plain password: Admin@123
+  (
+    '00000000-0000-0000-0000-000000000001',
+    'superadmin',
+    '$2b$10$cMqQ30lkAEXU.XntMBxCLut866rbLeRsdEE4eogpIeSu5LKYjo6zW',  -- plain: Admin@123
+    'Administrator Sistem',
+    'super_admin',
+    'active'
+  ),
+  -- Teacher  |  plain password: Teacher@123
+  (
+    '00000000-0000-0000-0000-000000000002',
+    'guru_matematika',
+    '$2b$10$izhGjMPsgyFgjsuHgo9Hx.wQMx70z5y3.A04.wd45T4dr.pyUmM1e',  -- plain: Teacher@123
+    'Budi Santoso, S.Pd.',
+    'teacher',
+    'active'
+  ),
+  -- Student  |  plain password: Student@123
+  (
+    '00000000-0000-0000-0000-000000000003',
+    'siswa_andi',
+    '$2b$10$hR2phIHwQfAPWgDTGM5bZ.ueLViKF1q5oTM3lLecH//XawHWGsHcq',  -- plain: Student@123
+    'Andi Prasetyo',
+    'student',
+    'active'
+  );
+
+
+-- -------------------------------------------------------
+-- 7.2  Class
+-- -------------------------------------------------------
+INSERT INTO classes (id, class_name, grade_level)
+VALUES (1, 'XII IPA 1', 'XII');
+
+-- Sinkronkan sequence BIGSERIAL dengan id yang di-insert manual.
+SELECT setval('classes_id_seq', (SELECT COALESCE(MAX(id), 0) FROM classes) + 1, false);
+
+
+-- -------------------------------------------------------
+-- 7.3  Student Profile
+-- -------------------------------------------------------
+INSERT INTO student_profiles (user_id, class_id, student_number)
+VALUES (
+    '00000000-0000-0000-0000-000000000003',
+    1,
+    '0098765432'          -- NISN
+);
+
+
+-- -------------------------------------------------------
+-- 7.4  Settings (school profile + AI Agent defaults)
+--      Dipakai oleh /api/settings, panel AI Agent (/setup & admin),
+--      dan header ekspor hasil ujian (school_name).
+-- -------------------------------------------------------
+INSERT INTO settings (key, value) VALUES
+  ('school_name',      'SMK TEKNOLOGI'),
+  ('school_address',   'Jl. Teknologi No. 1, Karawang'),
+  ('school_phone',     '0267-123456'),
+  ('school_email',     'info@smktekno.sch.id'),
+  ('school_website',   'www.smktekno.sch.id'),
+  ('school_logo',      ''),
+  ('school_background',''),
+    ('ai_provider',      'ollama'),
+  ('ai_model',         'gemma3:4b'),
+  ('ai_api_key',       ''),
+  ('ai_base_url',      'http://192.168.22.23:11434');
+
+
+-- -------------------------------------------------------
+-- 7.5  Subject
+-- -------------------------------------------------------
+INSERT INTO subjects (id, subject_code, subject_name)
+VALUES (1, 'MTK-XII', 'Matematika Wajib Kelas XII');
+
+-- Sinkronkan sequence BIGSERIAL dengan id yang di-insert manual.
+SELECT setval('subjects_id_seq', (SELECT COALESCE(MAX(id), 0) FROM subjects) + 1, false);
+
+
+-- -------------------------------------------------------
+-- 7.6  Question Bank
+-- -------------------------------------------------------
+INSERT INTO question_banks (id, subject_id, teacher_id, title, total_questions)
+VALUES (
+    'aaaaaaaa-0000-0000-0000-000000000001',
+    1,
+    '00000000-0000-0000-0000-000000000002',
+    'Bank Soal UAS Matematika XII - Semester Genap',
+    3
+);
+
+
+-- -------------------------------------------------------
+-- 7.7  Questions  (3 types: single_choice, matching, essay)
+-- -------------------------------------------------------
+
+-- Question 1 — Single Choice
+INSERT INTO questions (
+    id, bank_id, question_type, content, media_type,
+    options, correct_answer, score_weight, difficulty_level
+)
+VALUES (
+    'bbbbbbbb-0000-0000-0000-000000000001',
+    'aaaaaaaa-0000-0000-0000-000000000001',
+    'single_choice',
+    '<p>Hasil dari <strong>∫(2x + 3) dx</strong> adalah …</p>',
+    'none',
+    '[
+        {"key": "A", "text": "x² + 3x + C"},
+        {"key": "B", "text": "2x² + 3 + C"},
+        {"key": "C", "text": "x² + C"},
+        {"key": "D", "text": "2x + C"},
+        {"key": "E", "text": "x + 3 + C"}
+    ]'::jsonb,
+    '{"keys": ["A"]}'::jsonb,
+    1.0,
+    'easy'
+);
+
+-- Question 2 — Matching
+INSERT INTO questions (
+    id, bank_id, question_type, content, media_type,
+    options, correct_answer, score_weight, difficulty_level
+)
+VALUES (
+    'bbbbbbbb-0000-0000-0000-000000000002',
+    'aaaaaaaa-0000-0000-0000-000000000001',
+    'matching',
+    '<p>Pasangkan setiap fungsi dengan turunannya yang tepat!</p>',
+    'none',
+    '{
+        "left":  [
+            {"id": "L1", "text": "f(x) = x³"},
+            {"id": "L2", "text": "f(x) = sin x"},
+            {"id": "L3", "text": "f(x) = eˣ"}
+        ],
+        "right": [
+            {"id": "R1", "text": "eˣ"},
+            {"id": "R2", "text": "3x²"},
+            {"id": "R3", "text": "cos x"}
+        ]
+    }'::jsonb,
+    '{"pairs": [
+        {"left_id": "L1", "right_id": "R2"},
+        {"left_id": "L2", "right_id": "R3"},
+        {"left_id": "L3", "right_id": "R1"}
+    ]}'::jsonb,
+    2.0,
+    'medium'
+);
+
+-- Question 3 — Essay
+INSERT INTO questions (
+    id, bank_id, question_type, content, media_type,
+    options, correct_answer, score_weight, difficulty_level
+)
+VALUES (
+    'bbbbbbbb-0000-0000-0000-000000000003',
+    'aaaaaaaa-0000-0000-0000-000000000001',
+    'essay',
+    '<p>Jelaskan konsep <em>Teorema Fundamental Kalkulus</em> dan berikan satu contoh penerapannya dalam kehidupan sehari-hari!</p>',
+    'none',
+    NULL,
+    NULL,
+    5.0,
+    'hard'
+);
+
+
+-- -------------------------------------------------------
+-- 7.8  Exam  (active / published)
+-- -------------------------------------------------------
+INSERT INTO exams (
+    id, title, bank_id, created_by,
+    duration_minutes, start_time, end_time,
+    dynamic_token, is_token_active,
+    randomize_questions, randomize_options,
+    seb_required, status
+)
+VALUES (
+    'cccccccc-0000-0000-0000-000000000001',
+    'UAS Matematika XII IPA 1 - TA 2025/2026',
+    'aaaaaaaa-0000-0000-0000-000000000001',
+    '00000000-0000-0000-0000-000000000002',
+    90,
+    NOW() + INTERVAL '1 hour',
+    NOW() + INTERVAL '2.5 hours',
+    'CBT001',
+    TRUE,
+    TRUE,
+    FALSE,
+    FALSE,
+    'published'
+);
+
+
+-- -------------------------------------------------------
+-- 7.9  Assign Exam to Class
+-- -------------------------------------------------------
+INSERT INTO exam_class_assignments (exam_id, class_id)
+VALUES (
+    'cccccccc-0000-0000-0000-000000000001',
+    1
+);
+
+
+-- -------------------------------------------------------
+-- 7.10  Student Session (simulated in-progress)
+-- -------------------------------------------------------
+INSERT INTO student_sessions (
+    id, exam_id, student_id,
+    ip_address, device_id, user_agent,
+    status, started_at
+)
+VALUES (
+    'dddddddd-0000-0000-0000-000000000001',
+    'cccccccc-0000-0000-0000-000000000001',
+    '00000000-0000-0000-0000-000000000003',
+    '192.168.1.105',
+    'AA:BB:CC:DD:EE:FF',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+    'in_progress',
+    NOW()
+);
+
+
+-- -------------------------------------------------------
+-- 7.11  Student Answers (partial – question 1 answered)
+-- -------------------------------------------------------
+INSERT INTO student_answers (
+    session_id, question_id,
+    student_response, is_correct, score_obtained, is_flagged
+)
+VALUES (
+    'dddddddd-0000-0000-0000-000000000001',
+    'bbbbbbbb-0000-0000-0000-000000000001',
+    '{"selected": "A"}'::jsonb,
+    TRUE,
+    1.0,
+    FALSE
+);
+
+-- ============================================================
+-- 8. LEARNING MANAGEMENT SYSTEM (LMS / modul belajar)
+--    Dipakai oleh /api/learning-modules (guru membuat materi,
+--    siswa membaca + progres scroll anti-skip).
+-- ============================================================
+
+-- 8.1 learning_modules
+CREATE TABLE learning_modules (
+    id                UUID         NOT NULL DEFAULT gen_random_uuid(),
+    teacher_id        UUID         NOT NULL,
+    class_id          BIGINT,                      -- NULL = berlaku untuk semua kelas
+    title             VARCHAR(200) NOT NULL,
+    description       TEXT         NOT NULL DEFAULT '',
+    content           TEXT         NOT NULL,       -- isi materi (HTML/markdown)
+    attachment_url    TEXT,                        -- file lampiran di /uploads/...
+    attachment_name   VARCHAR(255),
+    attachment_mime   VARCHAR(128),
+    subject_id        BIGINT,
+    estimated_minutes INT          NOT NULL DEFAULT 10 CHECK (estimated_minutes > 0),
+    published         BOOLEAN      NOT NULL DEFAULT TRUE,
+    created_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT pk_learning_modules PRIMARY KEY (id),
+    CONSTRAINT fk_learning_modules_teacher FOREIGN KEY (teacher_id)
+        REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_learning_modules_class FOREIGN KEY (class_id)
+        REFERENCES classes (id) ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT fk_learning_modules_subject FOREIGN KEY (subject_id)
+        REFERENCES subjects (id) ON DELETE SET NULL ON UPDATE CASCADE
+);
+
+-- 8.2 learning_module_classes (distribusi ke beberapa kelas)
+CREATE TABLE learning_module_classes (
+    id         BIGSERIAL PRIMARY KEY,
+    module_id  UUID   NOT NULL,
+    class_id   BIGINT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT uq_learning_module_class UNIQUE (module_id, class_id),
+    CONSTRAINT fk_lmc_module FOREIGN KEY (module_id)
+        REFERENCES learning_modules (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_lmc_class FOREIGN KEY (class_id)
+        REFERENCES classes (id) ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+-- 8.3 learning_module_progress (monotonic, anti-skip: max 15% per request)
+CREATE TABLE learning_module_progress (
+    id                  UUID         NOT NULL DEFAULT gen_random_uuid(),
+    module_id           UUID         NOT NULL,
+    student_id          UUID         NOT NULL,
+    max_scroll_percent  INT          NOT NULL DEFAULT 0
+                        CHECK (max_scroll_percent BETWEEN 0 AND 100),
+    completed           BOOLEAN      NOT NULL DEFAULT FALSE,
+    started_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    completed_at        TIMESTAMPTZ,
+    updated_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT pk_learning_module_progress PRIMARY KEY (id),
+    CONSTRAINT fk_learning_progress_module FOREIGN KEY (module_id)
+        REFERENCES learning_modules (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_learning_progress_student FOREIGN KEY (student_id)
+        REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT uq_learning_progress UNIQUE (module_id, student_id)
+);
+
+CREATE INDEX idx_learning_modules_teacher  ON learning_modules (teacher_id);
+CREATE INDEX idx_learning_modules_class    ON learning_modules (class_id);
+CREATE INDEX idx_lmc_class                 ON learning_module_classes (class_id);
+CREATE INDEX idx_learning_progress_student ON learning_module_progress (student_id);
+
+-- Trigger updated_at untuk learning_modules
+CREATE TRIGGER trg_learning_modules_updated_at
+    BEFORE UPDATE ON learning_modules
+    FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
+
+
+-- ============================================================
+-- 9. FILE STORAGE (upload siswa/guru/admin)
+--    Berkas disimpan di folder /public/uploads (dilayani di /uploads/...),
+--    tabel ini hanya menyimpan metadata-nya.
+-- ============================================================
+
+-- 9.1 uploads
+CREATE TABLE uploads (
+    id            UUID         NOT NULL DEFAULT gen_random_uuid(),
+    owner_id      UUID,                          -- user yang mengunggah
+    file_name     VARCHAR(255) NOT NULL,         -- nama asli
+    stored_name   VARCHAR(255) NOT NULL,         -- nama di disk
+    mime_type     VARCHAR(128),
+    size_bytes    BIGINT       NOT NULL DEFAULT 0,
+    path          TEXT         NOT NULL,         -- URL publik, contoh /uploads/xxx.png
+    kind          VARCHAR(32),                   -- kategori upload (avatar, answer-attachment, learning-material, exam-material, question-media)
+    reference     VARCHAR(64),                   -- target kontekstual (user id utk avatar, answer id utk lampiran jawaban)
+    created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT pk_uploads PRIMARY KEY (id),
+    CONSTRAINT fk_uploads_owner FOREIGN KEY (owner_id)
+        REFERENCES users (id) ON DELETE SET NULL ON UPDATE CASCADE
+);
+
+CREATE INDEX idx_uploads_owner_id   ON uploads (owner_id);
+CREATE INDEX idx_uploads_created_at ON uploads (created_at);
+
+-- ============================================================
+-- 9. ASSIGNMENTS (tugas siswa)
+-- 10. ASSIGNMENTS (tugas siswa)
+-- ============================================================
+CREATE TABLE assignments (
+    id                   UUID         NOT NULL DEFAULT gen_random_uuid(),
+    teacher_id           UUID         NOT NULL,
+    class_id             BIGINT,
+    subject_id           BIGINT,
+    title                VARCHAR(200) NOT NULL,
+    description          TEXT         NOT NULL DEFAULT '',
+    instructions         TEXT         NOT NULL DEFAULT '',
+    task_type            VARCHAR(16)  NOT NULL DEFAULT 'text'
+                         CHECK (task_type IN ('text','image','document')),
+    attachment_url       TEXT,
+    attachment_name      VARCHAR(255),
+    attachment_mime      VARCHAR(128),
+    max_score            NUMERIC(7,2) NOT NULL DEFAULT 100 CHECK (max_score > 0),
+    allow_file_upload    BOOLEAN      NOT NULL DEFAULT TRUE,
+    allow_late_submission BOOLEAN     NOT NULL DEFAULT TRUE,
+    due_at               TIMESTAMPTZ,
+    published            BOOLEAN      NOT NULL DEFAULT TRUE,
+    created_at           TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at           TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT pk_assignments PRIMARY KEY (id),
+    CONSTRAINT fk_assignments_teacher FOREIGN KEY (teacher_id)
+        REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_assignments_class FOREIGN KEY (class_id)
+        REFERENCES classes (id) ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT fk_assignments_subject FOREIGN KEY (subject_id)
+        REFERENCES subjects (id) ON DELETE SET NULL ON UPDATE CASCADE
+);
+
+CREATE TABLE assignment_classes (
+    id            BIGSERIAL PRIMARY KEY,
+    assignment_id UUID   NOT NULL,
+    class_id      BIGINT NOT NULL,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT uq_assignment_class UNIQUE (assignment_id, class_id),
+    CONSTRAINT fk_ac_assignment FOREIGN KEY (assignment_id)
+        REFERENCES assignments (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_ac_class FOREIGN KEY (class_id)
+        REFERENCES classes (id) ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE TABLE assignment_submissions (
+    id               UUID         NOT NULL DEFAULT gen_random_uuid(),
+    assignment_id    UUID         NOT NULL,
+    student_id       UUID         NOT NULL,
+    submission_text  TEXT         NOT NULL DEFAULT '',
+    status           VARCHAR(12)  NOT NULL DEFAULT 'submitted'
+                     CHECK (status IN ('submitted','graded','returned')),
+    submitted_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    score            NUMERIC(7,2),
+    feedback         TEXT,
+    graded_at        TIMESTAMPTZ,
+    graded_by        UUID,
+
+    CONSTRAINT pk_assignment_submissions PRIMARY KEY (id),
+    CONSTRAINT fk_as_assignment FOREIGN KEY (assignment_id)
+        REFERENCES assignments (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_as_student FOREIGN KEY (student_id)
+        REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_as_graded_by FOREIGN KEY (graded_by)
+        REFERENCES users (id) ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT uq_assignment_submission UNIQUE (assignment_id, student_id)
+);
+
+CREATE TABLE assignment_submission_files (
+    id            UUID         NOT NULL DEFAULT gen_random_uuid(),
+    submission_id UUID         NOT NULL,
+    file_url      TEXT         NOT NULL,
+    file_name     VARCHAR(255) NOT NULL,
+    mime_type     VARCHAR(128),
+    size_bytes    BIGINT       NOT NULL DEFAULT 0,
+    created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT pk_assignment_submission_files PRIMARY KEY (id),
+    CONSTRAINT fk_asf_submission FOREIGN KEY (submission_id)
+        REFERENCES assignment_submissions (id) ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE INDEX idx_assignments_teacher ON assignments (teacher_id);
+CREATE INDEX idx_assignments_class ON assignments (class_id);
+CREATE INDEX idx_assignments_due_at ON assignments (due_at);
+CREATE INDEX idx_assignment_classes_class ON assignment_classes (class_id);
+CREATE INDEX idx_as_submissions_assignment ON assignment_submissions (assignment_id);
+CREATE INDEX idx_as_submissions_student ON assignment_submissions (student_id);
+CREATE INDEX idx_asf_submission ON assignment_submission_files (submission_id);
+
+-- ============================================================
+-- 10. NEWS (berita & pengumuman sekolah)
+-- 11. NEWS (berita & pengumuman sekolah)
+-- ============================================================
+CREATE TABLE news (
+    id           UUID         NOT NULL DEFAULT gen_random_uuid(),
+    title        VARCHAR(200) NOT NULL,
+    body         TEXT         NOT NULL DEFAULT '',
+    category     VARCHAR(32)  NOT NULL DEFAULT 'info',
+    image_url    TEXT,
+    video_url    TEXT,
+    author_id    UUID,
+    published    BOOLEAN      NOT NULL DEFAULT TRUE,
+    pinned       BOOLEAN      NOT NULL DEFAULT FALSE,
+    published_at TIMESTAMPTZ,
+    created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT pk_news PRIMARY KEY (id),
+    CONSTRAINT chk_news_category CHECK (category IN ('info','academic','event','exam','urgent')),
+    CONSTRAINT fk_news_author FOREIGN KEY (author_id)
+        REFERENCES users (id) ON DELETE SET NULL ON UPDATE CASCADE
+);
+
+CREATE INDEX idx_news_published ON news (published, published_at DESC);
+CREATE INDEX idx_news_author ON news (author_id);
+
+COMMIT;
+
+-- ============================================================
+-- END OF SCRIPT
+-- ============================================================

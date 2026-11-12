@@ -1,0 +1,40 @@
+﻿# aaPanel Nginx configuration for SmartCBT
+# Replace the root path and upstream port with the values used by the server.
+server {
+    listen 80;
+    server_name example.com;
+
+    root /www/wwwroot/smartcbt/dist;
+    index index.html;
+
+    # API requests go to the standalone Node backend process.
+    location ^~ /api/ {
+        proxy_pass http://127.0.0.1:8447;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        # Required for the SSE monitoring stream (/api/sse/monitoring).
+        proxy_read_timeout 300s;
+        proxy_buffering off;
+    }
+
+    # Uploaded files live on the backend server package (public/uploads).
+    location ^~ /uploads/ {
+        proxy_pass http://127.0.0.1:8447;
+        proxy_set_header Host $host;
+        expires 7d;
+    }
+
+    # React Router deep links such as /setup and /login.
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    location ~* \\.(js|css|png|jpg|jpeg|gif|svg|ico|webp|woff|woff2|ttf)$ {
+        try_files $uri =404;
+        expires 7d;
+        add_header Cache-Control "public, immutable";
+    }
+}

@@ -1,0 +1,20 @@
+﻿[Unit]
+Description=SmartCBT standalone API server
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+# Folder that contains server/package.json, dist/server.mjs, public/uploads.
+WorkingDirectory=/www/wwwroot/smartcbt-server
+Environment=NODE_ENV=production
+Environment=PORT=8447
+Environment=HOST=127.0.0.1
+# Optional: serve the built frontend from the same process (single origin).
+# Environment=STATIC_DIR=/www/wwwroot/smartcbt/dist
+ExecStart=/usr/bin/node dist/server.mjs
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

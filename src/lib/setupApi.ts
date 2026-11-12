@@ -1,0 +1,110 @@
+/**
+ * SmartCBT — Database setup / install client API helpers
+ *
+ * These functions run in the browser and call the /api/setup* endpoints
+ * served by the Vite dev-server middleware (see src/lib/server/setup.ts).
+ */
+import { ApiErrorImpl } from "./api";
+import { withSetupToken } from "./setupAuth";
+
+export interface DbProbeInfo {
+  serverVersion?: string;
+  database?: string;
+  user?: string;
+  serverAddress?: string;
+  serverPort?: number;
+  /** True when the server accepts ANY password (pg_hba.conf `trust`). */
+  weakAuth?: boolean;
+}
+
+export interface SetupTableStatus {
+  name: string;
+  exists: boolean;
+  /** Feature-area id from `SCHEMA_GROUPS` (server-side), used to group the UI. */
+  group?: string;
+  groupLabel?: string;
+  icon?: string;
+}
+
+export interface SetupColumnStatus {
+  table: string;
+  column: string;
+  label: string;
+  exists: boolean;
+}
+
+export interface SetupGroup {
+  id: string;
+  label: string;
+  icon: string;
+}
+
+export interface SetupSeedEntry {
+  label: string;
+  detail: string;
+}
+
+export interface SetupStatus {
+  reachable: boolean;
+  installed: boolean;
+  tables: SetupTableStatus[];
+  /** Every column migration this build knows about, with live presence. */
+  columns?: SetupColumnStatus[];
+  groups?: SetupGroup[];
+  seed?: SetupSeedEntry[];
+  /** Number of DDL statements a fresh install runs for the active engine. */
+  ddlSteps?: number;
+  settingsKeys?: number;
+  counts: Record<string, number>;
+  /** Evidence of the server we are really connected to. */
+  info?: DbProbeInfo;
+  error?: string;
+}
+
+export interface SetupResult {
+  ok: boolean;
+  reset: boolean;
+  log: string[];
+  error?: string;
+}
+
+async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const headers = new Headers({ "Content-Type": "application/json", ...options.headers });
+  // /setup/* is gated by the setup password; carry the unlock token. These
+  // helpers bypass `apiFetch`, so the header has to be added here too.
+  withSetupToken(headers, `/api${path}`);
+  const res = await fetch(`/api${path}`, {
+    ...options,
+    headers,
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) {
+    const msg = (data as { error?: string })?.error || res.statusText;
+    throw new ApiErrorImpl(msg, res.status);
+  }
+  return data as T;
+}
+
+/** Report whether the connected database has every required table. */
+export async function fetchSetupStatus(): Promise<SetupStatus> {
+  return api<SetupStatus>("/setup/status");
+}
+
+/**
+ * Install (create missing tables + seed) or reset (DROP all tables, then
+ * re-create + re-seed) the SmartCBT database schema.
+ */
+export async function installDatabase(reset: boolean): Promise<SetupResult> {
+  return api<SetupResult>("/setup/install", {
+    method: "POST",
+    body: JSON.stringify({ reset }),
+  });
+}
+
+/**
+ * Update an EXISTING database in place: create missing tables/columns/indexes
+ * and seed missing settings keys — WITHOUT dropping or touching stored data.
+ */
+export async function updateDatabase(): Promise<SetupResult> {
+  return api<SetupResult>("/setup/update", { method: "POST" });
+}

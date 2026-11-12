@@ -1,0 +1,37 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# .dockerignore — prevents large/unneeded files from reaching the build context
+#
+# NOTE: server/dist/ and server/package.json are NOT excluded — the backend
+# Dockerfile (Dockerfile.backend) needs them to build the API image.
+# ──────────────────────────────────────────────────────────────────────────────
+node_modules/
+dist/
+.git/
+.gitignore
+.gitattributes
+.vercel/
+.idea/
+.vscode/
+*.log
+trace.txt
+tail.txt
+rows.txt
+build*.txt
+check-features.cjs
+validate-yaml.cjs
+.env
+.env.local
+.env.docker
+*.env*
+db-config.json
+CLAUDE.md
+AGENTS.md
+FEATURES.md
+GUIDE.md
+TUTORIAL.md
+SQL_SCRIPT.txt
+.github/
+.storybook/
+.stories/
+*.stories.*
+.mise.toml

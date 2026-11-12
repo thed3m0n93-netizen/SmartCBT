@@ -1,0 +1,34 @@
+node_modules/
+dist/
+build/
+.cache/
+.env*
+db-config.json
+# Setup-page credential (bcrypt hash + optional plaintext copy for recovery).
+# Generated at runtime next to the server bundle; must never be committed.
+setup-auth.json
+public/uploads/
+.vite/
+vite.config.*.timestamp-*
+*.tsbuildinfo
+*-debug.log*
+logs/
+*.log
+.claude-replay.*
+.tmp-*
+validate-yaml.cjs
+
+
+# Platform-managed agentplat state, not project source. In the
+# client-initiated single-repo workspace layout (make's `Path: "."` spec) the
+# repo root IS the workspace root, so these land inside this repo rather than
+# beside it.
+/.plugins/
+/.opencode-skills/
+.vercel
+
+# --- ditambahkan 2026-11-12 (inisialisasi git) ---
+# Arsip snapshot proyek pra-git (34 MB) — histori kini dipegang git.
+z134/
+# Berkas upload user pada paket server legacy (sama seperti public/uploads).
+server/public/uploads/

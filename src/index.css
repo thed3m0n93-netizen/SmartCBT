@@ -1,0 +1,125 @@
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,300..700;1,14..32,300..700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
+@import 'katex/dist/katex.min.css';
+@import 'tailwindcss';
+
+@layer base {
+  :root {
+    --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+    --font-serif: 'Fraunces', Georgia, serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  }
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  font-family: var(--font-sans);
+}
+
+/* Mobile / PWA ergonomics: dynamic viewport height so browser chrome
+   (address bar) does not push content off-screen, no rubber-band scroll
+   behind fixed layers, and no double-tap zoom flash on controls. */
+html {
+  -webkit-text-size-adjust: 100%;
+}
+body {
+  overscroll-behavior-y: none;
+}
+#root {
+  height: 100dvh;
+}
+button,
+select,
+input,
+textarea,
+a {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/* Respect notches / home indicator inside fixed bars and drawers. */
+.safe-area-top { padding-top: env(safe-area-inset-top); }
+.safe-area-bottom { padding-bottom: env(safe-area-inset-bottom); }
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #94a3b8 transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border-radius: 4px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ── AI generation progress indicators ──────────────────────────────────────
+   `.ai-spinner` is a border-only rotating ring (colors are supplied inline so
+   it stays in sync with the design tokens). `.ai-bar-pulse` adds a soft glow
+   pulse to the bar while the request is in its final stretch (≥ 97%), which
+   signals "still working, waiting for the server" without ever reaching 100%. */
+.ai-spinner {
+  display: inline-block;
+  width: 22px;
+  height: 22px;
+  border-radius: 9999px;
+  border-width: 2.5px;
+  border-style: solid;
+  animation: ai-spin 0.7s linear infinite;
+}
+
+@keyframes ai-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.ai-bar-pulse {
+  animation: ai-bar-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes ai-bar-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    filter: brightness(1);
+  }
+  50% {
+    opacity: 0.72;
+    filter: brightness(1.35);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-spinner {
+    animation-duration: 1.8s;
+  }
+  .ai-bar-pulse {
+    animation: none;
+  }
+}
+
+/* ── Game Mode RPG Trivia animations ──────────────────────────────────────── */
+@keyframes bounce-slow {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+.animate-bounce-slow {
+  animation: bounce-slow 3s ease-in-out infinite;
+}

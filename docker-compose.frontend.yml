@@ -1,0 +1,30 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# SmartCBT — Docker Compose (Frontend Only)
+#
+# Usage:
+#   docker compose -f docker-compose.frontend.yml up -d --build
+# ──────────────────────────────────────────────────────────────────────────────
+
+services:
+  # ── Frontend (Nginx + Vite build) ──────────────────────────────────────────
+  frontend:
+    container_name: smartcbt-frontend
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      args:
+        # Build-time base URL for Vite (VITE_API_BASE_URL)
+        VITE_API_BASE_URL: /api
+    ports:
+      - "80:80"
+    environment:
+      # Runtime API host:port yang akan disubstitusi oleh entrypoint.sh
+      # ke dalam nginx config template. Sesuaikan dengan service backend kamu.
+      API_HOST: backend:8447
+    restart: unless-stopped
+    networks:
+      - smartcbt-frontend
+
+networks:
+  smartcbt-frontend:
+    driver: bridge

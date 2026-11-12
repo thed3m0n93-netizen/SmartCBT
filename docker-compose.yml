@@ -1,0 +1,106 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# SmartCBT — Docker Compose (All-in-One)
+#
+# Satu file yang build dan menjalankan seluruh stack (PostgreSQL + Backend API
+# + Frontend) langsung dari source code lokal. Tidak perlu pull image terlebih
+# dahulu — semua image dibangun dari Dockerfile yang ada di repo ini.
+#
+# Usage:
+#   docker compose up -d --build        # build semua image dan nyalakan stack
+#   docker compose down                 # matikan semua service
+#   docker compose down -v              # matikan + hapus volume (data hilang)
+#
+# Credentials default (sesuaikan dengan .env jika ada):
+#   POSTGRES_USER   = db_smartcbt
+#   POSTGRES_PASSWORD = Karawang@01
+#   POSTGRES_DB     = db_smartcbt
+#   Backend port    = 8447 (di dalam container)
+#   Frontend port   = 8080 (di host)
+# ──────────────────────────────────────────────────────────────────────────────
+
+name: smartcbt
+
+services:
+  # ── PostgreSQL (Database) ─────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: smartcbt-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: db_smartcbt
+      POSTGRES_PASSWORD: Karawang@01
+      POSTGRES_DB: db_smartcbt
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U db_smartcbt -d db_smartcbt"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - appnet
+
+  # ── Backend API Server (Node.js, pre-built esbuild bundle) ────────────────
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: smartcbt-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 8447
+      HOST: 0.0.0.0
+      UPLOADS_DIR: /app/uploads
+      PGTYPE: postgres
+      PGHOST: postgres
+      PGPORT: 5432
+      PGUSER: db_smartcbt
+      PGPASSWORD: Karawang@01
+      PGDATABASE: db_smartcbt
+      PGSSL: "false"
+    volumes:
+      - uploads-data:/app/uploads
+      - server-config:/app/server/dist
+    healthcheck:
+      test: ["CMD", "node", "-e", "const http=require('http');const req=http.get('http://localhost:8447/api/health',(r)=>{process.exit(r.statusCode===200?0:1);});req.on('error',()=>process.exit(1));req.on('close',()=>process.exit(1));"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - appnet
+
+  # ── Frontend (Vite build + nginx reverse proxy) ───────────────────────────
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      args:
+        VITE_API_BASE_URL: /api
+    container_name: smartcbt-frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_started
+    environment:
+      # Host:port backend yang akan disubstitusi entrypoint.sh ke dalam
+      # nginx config template. Harus sama dengan service "backend" di atas.
+      API_HOST: backend:8447
+    ports:
+      - "8080:80"
+    networks:
+      - appnet
+
+volumes:
+  postgres-data:
+  uploads-data:
+  server-config:
+
+networks:
+  appnet:
+    driver: bridge

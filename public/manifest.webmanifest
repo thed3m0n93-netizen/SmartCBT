@@ -1,0 +1,39 @@
+{
+  "name": "SmartCBT — Digital Exam Platform",
+  "short_name": "SmartCBT",
+  "description": "Platform ujian berbasis komputer yang aman (CBT) untuk siswa dan guru.",
+  "id": "/student/dashboard",
+  "start_url": "/student/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#F0F4F8",
+  "theme_color": "#0D1B2A",
+  "lang": "id",
+  "dir": "ltr",
+  "categories": ["education"],
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Ujian Saya",
+      "short_name": "Ujian",
+      "description": "Buka daftar ujian siswa",
+      "url": "/student/dashboard",
+      "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+    }
+  ]
+}

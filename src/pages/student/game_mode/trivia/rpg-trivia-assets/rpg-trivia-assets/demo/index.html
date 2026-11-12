@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<title>RPG Trivia — Demo Magic School</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #14101f; color: #e8e4f0;
+    font-family: "Courier New", monospace; height: 100%; }
+  #wrap { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 10px; }
+  h1 { font-size: 15px; letter-spacing: 2px; color: #f0d878; margin: 0; text-shadow: 0 0 8px #a08040; }
+  #stage { position: relative; width: 800px; height: 576px; }
+  canvas { width: 800px; height: 576px; image-rendering: pixelated; image-rendering: crisp-edges;
+    border: 3px solid #4a3f70; box-shadow: 0 0 30px #000; background: #000; }
+  #hint { font-size: 12px; color: #8a80a8; }
+  /* HUD */
+  #hud { position: absolute; top: 8px; left: 10px; right: 10px; display: flex; justify-content: space-between; pointer-events: none; }
+  #hud img { width: 24px; height: 24px; image-rendering: pixelated; margin-right: 2px; }
+  #hearts span, #stars span { display: inline-flex; }
+  /* Dialog NPC */
+  #dialog { position: absolute; left: 40px; right: 40px; bottom: 24px; display: none;
+    background: rgba(24,18,48,.94); border: 2px solid #e0c870; padding: 10px 14px; }
+  #dialog b { color: #f0d878; display: block; margin-bottom: 4px; font-size: 14px; }
+  #dialog p { margin: 0; font-size: 13px; line-height: 1.5; }
+  #dialog i { color: #8a80a8; font-size: 11px; display: block; margin-top: 6px; }
+  /* Quiz */
+  #quiz { position: absolute; inset: 0; display: none; background: rgba(10,6,26,.75);
+    align-items: center; justify-content: center; }
+  #quizBox { width: 460px; background: rgba(30,22,60,.97); border: 3px solid #e0c870;
+    padding: 18px 22px; box-shadow: 0 0 40px #000; }
+  #quizBox h2 { margin: 0 0 4px; color: #f0d878; font-size: 14px; letter-spacing: 1px; }
+  #quizBox .qno { color: #8a80a8; font-size: 11px; margin-bottom: 10px; }
+  #quizBox .qtext { font-size: 15px; line-height: 1.5; margin-bottom: 16px; color: #fff; }
+  #answers button { display: block; width: 100%; margin: 8px 0; padding: 10px 12px;
+    background: #2e2252; border: 2px solid #8a76c0; color: #e8e4f0; cursor: pointer;
+    font-family: inherit; font-size: 14px; text-align: left; }
+  #answers button:hover { background: #443080; border-color: #f0d878; color: #fff; }
+  #answers button.correct { background: #2a6040; border-color: #70d890; }
+  #answers button.wrong { background: #602a34; border-color: #d87080; }
+  #feedback { min-height: 18px; font-size: 13px; margin-top: 8px; }
+  #feedback.ok { color: #70d890; } #feedback.no { color: #e08090; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <h1>&#9733; RPG TRIVIA: SEKOLAH SIHIR &#9733;</h1>
+  <div id="stage">
+    <canvas id="cv" width="400" height="288"></canvas>
+    <div id="hud">
+      <div id="hearts"></div>
+      <div id="stars"></div>
+    </div>
+    <div id="dialog"><b id="dlgName"></b><p id="dlgText"></p><i>[tekan E / Spasi untuk menutup]</i></div>
+    <div id="quiz"><div id="quizBox">
+      <h2>UJIAN TRIVIA</h2><div class="qno" id="qNo"></div>
+      <div class="qtext" id="qText"></div>
+      <div id="answers"></div>
+      <div id="feedback"></div>
+    </div></div>
+  </div>
+  <div id="hint">Gerak: Panah / WASD &nbsp;|&nbsp; Bicara: E / Spasi &nbsp;|&nbsp; Masuk pintu: jalan saja ke arahnya</div>
+</div>
+<script src="js/maps.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>
