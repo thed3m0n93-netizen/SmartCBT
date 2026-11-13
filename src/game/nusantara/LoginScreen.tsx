@@ -4,8 +4,9 @@ import { drawCharacterSprite } from './isoRenderer';
 import type { PlayerRole } from './schoolMap';
 
 interface LoginScreenProps {
+  /** Build 142 — nama pemain dikunci dari akun yang login (read-only). */
+  accountName: string;
   onJoin: (config: {
-    name: string;
     role: PlayerRole;
     hairColor: string;
     skinColor: string;
@@ -38,11 +39,12 @@ const SKIN_COLORS = [
 ];
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({
+  accountName,
   onJoin,
   connecting,
   errorMsg,
 }) => {
-  const [name, setName] = useState('Siswa01');
+  const name = accountName.slice(0, 14);
   const [role, setRole] = useState<PlayerRole>('sma');
   const [hairColor, setHairColor] = useState('#1e293b');
   const [skinColor, setSkinColor] = useState('#f6d198');
@@ -90,7 +92,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     e.preventDefault();
     if (connecting) return;
     onJoin({
-      name: name.trim() || 'Siswa',
       role,
       hairColor,
       skinColor,
@@ -122,18 +123,17 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
           <form onSubmit={handleSubmit} className="mt-5 space-y-4">
             <div>
-              <label htmlFor="player-name" className="block text-sm font-medium text-slate-200 mb-1.5">
-                Nama Karakter
-              </label>
-              <input
-                id="player-name"
-                type="text"
-                maxLength={14}
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Masukkan nama..."
-                className="w-full h-11 px-3.5 rounded-lg bg-slate-950 border border-slate-700 text-slate-100 text-sm focus:outline-none focus:border-sky-500 transition-colors"
-              />
+              <span className="block text-sm font-medium text-slate-200 mb-1.5">
+                Masuk sebagai
+              </span>
+              <div className="flex items-center gap-2 w-full min-h-[44px] px-3.5 rounded-lg bg-slate-950/70 border border-slate-700 text-slate-100 text-sm">
+                <School className="w-4 h-4 text-sky-400 shrink-0" />
+                <span className="font-semibold truncate">{name}</span>
+                <span className="ml-auto text-[11px] text-slate-500 shrink-0">terkunci dari akun</span>
+              </div>
+              <p className="text-[11px] text-slate-500 mt-1.5">
+                Nama, kelas, dan progres mengikuti akun SmartCBT kamu — tidak bisa diubah dari sini.
+              </p>
             </div>
 
             <div>

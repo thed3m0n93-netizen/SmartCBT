@@ -41,6 +41,7 @@ const DELETE_ORDER = [
   "questions",
   "question_banks",
   "student_profiles",
+  "game_nusantara_state",
   "uploads",
   "settings",
   "classes",

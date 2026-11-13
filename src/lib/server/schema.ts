@@ -46,6 +46,7 @@ export const CORE_TABLES = [
   "assignment_submission_files",
   "news",
   "settings",
+  "game_nusantara_state",
 ] as const;
 
 /**
@@ -68,7 +69,7 @@ export const SCHEMA_GROUPS: readonly SchemaGroup[] = [
     id: "identity",
     label: "Akun & Data Master",
     icon: "👥",
-    tables: ["users", "classes", "student_profiles", "subjects", "subject_class_assignments", "teacher_assignments", "settings"],
+    tables: ["users", "classes", "student_profiles", "subjects", "subject_class_assignments", "teacher_assignments", "settings", "game_nusantara_state"],
   },
   {
     id: "questions",
@@ -704,6 +705,26 @@ CREATE INDEX IF NOT EXISTS idx_asf_submission            ON assignment_submissio
     sql: `CREATE INDEX IF NOT EXISTS idx_news_published ON news (published, published_at DESC);
 CREATE INDEX IF NOT EXISTS idx_news_author     ON news (author_id);`,
   },
+  {
+    label: "Tabel game_nusantara_state",
+    sql: `CREATE TABLE IF NOT EXISTS game_nusantara_state (
+    user_id    UUID         NOT NULL,
+    class_id   BIGINT       NULL,
+    xp         INT          NOT NULL DEFAULT 0,
+    money      INT          NOT NULL DEFAULT 10000,
+    wx         DOUBLE PRECISION NULL,
+    wy         DOUBLE PRECISION NULL,
+    dir        VARCHAR(1)   NOT NULL DEFAULT 'n',
+    uniform    VARCHAR(8)   NOT NULL DEFAULT 'sma',
+    hair_color VARCHAR(16)  NOT NULL DEFAULT '#1e293b',
+    skin_color VARCHAR(16)  NOT NULL DEFAULT '#f6d198',
+    updated_at TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT pk_game_nusantara_state PRIMARY KEY (user_id),
+    CONSTRAINT fk_gns_user FOREIGN KEY (user_id)
+        REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE
+);`,
+  },
 ];
 
 export const MYSQL_DDL: DdlStatement[] = [
@@ -1237,6 +1258,26 @@ CREATE INDEX idx_as_submissions_assignment ON assignment_submissions (assignment
 CREATE INDEX idx_as_submissions_student    ON assignment_submissions (student_id);
 CREATE INDEX idx_asf_submission            ON assignment_submission_files (submission_id);`,
   },
+  {
+    label: "Tabel game_nusantara_state",
+    sql: `CREATE TABLE IF NOT EXISTS game_nusantara_state (
+    user_id    CHAR(36)     NOT NULL,
+    class_id   BIGINT       NULL,
+    xp         INT          NOT NULL DEFAULT 0,
+    money      INT          NOT NULL DEFAULT 10000,
+    wx         DOUBLE       NULL,
+    wy         DOUBLE       NULL,
+    dir        VARCHAR(1)   NOT NULL DEFAULT 'n',
+    uniform    VARCHAR(8)   NOT NULL DEFAULT 'sma',
+    hair_color VARCHAR(16)  NOT NULL DEFAULT '#1e293b',
+    skin_color VARCHAR(16)  NOT NULL DEFAULT '#f6d198',
+    updated_at TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (user_id),
+    CONSTRAINT fk_gns_user FOREIGN KEY (user_id)
+        REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`,
+  },
 ];
 
 /**
@@ -1271,6 +1312,7 @@ export const UPDATE_TABLES = [
   "assignment_submissions",
   "assignment_submission_files",
   "news",
+  "game_nusantara_state",
 ] as const;
 
 export const COLUMN_MIGRATIONS: ColumnMigration[] = [

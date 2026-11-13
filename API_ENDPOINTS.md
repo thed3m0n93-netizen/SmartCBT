@@ -201,6 +201,16 @@ Dasar arsitektur:
 > `playerJoined/Moved/Left`, `chatBroadcast`, `schoolBell`, `timeSync`,
 > `statsUpdate`, `quizResult`, `worldEffect`. Proxy nginx perlu meneruskan
 > path ini dengan header `Upgrade`/`Connection` (sudah ada di template deploy).
+>
+> **Build 142**: identitas pemain selalu dari akun (payload hanya kosmetik
+> tervalidasi); setiap koneksi ditempatkan di **room per kelas**
+> (`class:<class_id>`, fallback `class:none`, staff `staff`) — SEMUA broadcast
+> ter-scope room sehingga kelas berbeda tidak saling melihat; `initGame`
+> mengirim `lobby {kind,label,classId}` + `profile {name,xp,money,restored}`.
+> Progres (XP, uang, posisi, kosmetik) persisten di tabel
+> **`game_nusantara_state`** (dimuat saat join, disimpan saat disconnect +
+> flush 60 dtk). Status lobi per kelas: `GET /api/game/nusantara/status` →
+> `lobbies[]`.
 
 ## Hasil & Penilaian (Results & Grading)
 

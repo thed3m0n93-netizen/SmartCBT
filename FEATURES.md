@@ -1,7 +1,7 @@
 # SmartCBT — Status Implementasi Fitur
 
 > Dokumen ini mencerminkan status implementasi yang berlaku pada build terbaru.
-> **Terakhir disinkronkan dengan kode: 2026-11-13 (build 141)** — seluruh status
+> **Terakhir disinkronkan dengan kode: 2026-11-13 (build 142)** — seluruh status
 > diverifikasi ulang langsung terhadap kode sumber (route `addRoute`, file, dan
 > diff terhadap snapshot `z134/`), mencakup pekerjaan yang selesai setelah build
 > 135 dan tercatat retroaktif di `CHANGELOG.md` sebagai build 136. Termasuk
@@ -407,7 +407,9 @@
 > Build 141: RPG Trivia (iframe HTML statis) **diganti** dengan "Nusantara
 > High" dari template — dirender in-app sebagai React dan multiplayer-nya
 > berjalan di backend SmartCBT yang sama (Socket.IO pada
-> `/game-socket.io`, ter-attach ke `http.Server` yang ada). Aset trivia lama
+> `/game-socket.io`, ter-attach ke `http.Server` yang ada). Build 142: game
+> terikat **akun login**, terisolasi **per kelas**, progres **persisten**, dan
+> **Modul & Tugas** bisa diakses dari dalam game. Aset trivia lama
 > (`public/game-mode-trivia/` + duplikat `src/.../trivia/`) sudah dihapus.
 
 | Fitur | Status | Lokasi Kode |
@@ -415,13 +417,18 @@
 | Lobby game di rute `/student/game-mode` + halaman play `/student/game-mode/play` | ✅ | `src/pages/student/game_mode/GameModeLobby.tsx`, `GameModePlay.tsx` (render in-app, bukan iframe) |
 | Renderer isometrik sekolah (canvas 2D, karakter prosedural, zona, minimap) | ✅ | `src/game/nusantara/isoRenderer.ts` + `schoolMap.ts` (±1.000 baris, port template) |
 | Multiplayer real-time (gerak, join/leave, chat, emote) | ✅ | `src/lib/server/nusantara-game.ts` (Socket.IO path `/game-socket.io`, attach ke http.Server standalone & dev Vite) |
-| Auth lobi — handshake wajib token login SmartCBT (sesi diverifikasi `getSession`) | ✅ | middleware `io.use()` di `nusantara-game.ts`; anonim → `UNAUTHORIZED_GAME_SESSION` (teruji smoke) |
+| **Identitas terkunci akun** — nama pemain selalu dari sesi login; payload hanya kosmetik tervalidasi (seragam, warna) | ✅ | handler `joinGame` `nusantara-game.ts`; `LoginScreen.tsx` tanpa input nama |
+| **Lobi terpisah per kelas** — room `class:<id>`, siswa tanpa kelas `class:none`, guru `staff`; SEMUA broadcast & chat ter-scope room | ✅ | `resolveLobby()` + `snapshotRoom()` + `io.to(room)` di `nusantara-game.ts` (teruji isolasi in-process 8/8) |
+| **Progres persisten per akun** — XP, uang, posisi & tampilan disimpan di DB, dipulihkan saat join | ✅ | tabel `game_nusantara_state` (`schema.ts` dua dialek + self-heal `ensureGameTable()`), flush disconnect + 60 dtk |
+| **Modul & Tugas dari dalam game** — panel dua tab memakai API siswa yang sudah role-scoped; "Baca/Kerjakan" menuju halaman asli | ✅ | `src/game/nusantara/LearningHub.tsx` (`fetchLearningModules`/`fetchAssignments`), dibuka via [E] perpustakaan atau tombol HUD |
+| Auth handshake — token login SmartCBT diverifikasi `getSession` | ✅ | middleware `io.use()`; anonim → `UNAUTHORIZED_GAME_SESSION` (teruji) |
 | Validasi gerak server-side (grid walkable, clamp koordinat, cooldown aksi) | ✅ | `isWalkableServer()` dll. — logika template dipertahankan, klien tak bisa menembus dinding |
 | Jadwal bel sekolah + fase (broadcast `schoolBell`/`timeSync`) & uang saku pasif | ✅ | world loops di `nusantara-game.ts` |
-| Kuis in-game (XP + uang) dari bank lokal | ✅ | `QUIZ_BANK` di `schoolMap.ts`, handler `quizAnswer` |
-| Status game untuk operasional (pemain online, fase) | ✅ | `GET /api/game/nusantara/status` (staff) |
-| Integrasi dengan data aplikasi (soal bank/nilai siswa masuk ke game) | ❌ | kuis masih `QUIZ_BANK` statis template — kandidat pengembangan berikutnya memakai API soal SmartCBT |
-| Uji visual gameplay di browser + E2E dengan DB staging | ❌ | teruji hingga level kompilasi + handshake transport/auth; interaksi canvas belum |
+| Kuis papan tulis in-game (XP + uang) | 🔶 | jalan penuh, tapi masih `QUIZ_BANK` statis template — belum dari bank soal SmartCBT |
+| Status lobi per kelas untuk guru | ✅ | `GET /api/game/nusantara/status` → `lobbies: [{room,label,players}]` |
+| Guru "berkunjung" ke lobi kelas tertentu (saat ini selalu Ruang Guru) | ❌ | rencana — butuh pemilih kelas di sisi staff |
+| Integrasi nilai/ujian sungguhan ke progres game | ❌ | misalnya konversi hasil ujian jadi XP — belum ada |
+| Uji visual gameplay di browser + E2E dua kelas dengan DB staging | ❌ | teruji sampai transport + logika (integration test tanpa DB); Postgres lokal sudah hidup (tinggal perbaiki kredensial `db-config.json`) |
 | Multi-instance / scale horizontal lobi | ❌ | state pemain in-memory (sama seperti sesi login & SSE) |
 
 ## Ringkasan
@@ -443,7 +450,7 @@
 | 13. E-Rapor & Integrasi Dapodik (rencana) | 0 | 4 | 48 |
 | 14. Modul Belajar (LMS) | 9 | 0 | 2 |
 | 15. Tugas & Pengumpulan | 16 | 0 | 1 |
-| 16. Game Mode — Nusantara High | 8 | 0 | 3 |
+| 16. Game Mode — Nusantara High | 11 | 1 | 4 |
 
 > Status umum: fitur inti CBT (bank soal → ujian → sesi → nilai → ekspor),
 > monitoring SSE, penilaian manual + AI, modul belajar, tugas, berita,

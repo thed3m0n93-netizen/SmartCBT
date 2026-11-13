@@ -3,6 +3,8 @@ import { HelpCircle, Send, Volume2, VolumeX, ZoomIn, ZoomOut } from 'lucide-reac
 import { io, type Socket } from 'socket.io-client';
 import { LoginScreen } from './LoginScreen';
 import { QuizModal } from './QuizModal';
+import { LearningHub } from './LearningHub';
+import { useAuth } from '../../app/AuthContext';
 import {
   renderMinimap,
   renderSchoolScene,
@@ -92,6 +94,10 @@ export default function GameNusantara() {
   const [connError, setConnError] = useState<string | null>(null);
   const [playerName, setPlayerName] = useState('Siswa01');
   const [playerRole, setPlayerRole] = useState<PlayerRole>('sma');
+  // Build 142 — identitas & lobi kelas datang dari akun (server), bukan isi form.
+  const { user: authUser } = useAuth();
+  const [lobbyLabel, setLobbyLabel] = useState<string | null>(null);
+  const [studyOpen, setStudyOpen] = useState(false);
   const [hudStats, setHudStats] = useState({ xp: 0, money: 10000, energy: 100 });
   const [onlineCount, setOnlineCount] = useState(1);
   const [phase, setPhase] = useState<SchoolPhase>(SCHEDULES[0]);
@@ -167,6 +173,9 @@ export default function GameNusantara() {
       players: Record<string, PlayerState>;
       phase: SchoolPhase;
       timer: number;
+      /** Build 142 — lobi kelas tempat siswa ditempatkan server. */
+      lobby?: { kind?: string; label?: string; classId?: number | string | null };
+      profile?: { name?: string; xp?: number; money?: number; restored?: boolean };
     }) => {
       selfIdRef.current = data.selfId;
       const nextMap: Record<string, RenderPlayer> = {};
@@ -175,6 +184,7 @@ export default function GameNusantara() {
       });
       playersRef.current = nextMap;
       setOnlineCount(Object.keys(nextMap).length);
+      setLobbyLabel(data.lobby?.label ?? null);
 
       const me = data.players[data.selfId];
       if (me) {
@@ -192,7 +202,7 @@ export default function GameNusantara() {
       setGameState('PLAYING');
       appendChat({
         id: `sys-welcome-${Date.now()}`,
-        text: 'Selamat datang di Nusantara High. Tekan Enter untuk chat atau klik lantai untuk berjalan.',
+        text: `Selamat datang di lobi ${data.lobby?.label ?? 'sekolah'}${data.profile?.restored ? ' — progresmu dipulihkan' : ''}. Tekan Enter untuk chat, [E] di perpustakaan untuk Modul & Tugas.`,
         system: true,
       });
     });
@@ -363,7 +373,7 @@ export default function GameNusantara() {
             return { type: 'quiz', label: 'Tekan [E] Ujian Kilat di Papan Tulis (+30 XP)' };
           }
           if (obj === 'bookshelf') {
-            return { type: 'read', label: 'Tekan [E] Baca Buku Perpus (+15 XP)' };
+            return { type: 'read', label: 'Tekan [E] Perpustakaan — Modul & Tugas (+15 XP)' };
           }
           if (obj === 'stall') {
             return { type: 'buy_food', label: 'Tekan [E] Beli Bakso & Es Teh (Rp 2.000)' };
@@ -442,6 +452,8 @@ export default function GameNusantara() {
       socket.emit('emote', '📖');
       soundFX.playInteract(true);
       triggerToast('Membaca buku · +15 XP & Rp 250', 'ok');
+      // Build 142 — perpustakaan membuka panel Modul & Tugas.
+      setStudyOpen(true);
     } else if (act.type === 'salute') {
       socket.emit('emote', '🫡');
       soundFX.playInteract(true);
@@ -470,8 +482,11 @@ export default function GameNusantara() {
         return;
       }
 
-      if (activeQuiz) {
-        if (e.key === 'Escape') setActiveQuiz(null);
+      if (activeQuiz || studyOpen) {
+        if (e.key === 'Escape') {
+          setActiveQuiz(null);
+          setStudyOpen(false);
+        }
         return;
       }
 
@@ -519,7 +534,7 @@ export default function GameNusantara() {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
     };
-  }, [activeQuiz, gameState, performInteraction, sendEmote]);
+  }, [activeQuiz, studyOpen, gameState, performInteraction, sendEmote]);
 
   // Main 60fps Game Loop
   useEffect(() => {
@@ -711,7 +726,6 @@ export default function GameNusantara() {
   }, [canMoveTo, gameState, getNearbyInteraction, schoolMap]);
 
   const handleJoin = (config: {
-    name: string;
     role: PlayerRole;
     hairColor: string;
     skinColor: string;
@@ -723,7 +737,7 @@ export default function GameNusantara() {
   };
 
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (gameState !== 'PLAYING' || activeQuiz) return;
+    if (gameState !== 'PLAYING' || activeQuiz || studyOpen) return;
     const world = screenToWorld(
       e.clientX,
       e.clientY,
@@ -787,7 +801,7 @@ export default function GameNusantara() {
       />
 
       {gameState === 'TITLE_MENU' && (
-        <LoginScreen onJoin={handleJoin} connecting={connecting} errorMsg={connError} />
+        <LoginScreen accountName={authUser?.name ?? 'Siswa'} onJoin={handleJoin} connecting={connecting} errorMsg={connError} />
       )}
 
       {gameState === 'PLAYING' && (
@@ -845,6 +859,11 @@ export default function GameNusantara() {
             <div className="font-display font-bold text-sm text-slate-50 mt-0.5 whitespace-nowrap">
               {zoneName}
             </div>
+            {lobbyLabel && (
+              <div className="mt-1 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-amber-300/90 bg-amber-500/10 border border-amber-500/30 rounded px-1.5 py-0.5">
+                🏫 Lobi {lobbyLabel}
+              </div>
+            )}
           </div>
 
           {/* Top Right: Minimap & Utility Controls */}
@@ -932,6 +951,15 @@ export default function GameNusantara() {
             </button>
           )}
 
+          {/* Build 142 — akses cepat Modul & Tugas (sama seperti perpustakaan) */}
+          <button
+            type="button"
+            onClick={() => setStudyOpen(true)}
+            className="pointer-events-auto fixed bottom-40 right-3.5 px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 border border-emerald-400/50 text-white font-semibold text-sm shadow-xl transition-colors cursor-pointer whitespace-nowrap"
+          >
+            📚 Modul &amp; Tugas
+          </button>
+
           {/* Bottom Left: Live Chat & Emotes */}
           <div className="pointer-events-auto fixed bottom-3.5 left-3.5 w-80 sm:w-96 bg-slate-900/85 backdrop-blur-md border border-slate-700/75 rounded-xl p-3 shadow-lg">
             <div className="h-32 overflow-y-auto chat-scroll space-y-1.5 text-xs pr-1">
@@ -1008,6 +1036,8 @@ export default function GameNusantara() {
           onClose={() => setActiveQuiz(null)}
         />
       )}
+
+      <LearningHub open={studyOpen} onClose={() => setStudyOpen(false)} />
     </div>
   );
 }

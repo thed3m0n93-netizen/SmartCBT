@@ -1,8 +1,8 @@
 # SmartCBT
 
-Platform **Computer Based Test (CBT)** sekolah multi-peran (admin / guru / siswa) — ujian digital dengan anti-cheat dua lapis, monitoring real-time, penilaian manual & AI, plus modul belajar (LMS), tugas, berita sekolah, penyimpanan berkas, PWA, dan game mode multiplayer **Nusantara High** (RTOS isometrik sekolah dalam-app).
+Platform **Computer Based Test (CBT)** sekolah multi-peran (admin / guru / siswa) — ujian digital dengan anti-cheat dua lapis, monitoring real-time, penilaian manual & AI, plus modul belajar (LMS), tugas, berita sekolah, penyimpanan berkas, PWA, dan game mode multiplayer **Nusantara High** — sekolah isometrik dalam-app dengan lobi terpisah per kelas, terikat akun login, dan akses modul & tugas langsung dari dalam game.
 
-> Build dokumentasi saat ini: **141 (2026-11-13)**. Riwayat lengkap: [`CHANGELOG.md`](./CHANGELOG.md) · Status fitur: [`FEATURES.md`](./FEATURES.md) · Katalog API: [`API_ENDPOINTS.md`](./API_ENDPOINTS.md)
+> Build dokumentasi saat ini: **142 (2026-11-13)**. Riwayat lengkap: [`CHANGELOG.md`](./CHANGELOG.md) · Status fitur: [`FEATURES.md`](./FEATURES.md) · Katalog API: [`API_ENDPOINTS.md`](./API_ENDPOINTS.md)
 
 ## Fitur utama
 
@@ -39,7 +39,7 @@ src/
     db.ts         # pool multi-engine + penerjemah SQL (server-only)
     server/       # backend: 29 modul addRoute (node:http) + Socket.IO /game-socket.io
   i18n/           # kamus string → terjemahan (id default, en)
-  game/nusantara/ # Game Mode "Nusantara High" (React + canvas isometrik, build 141)
+  game/nusantara/ # Game Mode "Nusantara High" (React + canvas isometrik; lobi per kelas, Learning Hub in-game — build 141–142)
 public/
   uploads/        # berkas user (hati-hati: ikut ter-build ke dist/)
   sw.js, manifest.webmanifest  # PWA
