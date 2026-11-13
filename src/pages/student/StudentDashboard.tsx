@@ -428,9 +428,8 @@ export default function StudentDashboard() {
         </div>
       </div>
 
-      {/* Switch to Game Mode — alternative "lobby game" dashboard.
-          Kept separate from the standard dashboard; the standard flow
-          (exams, assignments, modules, results) is fully preserved. */}
+      {/* Game Mode — Nusantara High (build 141). Multiplayer isometric school
+          rendered in-app; separate from the standard exam/assignment flow. */}
       <div className="rounded-xl p-4 sm:p-5" style={{ background: "#fff", border: "1px solid #e2e8f0" }}>
         <div className="flex items-center justify-between gap-3">
           <div>
@@ -438,7 +437,7 @@ export default function StudentDashboard() {
               🎮 {t("Game Mode")}
             </h2>
             <p className="text-xs mt-0.5" style={{ color: "#94a3b8" }}>
-              {t("Buka dasbor dalam bentuk lobby game (SpaceShip / Among Us style). Bergerak antar ruangan untuk mengakses materi dan tugas.")}
+              {t("Nusantara High — jelajahi sekolah isometrik bersama teman secara real-time: ngobrol, ikuti bel, dan jawab kuis untuk XP & uang saku.")}
             </p>
           </div>
           <button

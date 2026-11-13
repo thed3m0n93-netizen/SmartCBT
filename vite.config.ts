@@ -2,7 +2,6 @@ import { defineConfig, loadEnv, type HtmlTagDescriptor, type Plugin } from 'vite
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'node:path'
-import fs from 'node:fs'
 import type { IncomingMessage } from 'node:http'
 
 import siteConfiguration from './.figma/make/site.json' with { type: 'json' }
@@ -33,7 +32,6 @@ export default defineConfig(({ mode }) => {
       figmaErrorOverlayReplay(),
       figmaReactRefreshBoundaryFallback(),
       figmaMakeKitPlugin({ storiesGlob: '/src/**/*.stories.{ts,tsx,js,jsx}' }),
-      serveGameModePlugin(),
     ],
     resolve: {
       alias: {
@@ -53,53 +51,6 @@ export default defineConfig(({ mode }) => {
     },
   }
 })
-
-/**
- * Vite plugin to serve the Stellar Academy game mode HTML at /game-mode/
- * This allows students to access the pure HTML game (no React) while still
- * being able to fetch data from the /api/* endpoints.
- */
-function serveGameModePlugin(): Plugin {
-  const GAME_MODE_DIR = path.resolve(import.meta.dirname, 'src/pages/student/game_mode/stellar');
-
-  return {
-    name: 'serve-game-mode',
-    configureServer(server) {
-      server.middlewares.use(async (req, res, next) => {
-        const url = req.url || '';
-
-        // Serve the game mode index.html at /game-mode/
-        if (url === '/game-mode/' || url === '/game-mode') {
-          res.setHeader('Content-Type', 'text/html');
-          res.end(fs.readFileSync(path.join(GAME_MODE_DIR, 'index.html'), 'utf-8'));
-          return;
-        }
-
-        // Serve static assets (CSS, JS) from the stellar directory
-        if (url.startsWith('/game-mode/')) {
-          const filePath = path.join(GAME_MODE_DIR, url.slice('/game-mode/'.length));
-          try {
-            if (filePath.endsWith('.css')) {
-              res.setHeader('Content-Type', 'text/css');
-              res.end(fs.readFileSync(filePath, 'utf-8'));
-            } else if (filePath.endsWith('.js')) {
-              res.setHeader('Content-Type', 'application/javascript');
-              res.end(fs.readFileSync(filePath, 'utf-8'));
-            } else {
-              next();
-            }
-          } catch {
-            res.statusCode = 404;
-            res.end('Not found');
-          }
-          return;
-        }
-
-        next();
-      });
-    },
-  };
-}
 
 type FigmaSiteConfiguration = {
   title?: string
@@ -424,6 +375,26 @@ function pgApiPlugin(): Plugin {
     name: 'pg-api',
     apply: 'serve',
     async configureServer(server) {
+      // Build 141 — the Nusantara High game socket lives on the SAME http
+      // server as the app (path /game-socket.io), mirroring standalone.ts in
+      // production so the dev SPA behaves identically. engine.io registers
+      // its OWN 'request' listener on the http.Server; Vite's middleware
+      // chain must never answer for that path, so we swallow those requests
+      // here (no next(), no write) BEFORE Vite's internal middlewares run.
+      let gameSocketPath = '/game-socket.io'
+      if (server.httpServer) {
+        try {
+          const { attachNusantaraGame, GAME_SOCKET_PATH } = await import('./src/lib/server/nusantara-game.js')
+          attachNusantaraGame(server.httpServer)
+          gameSocketPath = GAME_SOCKET_PATH
+        } catch (err) {
+          console.error('[pg-api] game socket attach failed:', err)
+        }
+      }
+      server.middlewares.use((req, _res, next) => {
+        if ((req.url || '').startsWith(gameSocketPath)) return
+        next()
+      })
       server.middlewares.use('/api', async (req, res) => {
         try {
           // Dynamic import ensures `pg` and the connection pool are only

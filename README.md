@@ -1,8 +1,8 @@
 # SmartCBT
 
-Platform **Computer Based Test (CBT)** sekolah multi-peran (admin / guru / siswa) — ujian digital dengan anti-cheat dua lapis, monitoring real-time, penilaian manual & AI, plus modul belajar (LMS), tugas, berita sekolah, penyimpanan berkas, PWA, dan game mode trivia.
+Platform **Computer Based Test (CBT)** sekolah multi-peran (admin / guru / siswa) — ujian digital dengan anti-cheat dua lapis, monitoring real-time, penilaian manual & AI, plus modul belajar (LMS), tugas, berita sekolah, penyimpanan berkas, PWA, dan game mode multiplayer **Nusantara High** (RTOS isometrik sekolah dalam-app).
 
-> Build dokumentasi saat ini: **140 (2026-11-13)**. Riwayat lengkap: [`CHANGELOG.md`](./CHANGELOG.md) · Status fitur: [`FEATURES.md`](./FEATURES.md) · Katalog API: [`API_ENDPOINTS.md`](./API_ENDPOINTS.md)
+> Build dokumentasi saat ini: **141 (2026-11-13)**. Riwayat lengkap: [`CHANGELOG.md`](./CHANGELOG.md) · Status fitur: [`FEATURES.md`](./FEATURES.md) · Katalog API: [`API_ENDPOINTS.md`](./API_ENDPOINTS.md)
 
 ## Fitur utama
 
@@ -37,11 +37,11 @@ src/
     api.ts        # SATU-satunya klien HTTP frontend (~120 endpoint /api/*)
     anticheat.ts  # policy engine anti-cheat klien
     db.ts         # pool multi-engine + penerjemah SQL (server-only)
-    server/       # backend: 28 modul addRoute (node:http), schema.ts, standalone.ts
+    server/       # backend: 29 modul addRoute (node:http) + Socket.IO /game-socket.io
   i18n/           # kamus string → terjemahan (id default, en)
+  game/nusantara/ # Game Mode "Nusantara High" (React + canvas isometrik, build 141)
 public/
-  game-mode-trivia/   # aset game CC0 + demo HTML (salinan di src/... TIDAK terpakai)
-  uploads/            # berkas user (hati-hati: ikut ter-build ke dist/)
+  uploads/        # berkas user (hati-hati: ikut ter-build ke dist/)
   sw.js, manifest.webmanifest  # PWA
 server/           # paket deploy standalone (hasil build:server) + README-nya
 scripts/          # build-standalone-server.mjs (esbuild)
@@ -109,4 +109,4 @@ Variabel environment utama (nama saja): `PORT`, `HOST`, `STATIC_DIR`, `UPLOADS_D
 
 ## Kredit & lisensi
 
-Proyek dimulai dari scaffold Figma Make. Aset game di `public/game-mode-trivia/` adalah pixel-art original berlisensi CC0 (lihat README di dalamnya). Aplikasi tidak memiliki file LICENSE — tentukan sebelum dipublikasikan.
+Proyek dimulai dari scaffold Figma Make. Game mode lama "RPG Trivia" (aset CC0) telah diganti pada build 141 oleh "Nusantara High" dari template eksternal (sumber upstream: folder `nusantara-high-—-isometric-school-mmo/` di luar repo; salinan ter-port di `src/game/nusantara/`). Aplikasi tidak memiliki file LICENSE — tentukan sebelum dipublikasikan.

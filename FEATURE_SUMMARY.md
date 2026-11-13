@@ -5,7 +5,7 @@
 > (build 136 = rekonstruksi pekerjaan 7 Okt–10 Nov yang sempat tidak tercatat).
 
 ## Status umum
-SmartCBT adalah platform CBT (Computer Based Test) sekolah multi-peran yang fiturnya sudah melampaui sekadar ujian: manajemen database multi-engine, autentikasi single-session, bank soal (5 tipe + media + LaTeX + impor/ekspor + AI generate), pelaksanaan ujian dengan anti-cheat dua lapis, monitoring SSE real-time, penilaian manual + AI, modul belajar (LMS), tugas dengan AI grading batch, berita sekolah, penyimpanan berkas, branding, PWA, game mode trivia, dan deployment Docker/standalone.
+SmartCBT adalah platform CBT (Computer Based Test) sekolah multi-peran yang fiturnya sudah melampaui sekadar ujian: manajemen database multi-engine, autentikasi single-session, bank soal (5 tipe + media + LaTeX + impor/ekspor + AI generate), pelaksanaan ujian dengan anti-cheat dua lapis, monitoring SSE real-time, penilaian manual + AI, modul belajar (LMS), tugas dengan AI grading batch, berita sekolah, penyimpanan berkas, branding, PWA, game mode multiplayer "Nusantara High", dan deployment Docker/standalone.
 
 Status umum saat ini:
 - Fitur inti CBT: berjalan; durasi (138) & kepemilikan sesi (139) ditegakkan server — verifikasi E2E staging menyusul
@@ -108,7 +108,7 @@ Status umum saat ini:
 ### 14. Lainnya
 - PWA installable; service worker tidak pernah mengintervensi `/api/*`
 - i18n ID/EN berbasis kamus string→terjemahan
-- Game Mode trivia RPG (lobby + iframe, aset CC0) — belum terintegrasi data aplikasi
+- Game Mode **Nusantara High** (build 141): MMO sekolah isometrik React in-app — multiplayer real-time via Socket.IO di backend yang sama (path `/game-socket.io`, handshake token login), kuis/bel/ekonomi in-game; aset RPG Trivia lama dihapus
 
 ---
 
@@ -128,7 +128,7 @@ Status umum saat ini:
 - Publish/unpublish hasil ke siswa; ekspor PDF; audit log
 - Notifikasi (email/push) + scheduler
 - Multi-tenant penuh (baru isolasi file per domain)
-- Integrasi data (soal/nilai) ke Game Mode; rute-kan atau hapus `SummaryPage.tsx`
+- Integrasi data (soal/nilai) ke Game Mode (kuis masih `QUIZ_BANK` statis); lobi game in-memory (belum multi-instance); rute-kan atau hapus `SummaryPage.tsx`
 - Kuis/post-test di dalam modul belajar
 
 ### Rencana besar

@@ -37,6 +37,7 @@ import "./backup.js";
 import "./sessions.js";
 import "./health.js";
 import "./students.js";
+import "./nusantara-game.js";
 // Registers /api/setup/auth/{status,verify,password}. Imported for the side
 // effect only — the named exports are consumed by the gate above.
 import "./setup-auth.js";

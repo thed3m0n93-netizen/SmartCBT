@@ -31,6 +31,7 @@ import { extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { handleRequest, routeCount } from "./index.js";
 import { getDatabaseConfig } from "../db.js";
+import { attachNusantaraGame, GAME_SOCKET_PATH } from "./nusantara-game.js";
 
 // ── Runtime locations ─────────────────────────────────────────────────────
 //
@@ -244,6 +245,13 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   const url = new URL(req.url || "/", "http://localhost");
   const pathname = url.pathname;
 
+  // 0. Game socket (Nusantara High, build 141) — engine.io owns this path via
+  //    its own listener on the same http.Server. Returning here (without ever
+  //    touching `res`) is what lets the polling handshake succeed.
+  if (pathname === GAME_SOCKET_PATH || pathname.startsWith(`${GAME_SOCKET_PATH}/`)) {
+    return;
+  }
+
   // 1. Liveness probe — public and cheap (used by monitoring / systemd).
   if (pathname === "/api/health") {
     handleHealth(req, res);
@@ -296,6 +304,10 @@ const server = createServer((req, res) => {
 server.keepAliveTimeout = 75_000;
 server.headersTimeout = 76_000;
 
+// Build 141 — Nusantara High multiplayer rides on THIS process: Socket.IO
+// (path /game-socket.io) attaches listeners to the same http.Server.
+attachNusantaraGame(server);
+
 // Fail fast with a readable message when the port cannot be bound — without
 // this handler an unhandled "error" event crashes the process with an opaque
 // stack trace (e.g. the old dev server is still holding the port).
@@ -329,6 +341,7 @@ server.listen(PORT, HOST, () => {
   console.log(`  Uploads dir  : ${UPLOADS_DIR}${process.env.UPLOADS_DIR ? " (UPLOADS_DIR)" : " (auto)"}`);
   if (STATIC_DIR) console.log(`  Static dir   : ${STATIC_DIR}`);
   console.log(`  Health check : http://${HOST}:${PORT}/api/health`);
+  console.log(`  Game socket  : ${GAME_SOCKET_PATH} (Nusantara High)`);
   console.log("============================================================");
 });
 

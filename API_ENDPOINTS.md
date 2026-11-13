@@ -179,12 +179,28 @@ Dasar arsitektur:
 | POST | `/api/sessions/:sessionId/force-submit` | Paksa submit sesi (override guru/admin). **Build 139:** khusus staff. | Ya |
 | POST | `/api/sessions/:sessionId/extra-time` | Beri waktu tambahan (menit). **Build 139:** khusus staff. | Ya |
 | POST | `/api/sessions/:sessionId/reset` | Reset sesi yang terganggu. **Build 138:** sekaligus mengulang jam sesi (`started_at = NOW()`, `submitted_at` dibersihkan) dan mengembalikan `expiresAt` baru — tanpa ini siswa hasil reset akan langsung tertolak gerbang waktu. | Ya |
-| POST | `/api/monitoring/force-submit` | Alias force-submit. | Ya |
+| POST | `/api/monitoring/force-submit` | Alias force-submit. **Build 139:** khusus staff. | Ya |
 | POST | `/api/monitoring/extra-time` | Alias extra-time. **Build 138:** perpanjangan otomatis terlihat oleh siswa pada autosave berikutnya (echo `expiresAt`), tanpa reload. | Ya |
-| POST | `/api/monitoring/reset` | Alias reset. | Ya |
+| POST | `/api/monitoring/reset` | Alias reset. **Build 139:** khusus staff. | Ya |
 
 **Fungsi tambahan (client-side helper, bukan route terpisah):**  
 `reportViolationWithBeacon()` — mengirim laporan pelanggaran via `navigator.sendBeacon` dari handler `pagehide`, dengan fallback keepalive fetch.
+
+## Game — Nusantara High (build 141)
+
+| Method | Endpoint | Deskripsi | Auth |
+|--------|----------|-----------|------|
+| GET | `/api/game/nusantara/status` | Status lobi game: jumlah pemain online, fase jadwal bel, path socket. | Ya (staff) |
+
+> **Transport multiplayer BUKAN REST**: game memakai **Socket.IO** pada path
+> **`/game-socket.io`** (engine.io polling + websocket) yang di-attach ke
+> `http.Server` yang sama dengan API (`src/lib/server/nusantara-game.ts`).
+> Handshake wajib membawa token login SmartCBT di payload `auth` — sesi tidak
+> valid ditolak (`UNAUTHORIZED_GAME_SESSION`). Event: `joinGame`, `playerMove`,
+> `chatMessage`, `emote`, `interactAction`, `quizAnswer` → `initGame`,
+> `playerJoined/Moved/Left`, `chatBroadcast`, `schoolBell`, `timeSync`,
+> `statsUpdate`, `quizResult`, `worldEffect`. Proxy nginx perlu meneruskan
+> path ini dengan header `Upgrade`/`Connection` (sudah ada di template deploy).
 
 ## Hasil & Penilaian (Results & Grading)
 

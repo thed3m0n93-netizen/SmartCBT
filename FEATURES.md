@@ -1,7 +1,7 @@
 # SmartCBT — Status Implementasi Fitur
 
 > Dokumen ini mencerminkan status implementasi yang berlaku pada build terbaru.
-> **Terakhir disinkronkan dengan kode: 2026-11-13 (build 140)** — seluruh status
+> **Terakhir disinkronkan dengan kode: 2026-11-13 (build 141)** — seluruh status
 > diverifikasi ulang langsung terhadap kode sumber (route `addRoute`, file, dan
 > diff terhadap snapshot `z134/`), mencakup pekerjaan yang selesai setelah build
 > 135 dan tercatat retroaktif di `CHANGELOG.md` sebagai build 136. Termasuk
@@ -402,19 +402,27 @@
 | Perbaikan 500 `POST /api/assignments` (overflow BIGINT `assignment_classes.id`) + self-heal kolom AI | ✅ | `assignments.ts` + `schema.ts` (±19 Okt, build 136) |
 | Rubrik bertingkat / banyak kriteria nilai | ❌ | penilaian masih skor tunggal + feedback teks |
 
-## 16. Game Mode (Trivia RPG)
+## 16. Game Mode — Nusantara High (Isometric School MMO)
 
-> Bagian ini ditambahkan pada build 137 — fitur masuk ±1–4 Nov (build 136).
+> Build 141: RPG Trivia (iframe HTML statis) **diganti** dengan "Nusantara
+> High" dari template — dirender in-app sebagai React dan multiplayer-nya
+> berjalan di backend SmartCBT yang sama (Socket.IO pada
+> `/game-socket.io`, ter-attach ke `http.Server` yang ada). Aset trivia lama
+> (`public/game-mode-trivia/` + duplikat `src/.../trivia/`) sudah dihapus.
 
 | Fitur | Status | Lokasi Kode |
 |---|---|---|
-| Lobby React "RPG Trivia — Sekolah Sihir" untuk siswa | ✅ | `src/pages/student/game_mode/GameModeLobby.tsx` (rute `/student/game-mode`) |
-| Halaman play: game canvas 2D tile-based dalam iframe | ✅ | `GameModePlay.tsx` (rute `/student/game-mode/play`) memuat `public/game-mode-trivia/demo/index.html` |
-| Pintasan "Switch to Game Mode" di dashboard siswa | ✅ | `StudentDashboard.tsx` (±3 Nov) |
-| Aset pixel-art original berlisensi CC0 (karakter, tileset, peta JSON) | ✅ | `public/game-mode-trivia/` |
-| Integrasi dengan data aplikasi (soal bank/nilai ujian masuk ke game) | ❌ | game murni statis — tidak ada pertukaran data dengan API |
-| Mode dev `/game-mode/` (Stellar Academy) | ❌ | `serveGameModePlugin()` di `vite.config.ts` menunjuk `src/pages/student/game_mode/stellar/` yang **tidak ada** → dev-only, 404 |
-| Kerapian aset | ❌ | salinan duplikat tak terpakai di `src/pages/student/game_mode/trivia/rpg-trivia-assets/rpg-trivia-assets/` (satu-satunya yang dipakai: `public/game-mode-trivia/`) |
+| Lobby game di rute `/student/game-mode` + halaman play `/student/game-mode/play` | ✅ | `src/pages/student/game_mode/GameModeLobby.tsx`, `GameModePlay.tsx` (render in-app, bukan iframe) |
+| Renderer isometrik sekolah (canvas 2D, karakter prosedural, zona, minimap) | ✅ | `src/game/nusantara/isoRenderer.ts` + `schoolMap.ts` (±1.000 baris, port template) |
+| Multiplayer real-time (gerak, join/leave, chat, emote) | ✅ | `src/lib/server/nusantara-game.ts` (Socket.IO path `/game-socket.io`, attach ke http.Server standalone & dev Vite) |
+| Auth lobi — handshake wajib token login SmartCBT (sesi diverifikasi `getSession`) | ✅ | middleware `io.use()` di `nusantara-game.ts`; anonim → `UNAUTHORIZED_GAME_SESSION` (teruji smoke) |
+| Validasi gerak server-side (grid walkable, clamp koordinat, cooldown aksi) | ✅ | `isWalkableServer()` dll. — logika template dipertahankan, klien tak bisa menembus dinding |
+| Jadwal bel sekolah + fase (broadcast `schoolBell`/`timeSync`) & uang saku pasif | ✅ | world loops di `nusantara-game.ts` |
+| Kuis in-game (XP + uang) dari bank lokal | ✅ | `QUIZ_BANK` di `schoolMap.ts`, handler `quizAnswer` |
+| Status game untuk operasional (pemain online, fase) | ✅ | `GET /api/game/nusantara/status` (staff) |
+| Integrasi dengan data aplikasi (soal bank/nilai siswa masuk ke game) | ❌ | kuis masih `QUIZ_BANK` statis template — kandidat pengembangan berikutnya memakai API soal SmartCBT |
+| Uji visual gameplay di browser + E2E dengan DB staging | ❌ | teruji hingga level kompilasi + handshake transport/auth; interaksi canvas belum |
+| Multi-instance / scale horizontal lobi | ❌ | state pemain in-memory (sama seperti sesi login & SSE) |
 
 ## Ringkasan
 
@@ -435,7 +443,7 @@
 | 13. E-Rapor & Integrasi Dapodik (rencana) | 0 | 4 | 48 |
 | 14. Modul Belajar (LMS) | 9 | 0 | 2 |
 | 15. Tugas & Pengumpulan | 16 | 0 | 1 |
-| 16. Game Mode (Trivia RPG) | 4 | 0 | 3 |
+| 16. Game Mode — Nusantara High | 8 | 0 | 3 |
 
 > Status umum: fitur inti CBT (bank soal → ujian → sesi → nilai → ekspor),
 > monitoring SSE, penilaian manual + AI, modul belajar, tugas, berita,
@@ -476,10 +484,10 @@
    `SummaryPage.tsx` (rute-kan atau hapus).
 6. Notifikasi pengingat ujian (email/push) + scheduler — dibutuhkan juga oleh
    modul & tugas.
-7. Bersihkan artefak: ~~arsip `z134/`~~ (sudah dikeluarkan dari proyek, build
-   139), duplikat aset trivia di `src/.../rpg-trivia-assets/`, folder stellar
-   yang hilang dari `serveGameModePlugin`, dua lockfile (npm + pnpm), dan
-   `public/uploads/` berisi file user yang ikut ter-build ke `dist/`.
+7. Bersihkan artefak: ~~arsip `z134/`~~ & ~~duplikat aset trivia~~ & ~~plugin
+   stellar mati di `vite.config.ts`~~ (semuanya dibereskan build 139/141);
+   tersisa dua lockfile (npm + pnpm) dan `public/uploads/` berisi file user
+   yang ikut ter-build ke `dist/`.
 8. Mulai develop e-Rapor bertahap sesuai rencana di §13:
    - **Tahap 1 — Identitas & master data:** kolom ID Dapodik + pull data
      (sekolah, PTK, siswa, rombel, pembelajaran) dengan upsert idempotent.

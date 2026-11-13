@@ -32,6 +32,20 @@ server {
         proxy_buffering     off;
     }
 
+    # ── Game socket (Nusantara High, build 141) → backend Socket.IO ─────────
+    # WebSocket upgrade + sticky-free polling fallback; same backend as /api.
+    location ^~ /game-socket.io/ {
+        proxy_pass http://${API_HOST};
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade    $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host       $host;
+        proxy_set_header X-Real-IP  $remote_addr;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+        proxy_buffering    off;
+    }
+
     # ── Uploaded files (/uploads/*) → backend static file server ────────────
     location ^~ /uploads/ {
         proxy_pass http://${API_HOST};
