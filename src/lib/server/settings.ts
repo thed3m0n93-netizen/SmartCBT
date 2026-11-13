@@ -389,6 +389,17 @@ addRoute("GET", /^\/api\/student\/profile\/[^/]+$/, async (req, res) => {
   const studentId = req.url.match(/^\/api\/student\/profile\/([^/]+)$/)?.[1];
   if (!studentId) return json(res, { error: "Student id required" }, 400);
 
+  // ── Ownership (build 139) ── komentar rute ini sudah lama menjanjikan
+  // "self or admin/teacher", tetapi tidak pernah ditegakkan: siswa lain bisa
+  // membaca NISN/nama/kelas via token miliknya.
+  const { callerFromRequest, isStaffCaller, NO_CALLER, NOT_OWNER } =
+    await import("./ownership.js");
+  const caller = callerFromRequest(req);
+  if (!caller) return json(res, NO_CALLER.payload, NO_CALLER.status);
+  if (String(studentId) !== String(caller.id) && !isStaffCaller(caller)) {
+    return json(res, NOT_OWNER.payload, NOT_OWNER.status);
+  }
+
   const profile = await queryOne<{
     user_id: string;
     full_name: string;

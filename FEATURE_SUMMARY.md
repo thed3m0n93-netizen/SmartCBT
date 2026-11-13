@@ -8,9 +8,9 @@
 SmartCBT adalah platform CBT (Computer Based Test) sekolah multi-peran yang fiturnya sudah melampaui sekadar ujian: manajemen database multi-engine, autentikasi single-session, bank soal (5 tipe + media + LaTeX + impor/ekspor + AI generate), pelaksanaan ujian dengan anti-cheat dua lapis, monitoring SSE real-time, penilaian manual + AI, modul belajar (LMS), tugas dengan AI grading batch, berita sekolah, penyimpanan berkas, branding, PWA, game mode trivia, dan deployment Docker/standalone.
 
 Status umum saat ini:
-- Fitur inti CBT: berjalan; durasi ujian ditegakkan server sejak build 138, tersisa hardening kepemilikan sesi
+- Fitur inti CBT: berjalan; durasi (138) & kepemilikan sesi (139) ditegakkan server — verifikasi E2E staging menyusul
 - Fitur pengawasan, AI, LMS, tugas, berita, storage: sudah terintegrasi & operasional
-- Gap utama: validasi kepemilikan resource sesi, secret bawaan di repo, audit log, reset password, notifikasi
+- Gap utama: rotasi secret bawaan di repo, uji E2E hardening di staging, audit log, reset password, notifikasi
 
 ---
 
@@ -114,7 +114,7 @@ Status umum saat ini:
 
 ### Perlu segera (keamanan/keadilan ujian)
 - ~~Penegakan durasi/`end_time` + extra time di server~~ — **selesai build 138** (gate `SESSION_EXPIRED` + auto-close di `POST /api/answers`, timer klien dari `expiresAt` server); perlu uji end-to-end di DB staging
-- Validasi kepemilikan `sessionId`/`studentId` di endpoint sesi/hasil ujian (identitas saat ini dipercaya dari klien)
+- ~~Validasi kepemilikan `sessionId`/`studentId`~~ — **selesai build 139** (`src/lib/server/ownership.ts`: `NOT_OWNER` di jalur sesi/naskah/hasil/dashboard, `STAFF_ONLY` untuk feed+aksi monitoring + SSE, plus fix beacon focus-loss yang diam-diam 401); perlu uji end-to-end di DB staging
 - Rotasi secret bawaan: key NVIDIA (`ai-keys.ts`), kredensial DB default (`db.ts`), password compose, akun demo, sisa `.env.local`
 - Overlay UI blokir SEB tidak dirender (`sebBlocked`); tombol stub di kartu ExamsPage (Regenerate/Monitor/Force End/Export)
 - Inkonsistensi pengecekan role `admin` vs `super_admin` di sebagian handler

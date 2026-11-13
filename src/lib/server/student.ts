@@ -1,12 +1,27 @@
 /** SmartCBT — Student Portal API handlers (server-side only) */
 import { query, queryOne, addRoute, json } from "./utils.js";
 import { SESSION_GRACE_SECONDS, sessionExpiresAtIso } from "./session-time.js";
+import {
+  NO_CALLER,
+  NOT_OWNER,
+  callerFromRequest,
+  isAdminCaller,
+  isStaffCaller,
+} from "./ownership.js";
 
 // re-export query so handler files can use it without circular-import issues
 
 // GET /api/student/dashboard/:studentId
 addRoute("GET", /^\/api\/student\/dashboard\/[^/]+$/, async (req, res) => {
   const studentId = req.url.match(/^\/api\/student\/dashboard\/([^/]+)$/)![1];
+
+  // ── Ownership (build 139) ── dulu siswa mana pun bisa membaca dashboard
+  // siswa lain (nilai + peringkat) cukup dengan token login miliknya.
+  const caller = callerFromRequest(req);
+  if (!caller) return json(res, NO_CALLER.payload, NO_CALLER.status);
+  if (String(studentId) !== String(caller.id) && !isStaffCaller(caller)) {
+    return json(res, NOT_OWNER.payload, NOT_OWNER.status);
+  }
 
   const { query } = await import("./utils.js");
 
@@ -86,6 +101,14 @@ addRoute("GET", /^\/api\/exam\/[^/]+\/questions\/[^/]+$/, async (req, res) => {
   const parts = req.url.match(/^\/api\/exam\/([^/]+)\/questions\/([^/]+)$/)!;
   const examId = parts[1];
   const studentId = parts[2];
+
+  // ── Ownership (build 139) ── naskah + jawaban tersimpan sesi hanya untuk
+  // pemiliknya (admin boleh, untuk dukungan teknis).
+  const caller = callerFromRequest(req);
+  if (!caller) return json(res, NO_CALLER.payload, NO_CALLER.status);
+  if (String(studentId) !== String(caller.id) && !isAdminCaller(caller)) {
+    return json(res, NOT_OWNER.payload, NOT_OWNER.status);
+  }
 
     const exam = await queryOne(
     `SELECT e.*, qb.title as bank_title,

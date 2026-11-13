@@ -1,6 +1,13 @@
 /** SmartCBT — Tokens & SEB API handlers (server-side only) */
 import { createHash } from "node:crypto";
 import { query, queryOne, addRoute, json } from "./utils.js";
+import {
+  NO_CALLER,
+  NOT_OWNER,
+  callerFromRequest,
+  isAdminCaller,
+  sessionOwnerOf,
+} from "./ownership.js";
 
 function generateTokenValue(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -382,6 +389,19 @@ addRoute("GET", /^\/api\/seb\/download\/[^/]+$/, async (req, res) => {
 // Response 403: { error: "...", sebRequired: true, sebDetected: false }
 addRoute("POST", /^\/api\/seb\/enforce$/, async (req, res, body) => {
   const { sessionId, examId, userAgent, configKeyHash, seb } = body ?? {};
+
+  // ── Ownership (build 139) ── polling ini dikirim runner siswa; dengan
+  // sessionId, hanya pemilik sesi (atau admin) yang boleh memperoleh verdict.
+  const caller = callerFromRequest(req, body);
+  if (!caller) return json(res, NO_CALLER.payload, NO_CALLER.status);
+  if (sessionId) {
+    const owner = await sessionOwnerOf(String(sessionId));
+    if (!owner) return json(res, { error: "Session not found" }, 404);
+    if (owner !== String(caller.id) && !isAdminCaller(caller)) {
+      return json(res, NOT_OWNER.payload, NOT_OWNER.status);
+    }
+  }
+
   const ua = String(userAgent ?? req.headers["user-agent"] ?? "");
   const uaSaysSeb = /SafeExamBrowser|SEB\//i.test(ua);
   const clientClaimsSeb = seb === true || uaSaysSeb;

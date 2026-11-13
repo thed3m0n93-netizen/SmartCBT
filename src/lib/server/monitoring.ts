@@ -3,6 +3,12 @@ import { query, queryOne, addRoute, json } from "./utils.js";
 import { recomputeExamResults } from "./results.js";
 import { ensureColumn } from "./schema.js";
 import { sessionExpiresAtIso } from "./session-time.js";
+import {
+  NOT_STAFF,
+  callerFromRequest,
+  guardSessionOwner,
+  isStaffCaller,
+} from "./ownership.js";
 
 /** Uniform handler result so URL-param and body-based routes can share logic. */
 interface ApiResult {
@@ -11,6 +17,32 @@ interface ApiResult {
 }
 const okResult = (payload: any): ApiResult => ({ status: 200, payload });
 const failResult = (status: number, payload: any): ApiResult => ({ status, payload });
+
+/**
+ * Build 139 — feed & aksi monitoring khusus staff. Feed memuat IP, device,
+ * progres, dan skor SEMUA siswa; mutasi (force-submit/extra-time/reset)
+ * adalah hak guru/admin — sebelumnya siapa pun dengan token login valid bisa
+ * memanggil keduanya.
+ */
+function staffGate(req: any): boolean {
+  return isStaffCaller(callerFromRequest(req));
+}
+const NOT_STAFF_RESULT = failResult(NOT_STAFF.status, NOT_STAFF.payload);
+
+/**
+ * Build 139 — pelaporan focus-loss/violation hanya untuk PEMILIK sesi.
+ * Caller boleh datang dari header ATAU `body.sessionToken`, karena jalur
+ * `navigator.sendBeacon` (pagehide/tab-switch) tidak bisa mengirim header
+ * — sebelum build ini beacon justru 401 senyap.
+ */
+async function ownerGate(
+  req: any,
+  body: any,
+  sessionId: string,
+): Promise<ApiResult | null> {
+  const guard = await guardSessionOwner(callerFromRequest(req, body), sessionId);
+  return guard.ok ? null : failResult(guard.status, guard.payload);
+}
 
 // ── Shared mutation implementations ─────────────────────────────────────
 // The client (`src/lib/api.ts`) posts to literal `/api/monitoring/<action>`
@@ -134,6 +166,8 @@ async function focusLossCore(sessionId: string): Promise<ApiResult> {
 // Records a student leaving the exam tab or fullscreen mode.
 addRoute("POST", /^\/api\/sessions\/[^/]+\/focus-loss$/, async (req, res) => {
   const sessionId = req.url.match(/^\/api\/sessions\/([^/]+)\/focus-loss$/)?.[1] ?? "";
+  const denied = await ownerGate(req, undefined, sessionId);
+  if (denied) return json(res, denied.payload, denied.status);
   const result = await focusLossCore(sessionId);
   json(res, result.payload, result.status);
 });
@@ -144,8 +178,11 @@ addRoute("POST", /^\/api\/sessions\/[^/]+\/focus-loss$/, async (req, res) => {
 // client focus-loss call fell through to the DB dispatcher and came back
 // 404 — which is why "Tab Switches" stayed empty on the Monitoring page
 // even though the student UI counted tab switches locally.
-addRoute("POST", /^\/api\/monitoring\/focus-loss$/, async (_req, res, body) => {
-  const result = await focusLossCore(String(body?.sessionId ?? ""));
+addRoute("POST", /^\/api\/monitoring\/focus-loss$/, async (req, res, body) => {
+  const sessionId = String(body?.sessionId ?? "");
+  const denied = await ownerGate(req, body, sessionId);
+  if (denied) return json(res, denied.payload, denied.status);
+  const result = await focusLossCore(sessionId);
   json(res, result.payload, result.status);
 });
 
@@ -201,9 +238,12 @@ async function violationCore(
 
 // POST /api/monitoring/violation  body: { sessionId, kind, count? }
 // Anti-cheat violation recorder used by the exam runner.
-addRoute("POST", /^\/api\/monitoring\/violation$/, async (_req, res, body) => {
+addRoute("POST", /^\/api\/monitoring\/violation$/, async (req, res, body) => {
+  const sessionId = String(body?.sessionId ?? "");
+  const denied = await ownerGate(req, body, sessionId);
+  if (denied) return json(res, denied.payload, denied.status);
   const result = await violationCore(
-    String(body?.sessionId ?? ""),
+    sessionId,
     String(body?.kind ?? "unknown"),
     body?.count,
   );
@@ -243,18 +283,21 @@ async function fetchAllMonitoringRows() {
 // `fetchMonitoringAll()` in api.ts calls this path; it used to fall into
 // GET /api/monitoring/:examId below, which cast the literal "all" to a UUID
 // and crashed with an invalid-input error → HTTP 500.
-addRoute("GET", /^\/api\/monitoring\/all$/, async (_req, res) => {
+addRoute("GET", /^\/api\/monitoring\/all$/, async (req, res) => {
+  if (!staffGate(req)) return json(res, NOT_STAFF.payload, NOT_STAFF.status);
   json(res, await fetchAllMonitoringRows());
 });
 
 // GET /api/monitoring — same payload as /all (kept for API symmetry).
-addRoute("GET", /^\/api\/monitoring$/, async (_req, res) => {
+addRoute("GET", /^\/api\/monitoring$/, async (req, res) => {
+  if (!staffGate(req)) return json(res, NOT_STAFF.payload, NOT_STAFF.status);
   json(res, await fetchAllMonitoringRows());
 });
 
 // GET /api/monitoring/:examId — sessions of a single exam.
 // `(?!all$)` keeps the literal "all" from being treated as an exam UUID here.
 addRoute("GET", /^\/api\/monitoring\/(?!all$)[^/]+$/, async (req, res) => {
+  if (!staffGate(req)) return json(res, NOT_STAFF.payload, NOT_STAFF.status);
   const examId = req.url.match(/^\/api\/monitoring\/([^/]+)$/)![1];
   const rows = await query(
     `SELECT
@@ -282,18 +325,21 @@ addRoute("GET", /^\/api\/monitoring\/(?!all$)[^/]+$/, async (req, res) => {
 // ── Mutations: canonical URL-param routes ───────────────────────────────
 
 addRoute("POST", /^\/api\/sessions\/[^/]+\/force-submit$/, async (req, res) => {
+  if (!staffGate(req)) return json(res, NOT_STAFF.payload, NOT_STAFF.status);
   const sessionId = req.url.match(/^\/api\/sessions\/([^/]+)\/force-submit$/)?.[1] ?? "";
   const result = await forceSubmitCore(sessionId);
   json(res, result.payload, result.status);
 });
 
 addRoute("POST", /^\/api\/sessions\/[^/]+\/extra-time$/, async (req, res, body) => {
+  if (!staffGate(req)) return json(res, NOT_STAFF.payload, NOT_STAFF.status);
   const sessionId = req.url.match(/^\/api\/sessions\/([^/]+)\/extra-time$/)?.[1] ?? "";
   const result = await extraTimeCore(sessionId, body?.minutes);
   json(res, result.payload, result.status);
 });
 
 addRoute("POST", /^\/api\/sessions\/[^/]+\/reset$/, async (req, res) => {
+  if (!staffGate(req)) return json(res, NOT_STAFF.payload, NOT_STAFF.status);
   const sessionId = req.url.match(/^\/api\/sessions\/([^/]+)\/reset$/)?.[1] ?? "";
   const result = await resetSessionCore(sessionId);
   json(res, result.payload, result.status);
@@ -302,19 +348,22 @@ addRoute("POST", /^\/api\/sessions\/[^/]+\/reset$/, async (req, res) => {
 // ── Mutations: body-based literal routes (used by src/lib/api.ts) ───────
 
 // POST /api/monitoring/force-submit  body: { sessionId }
-addRoute("POST", /^\/api\/monitoring\/force-submit$/, async (_req, res, body) => {
+addRoute("POST", /^\/api\/monitoring\/force-submit$/, async (req, res, body) => {
+  if (!staffGate(req)) return json(res, NOT_STAFF.payload, NOT_STAFF.status);
   const result = await forceSubmitCore(String(body?.sessionId ?? ""));
   json(res, result.payload, result.status);
 });
 
 // POST /api/monitoring/extra-time  body: { sessionId, minutes }
-addRoute("POST", /^\/api\/monitoring\/extra-time$/, async (_req, res, body) => {
+addRoute("POST", /^\/api\/monitoring\/extra-time$/, async (req, res, body) => {
+  if (!staffGate(req)) return json(res, NOT_STAFF.payload, NOT_STAFF.status);
   const result = await extraTimeCore(String(body?.sessionId ?? ""), body?.minutes);
   json(res, result.payload, result.status);
 });
 
 // POST /api/monitoring/reset  body: { sessionId }
-addRoute("POST", /^\/api\/monitoring\/reset$/, async (_req, res, body) => {
+addRoute("POST", /^\/api\/monitoring\/reset$/, async (req, res, body) => {
+  if (!staffGate(req)) return json(res, NOT_STAFF.payload, NOT_STAFF.status);
   const result = await resetSessionCore(String(body?.sessionId ?? ""));
   json(res, result.payload, result.status);
 });

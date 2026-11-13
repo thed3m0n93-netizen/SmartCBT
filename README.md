@@ -2,7 +2,7 @@
 
 Platform **Computer Based Test (CBT)** sekolah multi-peran (admin / guru / siswa) — ujian digital dengan anti-cheat dua lapis, monitoring real-time, penilaian manual & AI, plus modul belajar (LMS), tugas, berita sekolah, penyimpanan berkas, PWA, dan game mode trivia.
 
-> Build dokumentasi saat ini: **137 (2026-11-12)**. Riwayat lengkap: [`CHANGELOG.md`](./CHANGELOG.md) · Status fitur: [`FEATURES.md`](./FEATURES.md) · Katalog API: [`API_ENDPOINTS.md`](./API_ENDPOINTS.md)
+> Build dokumentasi saat ini: **139 (2026-11-12)**. Riwayat lengkap: [`CHANGELOG.md`](./CHANGELOG.md) · Status fitur: [`FEATURES.md`](./FEATURES.md) · Katalog API: [`API_ENDPOINTS.md`](./API_ENDPOINTS.md)
 
 ## Fitur utama
 
@@ -46,7 +46,7 @@ public/
 server/           # paket deploy standalone (hasil build:server) + README-nya
 scripts/          # build-standalone-server.mjs (esbuild)
 deploy/           # entrypoint nginx/backend, contoh config Nginx + systemd
-z134/             # ⚠️ arsip snapshot proyek ±14 Okt — jangan diedit, kandidat dihapus
+# (arsip snapshot `z134/` sudah dipindah keluar proyek pada build 139)
 *.md              # dokumentasi (lihat index di bawah)
 ```
 
@@ -96,7 +96,7 @@ Variabel environment utama (nama saja): `PORT`, `HOST`, `STATIC_DIR`, `UPLOADS_D
 ## Catatan keamanan sebelum produksi
 
 - **Rotasi semua secret bawaan**: API key NVIDIA ter-bundle di `src/lib/server/ai-keys.ts`, kredensial DB default di `src/lib/db.ts`, password Postgres di `docker-compose.yml`, akun demo hasil seed, dan sisa token lama di `.env.local` (hapus filenya).
-- **Celah yang diketahui** (detail di `FEATURES.md` → Prioritas): endpoint sesi ujian belum memvalidasi kepemilikan `sessionId`/`studentId` terhadap pemanggil; sesi login & SSE in-memory (tidak bisa multi-instance). Durasi ujian **sudah ditegakkan server sejak build 138** (gate `SESSION_EXPIRED` di `POST /api/answers` + timer klien dari `expiresAt`).
+- **Celah yang diketahui** (detail di `FEATURES.md` → Prioritas): sesi login & SSE in-memory (tidak bisa multi-instance). Penegakan durasi ujian **build 138** (`SESSION_EXPIRED` di `POST /api/answers`) dan kepemilikan sesi/peran **build 139** (`src/lib/server/ownership.ts` — `NOT_OWNER`/`STAFF_ONLY`, termasuk fix beacon focus-loss yang dulu diam-diam 401) sudah ditutup; verifikasi E2E di DB staging menyusul.
 - `public/uploads/` berisi berkas user sungguhan dan ikut ter-copy ke `dist/` saat build — pindahkan folder upload ke luar proyek (`UPLOADS_DIR`) sebelum deploy.
 
 ## Konvensi kode

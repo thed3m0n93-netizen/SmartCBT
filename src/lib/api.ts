@@ -1412,7 +1412,14 @@ export function reportViolationWithBeacon(
   kind: string,
   count = 1,
 ): boolean {
-  const payload = JSON.stringify({ sessionId, kind, count });
+  // Build 139: token ikut di body — sendBeacon tidak dapat mengirim header
+  // Authorization, sementara endpoint kini memverifikasi kepemilikan sesi.
+  const payload = JSON.stringify({
+    sessionId,
+    kind,
+    count,
+    sessionToken: getAuthToken() ?? undefined,
+  });
   try {
     if (typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {
       const sent = navigator.sendBeacon(

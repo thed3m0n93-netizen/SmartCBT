@@ -235,7 +235,14 @@ function detectSeb(): { detected: boolean; configKeyHash: string | null } {
  */
 function postFocusLossWithBeacon(sessionId: string): boolean {
   const url = apiUrl("/api/monitoring/focus-loss")
-  const payload = JSON.stringify({ sessionId, reason: "visibilitychange" })
+  // Build 139: `sendBeacon` tidak bisa membawa header Authorization, dan
+  // endpoint kini meminta bukti kepemilikan — token login ikut di body
+  // (diresolusi server via `callerFromRequest` fallback `body.sessionToken`).
+  const payload = JSON.stringify({
+    sessionId,
+    reason: "visibilitychange",
+    sessionToken: getAuthToken() ?? undefined,
+  })
   try {
     if (typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {
       const sent = navigator.sendBeacon(

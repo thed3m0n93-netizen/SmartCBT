@@ -9,6 +9,13 @@ import {
   isSessionExpired,
   sessionExpiresAtIso,
 } from "./session-time.js";
+import {
+  NO_CALLER,
+  NOT_OWNER,
+  callerFromRequest,
+  isAdminCaller,
+  ownsSessionRow,
+} from "./ownership.js";
 
 /**
  * SEB runtime proof gate.
@@ -71,6 +78,7 @@ addRoute("POST", /^\/api\/answers$/, async (req, res, body) => {
   // Session must exist and still be in progress (no answering after submit).
   const session = await queryOne(
     `SELECT ss.status, ss.seb_verified_at, ss.started_at, ss.extra_time_minutes,
+            ss.student_id,
             e.bank_id, e.duration_minutes,
             e.seb_required, e.seb_config_hash
      FROM student_sessions ss
@@ -81,6 +89,17 @@ addRoute("POST", /^\/api\/answers$/, async (req, res, body) => {
   if (!session) {
     return json(res, { error: "Session not found" }, 404);
   }
+
+  // ── Ownership (build 139) ──────────────────────────────────────────────
+  // A valid login token alone is NOT enough: only the student whose id is
+  // written on the session may save answers into it. Without this, any logged
+  // in student could script answers for somebody else's session id.
+  const caller = callerFromRequest(req, body);
+  if (!caller) return json(res, NO_CALLER.payload, NO_CALLER.status);
+  if (!ownsSessionRow(caller, session)) {
+    return json(res, NOT_OWNER.payload, NOT_OWNER.status);
+  }
+
   if (session.status === "completed") {
     return json(res, { error: "Ujian sudah disubmit" }, 409);
   }
@@ -195,6 +214,16 @@ addRoute("POST", /^\/api\/sessions\/start$/, async (req, res, body) => {
     return json(res, { error: "examId and studentId required" }, 400);
   }
 
+  // ── Ownership (build 139) ──────────────────────────────────────────────
+  // Only a student may open a session, and only for themselves. The id used
+  // to come straight from the request body, so any logged in account could
+  // create/inspect sessions addressed to a different student id.
+  const caller = callerFromRequest(req, body);
+  if (!caller) return json(res, NO_CALLER.payload, NO_CALLER.status);
+  if (caller.role !== "student" || String(studentId) !== String(caller.id)) {
+    return json(res, NOT_OWNER.payload, NOT_OWNER.status);
+  }
+
   // Look up the exam to check seb_required flag
   const examRow = await queryOne(
     `SELECT id, title, duration_minutes, seb_required, seb_config_hash FROM exams WHERE id = $1`,
@@ -304,15 +333,23 @@ addRoute("POST", /^\/api\/sessions\/start$/, async (req, res, body) => {
 // GET /api/sessions/results/:sessionId — get exam results for a completed session
 addRoute("GET", /^\/api\/sessions\/results\/[^/]+$/, async (req, res) => {
   const sessionId = req.url.match(/^\/api\/sessions\/results\/([^/]+)$/)![1];
+  const caller = callerFromRequest(req);
+  if (!caller) return json(res, NO_CALLER.payload, NO_CALLER.status);
   const results = await queryOne(
-    `SELECT er.*, e.title as exam_title, e.duration_minutes
+    `SELECT er.*, e.title as exam_title, e.duration_minutes, ss.student_id
      FROM exam_results er
      JOIN student_sessions ss ON ss.id = er.session_id
      JOIN exams e ON e.id = ss.exam_id
      WHERE er.session_id = $1`,
     [sessionId]
   );
-  json(res, results || { error: "Results not found" });
+  if (!results) return json(res, { error: "Results not found" });
+  // Build 139: hasil sesi ujian hanya untuk pemiliknya (admin boleh membaca
+  // untuk dukungan teknis; feed monitoring guru memakai jalur staff terpisah).
+  if (!ownsSessionRow(caller, results) && !isAdminCaller(caller)) {
+    return json(res, NOT_OWNER.payload, NOT_OWNER.status);
+  }
+  json(res, results);
 });
 
 // POST /api/sessions/submit — complete a student session
@@ -333,6 +370,13 @@ addRoute("POST", /^\/api\/sessions\/submit$/, async (_req, res, body) => {
      WHERE ss.id = $1`,
     [sessionId]
   );
+  // ── Ownership (build 139) ── hanya pemilik sesi yang boleh submit sendiri.
+  const caller = callerFromRequest(_req, body);
+  if (!caller) return json(res, NO_CALLER.payload, NO_CALLER.status);
+  if (!session) return json(res, { error: "Session not found" }, 404);
+  if (!ownsSessionRow(caller, session)) {
+    return json(res, NOT_OWNER.payload, NOT_OWNER.status);
+  }
   await query(
     `UPDATE student_sessions
        SET status = 'completed', submitted_at = NOW()

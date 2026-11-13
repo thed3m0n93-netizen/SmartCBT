@@ -145,10 +145,10 @@ Dasar arsitektur:
 
 | Method | Endpoint | Deskripsi | Auth |
 |--------|----------|-----------|------|
-| POST | `/api/answers` | Simpan satu jawaban siswa (sessionId, questionId, response). **Build 138:** ditolak **409 `SESSION_EXPIRED`** bila lewat `started_at + duration + extra_time + grace` (60 dtk) — sesi otomatis ditutup & dinilai dari jawaban terakhir. Respons sukses menyertakan `expiresAt` (echo deadline server). | Ya |
-| POST | `/api/sessions/start` | Mulai / lanjutkan sesi ujian (gate token + SEB). **Build 138:** respons memuat `expiresAt`, `serverTime`, `graceSeconds` — sumber hitungan mundur resmi klien. | Ya |
-| GET | `/api/sessions/results/:sessionId` | Baca hasil sesi yang sudah selesai. | Ya |
-| POST | `/api/sessions/submit` | Akhiri sesi, hitung nilai, buat baris exam_results. Submit setelah deadline tetap diterima (jawaban pasca-deadline sudah diblokir `/api/answers`); respons memuat `expiresAt` + `expiredAtSubmit`. | Ya |
+| POST | `/api/answers` | Simpan satu jawaban siswa (sessionId, questionId, response). **Build 138:** ditolak **409 `SESSION_EXPIRED`** bila lewat `started_at + duration + extra_time + grace` (60 dtk) — sesi otomatis ditutup & dinilai dari jawaban terakhir. Respons sukses menyertakan `expiresAt` (echo deadline server). **Build 139:** hanya pemilik sesi (139) — token login siswa lain → **403 `NOT_OWNER`**. | Ya |
+| POST | `/api/sessions/start` | Mulai / lanjutkan sesi ujian (gate token + SEB). **Build 138:** respons memuat `expiresAt`, `serverTime`, `graceSeconds` — sumber hitungan mundur resmi klien. **Build 139:** hanya role `student` dan `studentId` harus == id caller. | Ya |
+| GET | `/api/sessions/results/:sessionId` | Baca hasil sesi yang sudah selesai. **Build 139:** pemilik sesi atau admin. | Ya |
+| POST | `/api/sessions/submit` | Akhiri sesi, hitung nilai, buat baris exam_results. Submit setelah deadline tetap diterima (jawaban pasca-deadline sudah diblokir `/api/answers`); respons memuat `expiresAt` + `expiredAtSubmit`. **Build 139:** hanya pemilik sesi (admin memakai force-submit). | Ya |
 
 > **Deadline sesi (build 138)** dihitung server dari data milik server:
 > `student_sessions.started_at + exams.duration_minutes +
@@ -157,19 +157,27 @@ Dasar arsitektur:
 > Klien memakai `expiresAt` untuk timer (dengan koreksi selisih jam dari
 > `serverTime`), sehingga memanipulasi timer lokal atau mengirim jawaban dari
 > skrip setelah waktu habis tidak lagi efektif.
+>
+> **Kepemilikan resource (build 139)** — sumber: `src/lib/server/ownership.ts`.
+> Endpoint jalur ujian siswa tidak lagi cukup "token login valid"; id pemilik
+> dibandingkan dengan caller: `POST /api/answers|sessions/start|sessions/submit`,
+> `GET /api/sessions/results/:id`, `GET /api/exam/:id/questions/:studentId`
+> (pemilik + admin), `GET /api/student/dashboard/:id` (diri sendiri + staff),
+> `GET /api/student/profile/:id` (diri sendiri + staff), `POST /api/seb/enforce`
+> (dengan sessionId → pemilik atau admin). Penolakan: **403 `NOT_OWNER`**.
 
 ## Monitoring Ujian (Live Monitoring)
 
 | Method | Endpoint | Deskripsi | Auth |
 |--------|----------|-----------|------|
-| POST | `/api/sessions/:sessionId/focus-loss` | Catat event kehilangan fokus (anti-cheat). | Ya |
-| POST | `/api/monitoring/focus-loss` | Catat focus-loss (alias generik). | Ya |
-| POST | `/api/monitoring/violation` | Laporkan pelanggaran anti-cheat (fullscreen, clipboard, shortcut, dll). | Ya |
-| GET | `/api/monitoring/all` | Feed monitoring semua ujian aktif. | Ya |
-| GET | `/api/monitoring` | Monitoring rows (alias all). | Ya |
-| GET | `/api/monitoring/:examId` | Monitoring rows untuk satu ujian. | Ya |
-| POST | `/api/sessions/:sessionId/force-submit` | Paksa submit sesi (override guru/admin). | Ya |
-| POST | `/api/sessions/:sessionId/extra-time` | Beri waktu tambahan (menit). | Ya |
+| POST | `/api/sessions/:sessionId/focus-loss` | Catat event kehilangan fokus (anti-cheat). **Build 139:** hanya pemilik sesi. | Ya |
+| POST | `/api/monitoring/focus-loss` | Catat focus-loss (alias generik). **Build 139:** hanya pemilik sesi; jalur `sendBeacon` mengirim token di body (`sessionToken`) karena beacon tidak bisa membawa header. | Ya |
+| POST | `/api/monitoring/violation` | Laporkan pelanggaran anti-cheat (fullscreen, clipboard, shortcut, dll). **Build 139:** hanya pemilik sesi + `sessionToken` di body untuk jalur beacon. | Ya |
+| GET | `/api/monitoring/all` | Feed monitoring semua ujian aktif. **Build 139:** khusus staff (403 `STAFF_ONLY`). | Ya |
+| GET | `/api/monitoring` | Monitoring rows (alias all). **Build 139:** khusus staff. | Ya |
+| GET | `/api/monitoring/:examId` | Monitoring rows untuk satu ujian. **Build 139:** khusus staff. | Ya |
+| POST | `/api/sessions/:sessionId/force-submit` | Paksa submit sesi (override guru/admin). **Build 139:** khusus staff. | Ya |
+| POST | `/api/sessions/:sessionId/extra-time` | Beri waktu tambahan (menit). **Build 139:** khusus staff. | Ya |
 | POST | `/api/sessions/:sessionId/reset` | Reset sesi yang terganggu. **Build 138:** sekaligus mengulang jam sesi (`started_at = NOW()`, `submitted_at` dibersihkan) dan mengembalikan `expiresAt` baru — tanpa ini siswa hasil reset akan langsung tertolak gerbang waktu. | Ya |
 | POST | `/api/monitoring/force-submit` | Alias force-submit. | Ya |
 | POST | `/api/monitoring/extra-time` | Alias extra-time. **Build 138:** perpanjangan otomatis terlihat oleh siswa pada autosave berikutnya (echo `expiresAt`), tanpa reload. | Ya |
@@ -339,7 +347,7 @@ Dasar arsitektur:
 | Method | Endpoint | Deskripsi | Auth |
 |--------|----------|-----------|------|
 | POST | `/api/sse/monitoring/ping` | Ping stream monitoring. | Ya |
-| GET | `/api/sse/monitoring` | Stream monitoring via Server-Sent Events. | Ya |
+| GET | `/api/sse/monitoring` | Stream monitoring via Server-Sent Events. **Build 139:** hanya staff (403 `STAFF_ONLY` untuk subscriber non-guru/admin). | Ya |
 
 ## Health Check
 

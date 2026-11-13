@@ -2,6 +2,7 @@
 
 import { query, addRoute, json, type ApiHandler, type AuthenticatedRequest } from "./utils.js";
 import { getBearerToken, getSession } from "./auth-session.js";
+import { NOT_STAFF, isStaffCaller } from "./ownership.js";
 
 // Connected SSE clients registry (for broadcasting monitoring changes).
 // In a multi-instance deployment this would be a Pub/Sub layer (Redis, etc.);
@@ -81,6 +82,12 @@ addRoute("GET", /^\/api\/sse\/monitoring$/, async (req: any, res: any) => {
   const user = token ? await getSession(token) : null;
   if (!user) {
     json(res, { error: "Authentication required" }, 401);
+    return;
+  }
+  // Build 139: snapshot monitoring memuat IP, progres, dan skor SEMUA siswa
+  // di semua ujian — hanya guru/admin yang boleh berlangganan stream ini.
+  if (!isStaffCaller(user)) {
+    json(res, NOT_STAFF.payload, NOT_STAFF.status);
     return;
   }
 

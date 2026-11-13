@@ -1,7 +1,7 @@
 # SmartCBT — Status Implementasi Fitur
 
 > Dokumen ini mencerminkan status implementasi yang berlaku pada build terbaru.
-> **Terakhir disinkronkan dengan kode: 2026-11-12 (build 138)** — seluruh status
+> **Terakhir disinkronkan dengan kode: 2026-11-12 (build 139)** — seluruh status
 > diverifikasi ulang langsung terhadap kode sumber (route `addRoute`, file, dan
 > diff terhadap snapshot `z134/`), mencakup pekerjaan yang selesai setelah build
 > 135 dan tercatat retroaktif di `CHANGELOG.md` sebagai build 136. Termasuk
@@ -39,6 +39,7 @@
 | Sesi login tersimpan di localStorage dan dipertahankan saat refresh | ✅ | `src/app/AuthContext.tsx` |
 | Logout & revoke sesi aktif | ✅ | `src/app/AuthContext.tsx`, `POST /api/logout` |
 | Validasi sesi token pada API dan guard auth per-role | ✅ | `src/lib/server/auth-session.ts`, `src/lib/server/index.ts` |
+| Kepemilikan resource ditegakkan server (build 139): sesi/naskah/hasil/dashboard milik caller sendiri | ✅ | `src/lib/server/ownership.ts` (`guardSessionOwner`, `NOT_OWNER`), dipasang di answers/start/submit/results/exam-questions/dashboard/profile |
 | Routing berbasis peran (admin / teacher / student) | ✅ | `src/app/routes.tsx` |
 | Daftar user, siswa, guru, kelas, dan NISN | ✅ | `src/pages/admin/UsersPage.tsx`, `GET /api/users` |
 | CRUD user (tambah/edit/hapus/aktif-nonaktif) | ✅ | `src/lib/server/auth-users.ts`, `src/pages/admin/UsersPage.tsx` |
@@ -129,6 +130,8 @@
 | Tambah waktu tambahan untuk sesi siswa | ✅ | `POST /api/sessions/:id/extra-time` |
 | Reset sesi macet (buka kembali sesi completed/disrupted) | ✅ | `POST /api/sessions/:id/reset`, `MonitoringPage.tsx` |
 | SSE / push monitoring real-time | ✅ | `GET /api/sse/monitoring`, `/api/monitoring/all` |
+| Gerbang STAFF untuk feed & aksi monitoring (build 139) | ✅ | `staffGate()` di `monitoring.ts` (feed GET ×3 + mutasi ×6 → 403 `STAFF_ONLY`), `sse.ts` menolak subscriber non-staff; force-submit/extra-time/reset tidak lagi bisa dipanggil siswa |
+| Pelaporan focus-loss/violation terautentikasi — beacon kini kirim token di body (fix 401 senyap build 139) | ✅ | `callerFromRequest(req, body)` fallback `body.sessionToken`; `postFocusLossWithBeacon()`/`reportViolationWithBeacon()` menyertakan token; kepemilikan dicek via `ownerGate()` |
 | Tracking tab switch / focus-loss count di sisi server | ✅ | `POST /api/monitoring/focus-loss`, `POST /api/sessions/:id/focus-loss` |
 | Tandai sesi mencurigakan / disrupted manual | ❌ | belum ada alur manual yang masuk ke DB |
 
@@ -416,12 +419,12 @@
 | Kategori | ✅ Selesai | 🔶 Sebagian | ❌ Belum |
 |---|---:|---:|---:|
 | 1. Infrastruktur DB & Instalasi | 11 | 0 | 0 |
-| 2. Autentikasi & Pengguna | 11 | 0 | 1 |
+| 2. Autentikasi & Pengguna | 12 | 0 | 1 |
 | 3. Dashboard Admin & Aktivitas | 9 | 0 | 0 |
 | 4. Bank Soal, Media, dan AI Generate | 11 | 0 | 0 |
 | 5. Manajemen Ujian | 10 | 0 | 0 |
 | 6. Pelaksanaan Ujian (Siswa) | 19 | 1 | 0 |
-| 7. Monitoring Real-Time & Pengawasan | 8 | 0 | 1 |
+| 7. Monitoring Real-Time & Pengawasan | 10 | 0 | 1 |
 | 8. Penilaian & Analisis | 7 | 0 | 3 |
 | 9. Penyimpanan File & Branding Sekolah | 12 | 0 | 0 |
 | 10. AI & Integrasi Eksternal | 8 | 0 | 0 |
@@ -435,10 +438,12 @@
 > Status umum: fitur inti CBT (bank soal → ujian → sesi → nilai → ekspor),
 > monitoring SSE, penilaian manual + AI, modul belajar, tugas, berita,
 > penyimpanan berkas, branding, PWA, dan deployment Docker/standalone berada
-> pada level operasional. Anti-cheat sudah dua lapis (kebijakan klien +
-> gerbang server SEB/token/re-skoring) **dan durasi ujian kini ditegakkan
-> server** (build 138). Gap server-side yang tersisa: validasi kepemilikan
-> `sessionId`/`studentId` terhadap token pemanggil (lihat Prioritas).
+> pada level operasional. Anti-cheat dua lapis + **dua hardening server-side
+> selesai**: penegakan durasi (build 138, `SESSION_EXPIRED`) dan kepemilikan
+> resource/otoritas peran (build 139, `NOT_OWNER`/`STAFF_ONLY` — termasuk fix
+> 401 senyap pada beacon focus-loss/violation). Yang tersisa di sisi server:
+> validasi silang end-to-end di DB staging dan skalabilitas multi-instance
+> (sesi login & SSE masih in-memory).
 >
 > **Catatan e-Rapor:** bagian 13 adalah rencana pengembangan dan seluruhnya
 > belum diimplementasikan (menu sidebar pun sudah dicabut sejak build 136).
@@ -450,11 +455,12 @@
 
 ## Prioritas Pengembangan yang Disarankan
 
-1. **Hardening server-side ujian (lanjutan)** — penegakan durasi sudah beres
-   (build 138: gate `SESSION_EXPIRED` di `/api/answers`); tersisa validasi
-   kepemilikan `sessionId`/`studentId` terhadap token pemanggil di semua
-   endpoint sesi/hasil ujian siswa, lalu uji alur lewat-batas end-to-end di
-   DB staging (termasuk semantics `reset` = restart jam).
+1. **Verifikasi hardening server-side di DB staging** — build 138 (durasi) &
+   139 (kepemilikan/peran) baru teruji logika + bundle; jalankan uji nyata:
+   siswa A memanggil resource sesi siswa B → 403, jawaban pasca-deadline →
+   auto-close, reset ⇒ jam baru, guru force-submit → OK, siswa force-submit →
+   403, beacon tab-switch tercatat lagi (sebelum build 139 diam-diam 401).
+   Libatkan siswa sebagai penguji sesuai rencana.
 2. Rotasi/jauhkan secret dari repo: key NVIDIA di `src/lib/server/ai-keys.ts`,
    kredensial DB default di `src/lib/db.ts`, password `postgres` di
    `docker-compose.yml`, kredensial demo di log instalasi, dan sisa token
@@ -468,10 +474,10 @@
    `SummaryPage.tsx` (rute-kan atau hapus).
 6. Notifikasi pengingat ujian (email/push) + scheduler — dibutuhkan juga oleh
    modul & tugas.
-7. Bersihkan artefak: duplikat aset trivia di `src/.../rpg-trivia-assets/`,
-   arsip `z134/` (34 MB), folder stellar yang hilang dari
-   `serveGameModePlugin`, dua lockfile (npm + pnpm), dan `public/uploads/`
-   berisi file user yang ikut ter-build ke `dist/`.
+7. Bersihkan artefak: ~~arsip `z134/`~~ (sudah dikeluarkan dari proyek, build
+   139), duplikat aset trivia di `src/.../rpg-trivia-assets/`, folder stellar
+   yang hilang dari `serveGameModePlugin`, dua lockfile (npm + pnpm), dan
+   `public/uploads/` berisi file user yang ikut ter-build ke `dist/`.
 8. Mulai develop e-Rapor bertahap sesuai rencana di §13:
    - **Tahap 1 — Identitas & master data:** kolom ID Dapodik + pull data
      (sekolah, PTK, siswa, rombel, pembelajaran) dengan upsert idempotent.
