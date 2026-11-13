@@ -299,6 +299,28 @@ export interface QuestionRow {
   /** Joined fields (GET /api/questions returns them for the bank/subject). */
   subject_name?: string | null;
   bank_title?: string | null;
+  /** Build 140 — provenance hasil AI generate ber-grounding materi. */
+  ai_source?: "materi" | "campuran" | null;
+  ai_source_ref?: string | null;
+}
+
+/** Baris materi (lampiran modul/ujian/tugas) untuk pemilih referensi AI. */
+export interface AiMaterialRow {
+  id: string;
+  fileName: string;
+  kind: string;
+  sizeBytes: number;
+  createdAt: string;
+  contextTitle: string | null;
+  subjectId: number | string | null;
+  subjectName: string | null;
+  supported: boolean;
+}
+
+/** GET /api/ai/materials — lampiran materi milik guru (staff-only). */
+export function fetchAiMaterials(subjectId?: number | string | null): Promise<AiMaterialRow[]> {
+  const qs = subjectId != null && subjectId !== "" ? `?subjectId=${encodeURIComponent(String(subjectId))}` : "";
+  return apiGetRows<AiMaterialRow>(`/api/ai/materials${qs}`);
 }
 
 export interface ExamRow {

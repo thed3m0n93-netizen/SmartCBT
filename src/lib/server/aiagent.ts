@@ -20,6 +20,16 @@ import {
   type AiProviderProtocol,
 } from "../ai-providers.js";
 import { getBuiltInAiApiKey } from "./ai-keys.js";
+import { ensureColumn } from "./schema.js";
+import { isStaffCaller } from "./ownership.js";
+import {
+  buildMaterialContext,
+  listMaterials,
+  safeFileName,
+  SUPPORTED_EXTENSIONS,
+  MATERIAL_TAGGING_RULES,
+  type MaterialMode,
+} from "./material-context.js";
 
 const DB_TYPE: Record<string, string> = {
   single: "single_choice",
@@ -42,6 +52,9 @@ interface AiQuestion {
   explanation?: string;
   topic?: string;
   formula_latex?: string | null;
+  /** Build 140 — pengakuan model atas asal soal (materi vs campuran). */
+  source?: string;
+  source_ref?: string[] | string;
 }
 
 interface ParsedQuestion {
@@ -55,6 +68,10 @@ interface ParsedQuestion {
   formulaLatex: string | null;
   topic?: string;
   explanation?: string;
+  /** Build 140 — 'materi' | 'campuran' | null (tanpa referensi). */
+  aiSource?: string | null;
+  /** JSON array label sumber yang diakui model, mis. '["M1","M3"]'. */
+  aiSourceRef?: string | null;
 }
 
 export async function loadAiConfig(): Promise<{ provider: string; model: string; apiKey: string; baseUrl: string }> {
@@ -293,6 +310,22 @@ export async function callProvider(
   return content;
 }
 
+/**
+ * Sanitasi `source_ref` dari model: hanya label M<n> yang sah, dedupe, maks 12.
+ * Nilai apa pun selain itu dibuang — model tidak bisa menyuntik string bebas
+ * ke kolom provenance.
+ */
+function normalizeSourceRef(raw: unknown): string | null {
+  const list = Array.isArray(raw) ? raw : typeof raw === "string" ? raw.split(",") : [];
+  const labels: string[] = [];
+  for (const item of list) {
+    const m = String(item ?? "").trim().toUpperCase().match(/^M(\d{1,3})$/);
+    if (m && !labels.includes(`M${m[1]}`)) labels.push(`M${m[1]}`);
+    if (labels.length >= 12) break;
+  }
+  return labels.length ? JSON.stringify(labels) : null;
+}
+
 function normalizeGeneratedQuestion(raw: AiQuestion, idx: number): ParsedQuestion {
   const type = String(raw.type || raw.question_type || "single").trim().toLowerCase();
   const mappedType = DB_TYPE[type] || DB_TYPE[type] || "single_choice";
@@ -312,6 +345,15 @@ function normalizeGeneratedQuestion(raw: AiQuestion, idx: number): ParsedQuestio
     formulaLatex: typeof raw.formula_latex === "string" && raw.formula_latex.trim() ? raw.formula_latex.trim() : null,
     topic: String(raw.topic || "").trim() || undefined,
     explanation: String(raw.explanation || "").trim() || undefined,
+    // Build 140 — hanya nilai yang dikenal yang disimpan; model yang
+    // "berbohong" dengan label aneh tetap aman tersimpan sebagai null.
+    aiSource:
+      String(raw.source || "").trim().toLowerCase() === "materi"
+        ? "materi"
+        : String(raw.source || "").trim().toLowerCase() === "campuran"
+          ? "campuran"
+          : null,
+    aiSourceRef: normalizeSourceRef(raw.source_ref),
   };
 
   if (type === "single" || type === "multiple" || type === "single_choice" || type === "multiple_choice") {
@@ -391,9 +433,38 @@ function parseGeneratedPayload(text: string): { questions: AiQuestion[]; parseEr
   return { questions: list as AiQuestion[], parseError };
 }
 
+let provenanceColumnsReady: Promise<void> | null = null;
+
+/** Self-heal kolom provenance build 140 (dibuat sekali saat pertama dipakai). */
+function ensureQuestionsProvenanceColumns(): Promise<void> {
+  if (!provenanceColumnsReady) {
+    provenanceColumnsReady = (async () => {
+      await ensureColumn("questions", "ai_source", {
+        pg: "VARCHAR(12) NULL",
+        mysql: "VARCHAR(12) NULL",
+      });
+      await ensureColumn("questions", "ai_source_ref", {
+        pg: "TEXT NULL",
+        mysql: "TEXT NULL",
+      });
+    })().catch((err) => {
+      provenanceColumnsReady = null;
+      throw err;
+    });
+  }
+  return provenanceColumnsReady;
+}
+
 async function insertGeneratedQuestions(bankId: string, questions: ParsedQuestion[]) {
   const inserted: any[] = [];
   const errors: string[] = [];
+  try {
+    await ensureQuestionsProvenanceColumns();
+  } catch (err) {
+    // Jangan gagalkan import hanya karena self-heal kolom gagal (mis. DB read-
+    // only); soal tetap masuk, provenansinya saja yang hilang.
+    console.error("[ai] ensure provenance columns failed:", err);
+  }
   for (let i = 0; i < questions.length; i++) {
     const q = questions[i];
     const rowNum = q.rowNum ?? i + 1;
@@ -411,8 +482,8 @@ async function insertGeneratedQuestions(bankId: string, questions: ParsedQuestio
     try {
       const id = randomUUID();
       await query(
-        `INSERT INTO questions (id, bank_id, question_type, content, media_type, media_url, formula_latex, options, correct_answer, score_weight, difficulty_level)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+        `INSERT INTO questions (id, bank_id, question_type, content, media_type, media_url, formula_latex, options, correct_answer, score_weight, difficulty_level, ai_source, ai_source_ref)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
         [
           id,
           bankId,
@@ -425,9 +496,11 @@ async function insertGeneratedQuestions(bankId: string, questions: ParsedQuestio
           ans.value === null ? null : JSON.stringify(ans.value),
           q.scoreWeight,
           q.difficulty,
+          q.aiSource ?? null,
+          q.aiSourceRef ?? null,
         ]
       );
-      inserted.push({ id, content: q.content, questionType: q.questionType });
+      inserted.push({ id, content: q.content, questionType: q.questionType, aiSource: q.aiSource ?? null });
     } catch (err: any) {
       errors.push(`Soal #${rowNum} gagal disimpan: ${err?.message || "database error"}`);
     }
@@ -593,13 +666,44 @@ addRoute("POST", /^\/api\/ai\/grade\/essay$/, async (req: AuthenticatedRequest, 
   }
 });
 
+// GET /api/ai/materials — daftar lampiran materi yang terlihat oleh caller
+// (guru: miliknya sendiri, admin: semua) untuk pemilih referensi generate AI.
+addRoute("GET", /^\/api\/ai\/materials$/, async (req: AuthenticatedRequest, res) => {
+  const caller = req.authUser;
+  if (!caller || !isStaffCaller(caller)) {
+    return json(res, { error: "Hanya guru/admin yang dapat melihat daftar materi." }, 403);
+  }
+  const rows = await listMaterials(caller);
+  const url = new URL(req.url, "http://localhost");
+  const subjectFilter = url.searchParams.get("subjectId");
+  json(
+    res,
+    rows
+      .filter((r) => !subjectFilter || String(r.subject_id ?? "") === String(subjectFilter))
+      .map((r) => {
+        const ext = String(r.file_name || "").toLowerCase().match(/\.[a-z0-9]+$/)?.[0] || "";
+        return {
+          id: r.id,
+          fileName: r.file_name,
+          kind: r.kind,
+          sizeBytes: Number(r.size_bytes) || 0,
+          createdAt: r.created_at,
+          contextTitle: r.context_title,
+          subjectId: r.subject_id,
+          subjectName: r.subject_name,
+          supported: SUPPORTED_EXTENSIONS.includes(ext),
+        };
+      }),
+    200,
+  );
+});
+
 addRoute("POST", /^\/api\/ai\/questions\/generate$/, async (req: AuthenticatedRequest, res, body) => {
   if (!req.authUser) return json(res, { error: "Authentication required" }, 401);
 
   const bankId = typeof body.bankId === "string" ? body.bankId.trim() : "";
   const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
-  const count = Math.min(Math.max(Number(body.count ?? 10) || 10, 1), 50);
-  const rawTypes: unknown[] = Array.isArray(body.questionTypes)
+  const count = Math.min(Math.max(Number(body.count ?? 10) || 10, 1), 50);  const rawTypes: unknown[] = Array.isArray(body.questionTypes)
     ? body.questionTypes
     : typeof body.questionType === "string"
       ? [body.questionType]
@@ -633,10 +737,71 @@ addRoute("POST", /^\/api\/ai\/questions\/generate$/, async (req: AuthenticatedRe
   const config = await loadAiConfig();
   if (!config.apiKey && providerNeedsApiKey(config.provider)) return json(res, { error: "AI API key is not configured. Fill AI Agent in admin settings." }, 400);
 
+  // ── Build 140: referensi materi guru (grounding) ───────────────────────
+  // body.material = { mode: "off"|"manual"|"auto", uploadIds?: string[], subjectId?: number|string }
+  const materialRaw = (body.material ?? {}) as {
+    mode?: unknown;
+    uploadIds?: unknown;
+    subjectId?: unknown;
+  };
+  const materialMode: MaterialMode =
+    materialRaw.mode === "manual" ? "manual" : materialRaw.mode === "auto" ? "auto" : "off";
+  const materialUploadIds = Array.isArray(materialRaw.uploadIds)
+    ? materialRaw.uploadIds.map((v) => String(v).trim()).filter(Boolean).slice(0, 10)
+    : [];
+  if (materialMode === "manual" && materialUploadIds.length === 0) {
+    return json(res, { error: "Mode manual membutuhkan minimal satu materi terpilih." }, 400);
+  }
+
+  let materialBlock = "";
+  let materialSummary: {
+    mode: MaterialMode;
+    budgetChars: number;
+    sources: unknown[];
+    skipped: unknown[];
+  } | null = null;
+  if (materialMode !== "off") {
+    const rows = await listMaterials(req.authUser);
+    const bankSubject = await queryOne<{ subject_id: number | null }>(
+      `SELECT subject_id FROM question_banks WHERE id = $1`,
+      [bankId]
+    );
+    const ctx = await buildMaterialContext({
+      mode: materialMode,
+      rows,
+      uploadIds: materialUploadIds,
+      subjectId:
+        typeof materialRaw.subjectId === "number" || typeof materialRaw.subjectId === "string"
+          ? materialRaw.subjectId
+          : bankSubject?.subject_id ?? null,
+      prompt,
+    });
+    if (!ctx.block) {
+      return json(res, {
+        error:
+          "Tidak ada materi yang bisa dipakai sebagai referensi. Pastikan berkas berformat .docx/.pdf/.xlsx/.csv/.txt/.md (maks 15 MB) dan berisi teks (bukan hasil scan).",
+        skipped: ctx.skipped.map((s) => ({ file: safeFileName(s.fileName), reason: s.reason })),
+      }, 400);
+    }
+    materialBlock = ctx.block;
+    materialSummary = {
+      mode: materialMode,
+      budgetChars: ctx.budget,
+      sources: ctx.sources,
+      skipped: ctx.skipped.map((s) => ({ file: safeFileName(s.fileName), reason: s.reason })),
+    };
+  }
+
   const startedAt = Date.now();
   try {
     const allowedTypes = mappedTypes.join(", ");
-    const aiPrompt = `${prompt}\n\nCreate exactly ${count} questions. Keep the output as valid JSON. Use only these requested question types: ${allowedTypes}. ${random ? "Randomize the distribution of the requested question types, but still honor the final requested question count and the selected question type list." : "Generate a result that strictly follows the requested type list and never invent a type outside it."} For each single or multiple choice question, produce exactly five option objects with keys A, B, C, D, E and values in that order; for each question include: type, content, difficulty, points, options, answer, explanation, topic, and formula_latex.`;
+    const materialPrefix = materialBlock
+      ? `${materialBlock}\n\n${MATERIAL_TAGGING_RULES}\n\n`
+      : "";
+    const materialFieldNote = materialBlock
+      ? ' Also include "source" ("materi" or "campuran") and "source_ref" (array of used M-ids like ["M1"]).'
+      : "";
+    const aiPrompt = `${materialPrefix}${prompt}\n\nCreate exactly ${count} questions. Keep the output as valid JSON. Use only these requested question types: ${allowedTypes}. ${random ? "Randomize the distribution of the requested question types, but still honor the final requested question count and the selected question type list." : "Generate a result that strictly follows the requested type list and never invent a type outside it."} For each single or multiple choice question, produce exactly five option objects with keys A, B, C, D, E and values in that order; for each question include: type, content, difficulty, points, options, answer, explanation, topic, and formula_latex.${materialFieldNote}`;
     const raw = await callProvider(aiPrompt, config.provider, config.model, config.apiKey, config.baseUrl);
     const { questions: generated, parseError } = parseGeneratedPayload(raw);
     const parsed = generated.slice(0, Math.max(1, Math.min(50, count || 10))).map(normalizeGeneratedQuestion);
@@ -665,6 +830,9 @@ addRoute("POST", /^\/api\/ai\/questions\/generate$/, async (req: AuthenticatedRe
       durationMs: Date.now() - startedAt,
       provider: config.provider,
       model: config.model,
+      // Build 140 — ringkasan grounding + tag per soal yang tersimpan.
+      material: materialSummary,
+      sourceTags: inserted.map((row: any) => row.aiSource ?? null),
     });
   } catch (err: any) {
     // Timeout vs other failure get distinct, actionable messages.

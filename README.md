@@ -2,11 +2,11 @@
 
 Platform **Computer Based Test (CBT)** sekolah multi-peran (admin / guru / siswa) — ujian digital dengan anti-cheat dua lapis, monitoring real-time, penilaian manual & AI, plus modul belajar (LMS), tugas, berita sekolah, penyimpanan berkas, PWA, dan game mode trivia.
 
-> Build dokumentasi saat ini: **139 (2026-11-12)**. Riwayat lengkap: [`CHANGELOG.md`](./CHANGELOG.md) · Status fitur: [`FEATURES.md`](./FEATURES.md) · Katalog API: [`API_ENDPOINTS.md`](./API_ENDPOINTS.md)
+> Build dokumentasi saat ini: **140 (2026-11-13)**. Riwayat lengkap: [`CHANGELOG.md`](./CHANGELOG.md) · Status fitur: [`FEATURES.md`](./FEATURES.md) · Katalog API: [`API_ENDPOINTS.md`](./API_ENDPOINTS.md)
 
 ## Fitur utama
 
-- **Ujian end-to-end** — bank soal 5 tipe (PG, multi-jawaban, benar/salah, menjodohkan, esai) dengan media & LaTeX, impor/ekspor Excel/CSV/Word/QTI, generate soal AI; wizard ujian 3 langkah; token masuk 6 karakter; randomisasi ber-seed; autosave + resume + antrean jawaban offline; skor dihitung otoritatif di server.
+- **Ujian end-to-end** — bank soal 5 tipe (PG, multi-jawaban, benar/salah, menjodohkan, esai) dengan media & LaTeX, impor/ekspor Excel/CSV/Word/QTI, generate soal AI yang bisa **digrounded pada materi yang diunggah guru** (build 140, dengan penanda sumber per soal); wizard ujian 3 langkah; token masuk 6 karakter; randomisasi ber-seed; autosave + resume + antrean jawaban offline; skor dihitung otoritatif di server.
 - **Anti-cheat** — kiosk fullscreen, blokir shortcut, violation tracker dengan auto-submit (klien) + gerbang SEB/server-side, re-skoring, pencatatan IP/device/focus-loss.
 - **Monitoring guru** — SSE real-time, force submit, extra time, reset sesi.
 - **Penilaian** — esai manual/AI, analisis butir soal, ekspor XLSX/CSV.

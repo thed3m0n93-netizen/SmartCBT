@@ -81,6 +81,8 @@ Status umum saat ini:
 - Key bawaan NVIDIA server-only (`ai-keys.ts`) — praktis tanpa konfigurasi, **wajib rotasi sebelum produksi**
 - UI AI Agent lengkap di Pengaturan; resolusi kunci: tersimpan → bawaan → env
 - Generate soal, grading esai ujian, grading tugas batch, fallback parser `reasoning_content`
+- **Generate soal ber-grounding materi (build 140):** AI mengambil referensi dari lampiran Modul/Ujian/Tugas guru (ekstraksi docx/pdf/xlsx/csv/md/txt → chunk → skor relevansi → budget konteks); mode off/auto/manual (`material-context.ts`, `GET /api/ai/materials`)
+- **Provenance per soal (build 140):** label `materi`/`campuran` + sumber M<n> tersimpan di `questions.ai_source`, tampil sebagai badge; hasil generate menyertakan ringkasan berkas yang dipakai & yang dilewati
 
 ### 10. Modul belajar (LMS)
 - CRUD modul rich text, distribusi multi-kelas + mapel, lampiran (termasuk `.md` ala README)

@@ -14,13 +14,15 @@ import {
   fetchQuestionTemplate,
   downloadFromBase64,
   uploadQuestionMedia,
+  fetchAiMaterials,
   type QuestionRow,
   type QuestionBankRow,
   type SubjectRow,
   type QuestionUpsertPayload,
   type QuestionImportResult,
+  type AiMaterialRow,
 } from "../../lib/api";
-import { importQuestionsFromPrompt } from "../../lib/aiagent";
+import { importQuestionsFromPrompt, type AiMaterialSummary } from "../../lib/aiagent";
 import { useAuth } from "../../app/AuthContext";
 import { useI18n } from "../../i18n";
 import MathText from "../../components/MathText";
@@ -249,6 +251,8 @@ interface Question {
   hasImage?: boolean;
   hasAudio?: boolean;
   usageCount: number;
+  /** Build 140 — asal hasil AI generate ber-grounding materi. */
+  aiSource?: "materi" | "campuran" | null;
 }
 
 function mapDbQuestion(row: QuestionRow): Question {
@@ -286,6 +290,7 @@ function mapDbQuestion(row: QuestionRow): Question {
     hasImage: row.media_type === "image",
     hasAudio: row.media_type === "audio",
     usageCount: 0,
+    aiSource: row.ai_source ?? null,
   };
 }
 
@@ -359,6 +364,15 @@ export default function QuestionBankPage() {
     essay: false,
   });
   const [aiRandom, setAiRandom] = useState(false);
+
+  // ── AI referensi materi (build 140) ─────────────────────────────────────
+  const [aiMaterialMode, setAiMaterialMode] = useState<"off" | "manual" | "auto">("off");
+  const [aiMaterials, setAiMaterials] = useState<AiMaterialRow[] | null>(null);
+  const [aiMaterialsLoading, setAiMaterialsLoading] = useState(false);
+  const [aiMaterialIds, setAiMaterialIds] = useState<Set<string>>(new Set());
+  const [aiMaterialSummary, setAiMaterialSummary] = useState<AiMaterialSummary | null>(null);
+  const [aiMaterialError, setAiMaterialError] = useState<string | null>(null);
+
   const [showToolMenu, setShowToolMenu] = useState(false);
 
   // ── AI Generate progress overlay ────────────────────────────────────────
@@ -778,6 +792,28 @@ export default function QuestionBankPage() {
     }
   }
 
+  /** Muat daftar materi sekali saja (dipanggil saat mode manual/auto dipilih). */
+  async function ensureAiMaterialsLoaded() {
+    if (aiMaterials || aiMaterialsLoading) return;
+    setAiMaterialsLoading(true);
+    setAiMaterialError(null);
+    try {
+      setAiMaterials(await fetchAiMaterials());
+    } catch (err: any) {
+      setAiMaterialError(err?.message || "Gagal memuat daftar materi.");
+    } finally {
+      setAiMaterialsLoading(false);
+    }
+  }
+
+  function toggleAiMaterial(id: string) {
+    setAiMaterialIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
   async function runAiImport() {
     if (!importPrompt.trim()) {
       setImportError("Tulis prompt AI untuk membuat soal.");
@@ -794,11 +830,16 @@ export default function QuestionBankPage() {
       setImportError("Pilih minimal satu tipe soal untuk AI Import.");
       return;
     }
+    if (aiMaterialMode === "manual" && aiMaterialIds.size === 0) {
+      setImportError("Mode manual: centang minimal satu materi referensi.");
+      return;
+    }
 
     setImporting(true);
     setImportBusy(true);
     setImportError(null);
     setImportResult(null);
+    setAiMaterialSummary(null);
     // Arm the progress overlay before the long request goes out.
     setAiActiveCount(aiQuestionCount);
     setAiProgress(0);
@@ -807,7 +848,15 @@ export default function QuestionBankPage() {
     setAiMinimized(false);
     setAiOverlayOpen(true);
     try {
-      const result = await importQuestionsFromPrompt(importPrompt, importBankId, aiQuestionCount, selectedTypes, aiRandom);
+      const material =
+        aiMaterialMode === "off"
+          ? undefined
+          : {
+              mode: aiMaterialMode,
+              ...(aiMaterialMode === "manual" ? { uploadIds: Array.from(aiMaterialIds) } : {}),
+            };
+      const result = await importQuestionsFromPrompt(importPrompt, importBankId, aiQuestionCount, selectedTypes, aiRandom, material);
+      setAiMaterialSummary(result.material);
       setAiProgress(100);
       setAiStage(t("{n} questions generated. Saving to bank…", { n: result.imported }));
       setImportResult({
@@ -1239,6 +1288,8 @@ export default function QuestionBankPage() {
                       </span>
                       {q.hasLatex && <Chip color={C.warn.main} size="sm">LaTeX</Chip>}
                       {q.hasAudio && <Chip color={C.warn.main} size="sm">🔊</Chip>}
+                      {q.aiSource === "materi" && <Chip color={C.ok.main} size="sm">📚 materi</Chip>}
+                      {q.aiSource === "campuran" && <Chip color={C.warn.main} size="sm">± campuran</Chip>}
                     </div>
                   </button>
                 ))}
@@ -1868,7 +1919,109 @@ export default function QuestionBankPage() {
                       style={{ ...controlStyle, background: C.base.surface, color: C.base.text }}
                     />
                   </div>
+
+                  {/* ── Build 140: referensi materi (grounding AI) ── */}
+                  <div className="mt-4">
+                    <div className="text-[11px] font-semibold uppercase tracking-wide mb-1" style={{ color: C.base.textFaint }}>
+                      Referensi Materi
+                    </div>
+                    <div className="flex flex-wrap gap-3 mb-2">
+                      {[
+                        { key: "off", label: "Tanpa materi" },
+                        { key: "auto", label: "Otomatis relevan" },
+                        { key: "manual", label: "Pilih materi" },
+                      ].map((opt) => (
+                        <label key={opt.key} className="flex items-center gap-1.5 text-[11px]" style={{ color: C.base.textBody }}>
+                          <input
+                            type="radio"
+                            name="ai-material-mode"
+                            checked={aiMaterialMode === opt.key}
+                            onChange={() => {
+                              setAiMaterialMode(opt.key as "off" | "auto" | "manual");
+                              if (opt.key !== "off") ensureAiMaterialsLoaded();
+                            }}
+                          />
+                          {opt.label}
+                        </label>
+                      ))}
+                    </div>
+
+                    {aiMaterialMode === "auto" && (
+                      <p className="text-[11px] mb-1" style={{ color: C.base.textMuted }}>
+                        AI akan memprioritaskan potongan dari lampiran materi pada mapel bank ini, lalu materi terbaru.
+                      </p>
+                    )}
+
+                    {aiMaterialMode !== "off" && (
+                      <>
+                        {aiMaterialsLoading && (
+                          <p className="text-[11px]" style={{ color: C.base.textMuted }}>Memuat daftar materi…</p>
+                        )}
+                        {aiMaterialError && (
+                          <p className="text-[11px]" style={{ color: C.danger.text }}>{aiMaterialError}</p>
+                        )}
+                        {aiMaterials && aiMaterials.length === 0 && !aiMaterialsLoading && (
+                          <p className="text-[11px]" style={{ color: C.base.textMuted }}>
+                            Belum ada materi. Unggah lampiran (.docx/.pdf/.xlsx/.csv/.txt/.md) di Modul Belajar, Ujian, atau Tugas lebih dulu.
+                          </p>
+                        )}
+                        {aiMaterials && aiMaterials.length > 0 && (
+                          <div className="max-h-44 overflow-y-auto rounded-lg p-1.5" style={{ background: C.base.surface, border: `1px solid ${C.base.border}` }}>
+                            {aiMaterials.map((m) => {
+                              const selectable = m.supported;
+                              const checked = aiMaterialIds.has(m.id);
+                              return (
+                                <label
+                                  key={m.id}
+                                  className={`flex items-center gap-2 px-2 py-1.5 rounded text-[11px] ${selectable ? "" : "opacity-50"}`}
+                                  style={{ color: C.base.textBody, cursor: selectable ? "pointer" : "not-allowed" }}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    disabled={!selectable}
+                                    checked={aiMaterialMode === "auto" ? false : checked}
+                                    onChange={() => toggleAiMaterial(m.id)}
+                                  />
+                                  <span className="truncate flex-1" title={m.fileName}>{m.fileName}</span>
+                                  <span className="shrink-0" style={{ color: C.base.textMuted }}>
+                                    {m.subjectName || (m.kind === "exam-material" ? "Ujian" : m.kind === "assignment-material" ? "Tugas" : "Modul")}
+                                    {!selectable && " · format?"}
+                                  </span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        )}
+                        {aiMaterialMode === "manual" && aiMaterials && aiMaterials.length > 0 && (
+                          <p className="text-[11px] mt-1" style={{ color: C.base.textMuted }}>
+                            {aiMaterialIds.size} materi dipilih (maks 10).
+                          </p>
+                        )}
+                      </>
+                    )}
+                  </div>
                 </div>
+
+                {aiMaterialSummary && (aiMaterialSummary.sources.length > 0 || aiMaterialSummary.skipped.length > 0) && (
+                  <div className="rounded-lg px-3 py-2.5 text-[11px]" style={{ background: C.brand.bg, color: C.base.text }}>
+                    <div className="font-semibold mb-1">
+                      Referensi dipakai: {aiMaterialSummary.sources.length} berkas · ~{aiMaterialSummary.budgetChars.toLocaleString("id-ID")} karakter konteks
+                    </div>
+                    <ul className="list-disc pl-4 space-y-0.5">
+                      {aiMaterialSummary.sources.map((s) => (
+                        <li key={s.id}>
+                          {s.fileName} — {s.chunksUsed} potongan
+                          {s.subjectName ? ` (${s.subjectName})` : ""}
+                        </li>
+                      ))}
+                    </ul>
+                    {aiMaterialSummary.skipped.length > 0 && (
+                      <div className="mt-1" style={{ color: C.warn.dark }}>
+                        Dilewati: {aiMaterialSummary.skipped.map((sk) => `${sk.file} (${sk.reason})`).join("; ")}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {importResult && (
                   <div className="rounded-lg px-3 py-2.5 text-xs" style={importResult.imported > 0 ? { background: C.ok.msgBg, color: C.ok.msgText } : { background: C.danger.bgLight, color: C.danger.text }}>

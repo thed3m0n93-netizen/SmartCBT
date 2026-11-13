@@ -34,13 +34,46 @@ export async function loadAiAgentSettings(): Promise<AiAgentSettings> {
   };
 }
 
+/** Build 140 — konfigurasi referensi materi untuk AI generate. */
+export interface AiMaterialOptions {
+  mode: "off" | "manual" | "auto";
+  /** Id uploads (dari GET /api/ai/materials) — wajib untuk mode manual. */
+  uploadIds?: string[];
+  /** Saring prioritas mapel untuk mode auto (default: mapel bank tujuan). */
+  subjectId?: number | string | null;
+}
+
+export interface AiMaterialSource {
+  id: string;
+  fileName: string;
+  kind: string;
+  subjectName: string | null;
+  chunksUsed: number;
+  charsUsed: number;
+}
+
+export interface AiMaterialSummary {
+  mode: string;
+  budgetChars: number;
+  sources: AiMaterialSource[];
+  skipped: Array<{ file: string; reason: string }>;
+}
+
 export async function importQuestionsFromPrompt(
   prompt: string,
   bankId: string,
   count = 5,
   questionTypes: string[] | string = "single",
-  random = false
-): Promise<{ success: boolean; imported: number; totalParsed: number; errors: string[] }> {
+  random = false,
+  material?: AiMaterialOptions
+): Promise<{
+  success: boolean;
+  imported: number;
+  totalParsed: number;
+  errors: string[];
+  material: AiMaterialSummary | null;
+  sourceTags: Array<string | null>;
+}> {
   const normalizedTypes = Array.isArray(questionTypes)
     ? questionTypes.map((type) => String(type).trim().toLowerCase()).filter(Boolean)
     : [String(questionTypes || "single").trim().toLowerCase()];
@@ -51,6 +84,7 @@ export async function importQuestionsFromPrompt(
     questionTypes: normalizedTypes,
     questionType: normalizedTypes[0] ?? "single",
     random,
+    ...(material && material.mode !== "off" ? { material } : {}),
   };
 
   // Use the shared token accessor — this previously read a hardcoded key
@@ -68,7 +102,16 @@ export async function importQuestionsFromPrompt(
 
   const data = await res.json().catch(() => null);
   if (!res.ok) {
-    throw new Error((data as { error?: string })?.error || "AI import failed");
+    // Sertakan alasan per-berkas (payload.skipped) supaya guru tahu kenapa
+    // referensi ditolak, bukan hanya pesan umum dari server.
+    const skipped = Array.isArray((data as any)?.skipped)
+      ? (data as any).skipped
+          .map((s: any) => `${s.file}: ${s.reason}`)
+          .slice(0, 4)
+          .join("; ")
+      : "";
+    const base = (data as { error?: string })?.error || "AI import failed";
+    throw new Error(skipped ? `${base} (${skipped}${(data as any).skipped.length > 4 ? "…" : ""})` : base);
   }
 
   return {
@@ -76,6 +119,8 @@ export async function importQuestionsFromPrompt(
     imported: Number(data?.imported ?? 0),
     totalParsed: Number(data?.totalParsed ?? data?.imported ?? 0),
     errors: Array.isArray(data?.errors) ? data.errors : [],
+    material: (data?.material as AiMaterialSummary) ?? null,
+    sourceTags: Array.isArray(data?.sourceTags) ? data.sourceTags : [],
   };
 }
 

@@ -1,7 +1,7 @@
 # SmartCBT — Status Implementasi Fitur
 
 > Dokumen ini mencerminkan status implementasi yang berlaku pada build terbaru.
-> **Terakhir disinkronkan dengan kode: 2026-11-12 (build 139)** — seluruh status
+> **Terakhir disinkronkan dengan kode: 2026-11-13 (build 140)** — seluruh status
 > diverifikasi ulang langsung terhadap kode sumber (route `addRoute`, file, dan
 > diff terhadap snapshot `z134/`), mencakup pekerjaan yang selesai setelah build
 > 135 dan tercatat retroaktif di `CHANGELOG.md` sebagai build 136. Termasuk
@@ -76,6 +76,8 @@
 | Render media inline di bank soal dan ujian siswa | ✅ | `src/components/QuestionMedia.tsx` |
 | Render LaTeX / formula matematika | ✅ | `src/components/MathText.tsx` |
 | Generate soal otomatis via AI (Ollama, OpenAI, Gemini, Anthropic, DeepSeek, GLM, Mistral, Groq, Custom) | ✅ | `src/lib/server/aiagent.ts`, `src/lib/ai-providers.ts` |
+| **Generate soal ber-grounding MATERI guru** (build 140): referensi dari lampiran Modul/Ujian/Tugas, mode off/auto/manual | ✅ | `src/lib/server/material-context.ts` (ekstraksi docx/pdf/xlsx/csv/md/txt + chunk + skor relevansi + budget), `GET /api/ai/materials`, blok REFERENSI di prompt `aiagent.ts` |
+| **Provenance per soal** (build 140): label `materi`/`campuran` + sumber M<n>, tersimpan & jadi badge daftar soal | ✅ | kolom `questions.ai_source`/`ai_source_ref` (`schema.ts` `COLUMN_MIGRATIONS`), `normalizeSourceRef` di `aiagent.ts`, badge di `QuestionBankPage.tsx` |
 | Timeout + parser robust untuk model kecil agar JSON tidak terpotong | ✅ | `src/lib/server/aiagent.ts` |
 | Impor/ekspor soal Excel/CSV/Word/QTI + unduh template | ✅ | `src/lib/server/question-import.ts` (`POST /api/questions/import`, `GET /api/questions/export`, `GET /api/questions/template`; xlsx + mammoth + fast-xml-parser), UI di `QuestionBankPage.tsx` |
 
@@ -421,7 +423,7 @@
 | 1. Infrastruktur DB & Instalasi | 11 | 0 | 0 |
 | 2. Autentikasi & Pengguna | 12 | 0 | 1 |
 | 3. Dashboard Admin & Aktivitas | 9 | 0 | 0 |
-| 4. Bank Soal, Media, dan AI Generate | 11 | 0 | 0 |
+| 4. Bank Soal, Media, dan AI Generate | 13 | 0 | 0 |
 | 5. Manajemen Ujian | 10 | 0 | 0 |
 | 6. Pelaksanaan Ujian (Siswa) | 19 | 1 | 0 |
 | 7. Monitoring Real-Time & Pengawasan | 10 | 0 | 1 |

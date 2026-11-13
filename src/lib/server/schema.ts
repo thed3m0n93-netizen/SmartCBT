@@ -1305,6 +1305,13 @@ export const COLUMN_MIGRATIONS: ColumnMigration[] = [
   { label: "assignment_submissions.ai_score", table: "assignment_submissions", column: "ai_score", pg: "NUMERIC(7,2)", mysql: "DECIMAL(7,2)" },
   { label: "assignment_submissions.ai_feedback", table: "assignment_submissions", column: "ai_feedback", pg: "TEXT", mysql: "TEXT" },
   { label: "assignment_submissions.ai_graded_at", table: "assignment_submissions", column: "ai_graded_at", pg: "TIMESTAMPTZ", mysql: "TIMESTAMP" },
+  // Provenance soal hasil AI (build 140 — generate ber-grounding materi):
+  // 'materi' | 'campuran' + label sumber M<n> yang diakui model. Keduanya
+  // nullable; soal manual/impor dan AI lama tetap NULL. ensureColumn di
+  // aiagent.ts membuat kolom saat first-use, entri ini memastikan
+  // "Update Database" di /setup juga menyasar DB lama.
+  { label: "questions.ai_source", table: "questions", column: "ai_source", pg: "VARCHAR(12) NULL", mysql: "VARCHAR(12) NULL" },
+  { label: "questions.ai_source_ref", table: "questions", column: "ai_source_ref", pg: "TEXT NULL", mysql: "TEXT NULL" },
   // Learning-module subject (mata pelajaran). Nullable so modules created
   // before this column keep working and stay visible to their students.
   { label: "learning_modules.subject_id", table: "learning_modules", column: "subject_id", pg: "BIGINT NULL", mysql: "BIGINT NULL" },

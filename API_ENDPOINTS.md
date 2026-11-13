@@ -209,7 +209,8 @@ Dasar arsitektur:
 |--------|----------|-----------|------|
 | POST | `/api/ai/grade/essay` | Minta penyedia AI menilai satu jawaban esai. Body: `{ answerId }`. | Ya |
 | POST | `/api/ai/grade/essay/all` | Batch AI-grade setiap esai yang belum dinilai dalam ujian. Body: `{ examId }`. | Ya |
-| POST | `/api/ai/questions/generate` | Generate soal dengan AI. | Ya |
+| POST | `/api/ai/questions/generate` | Generate soal dengan AI. Body: `{ bankId, prompt, count, questionTypes[], random, material? }`. **Build 140:** `material = { mode: "off"\|"manual"\|"auto", uploadIds?: string[], subjectId? }` men-grounding soal pada lampiran materi guru; respons sukses menambah `material` (ringkasan berkas/chunks/skipped) + `sourceTags[]`. Mode non-off tanpa materi terekstrak → **400** dengan daftar alasan per berkas. | Ya |
+| GET | `/api/ai/materials` | **Build 140.** Daftar lampiran materi (kind `learning-material`/`exam-material`/`assignment-material`) yang terlihat caller (guru: miliknya, admin: semua) — untuk pemilih referensi. Query: `?subjectId=`. Tiap entri `{ id, fileName, kind, subjectName, contextTitle, supported }`. | Ya (staff) |
 
 ## Dashboard
 

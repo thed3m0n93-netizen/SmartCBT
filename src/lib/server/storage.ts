@@ -44,6 +44,17 @@ function resolveUploadDir(): string {
 const UPLOAD_DIR = resolveUploadDir();
 const MAX_BYTES = 50 * 1024 * 1024; // 50 MB per file
 
+/**
+ * Petakan URL tersimpan `/uploads/x.ext` ke path absolut di disk (build 140).
+ * `basename()` menebas komponen direktori — path manipulatif dari DB tidak
+ * bisa keluar dari UPLOAD_DIR (pola sama dengan handler hapus).
+ */
+export function uploadDiskPath(fileUrl: string): string | null {
+  const name = basename(String(fileUrl || "").split("?")[0]);
+  if (!name || name === "." || name === "..") return null;
+  return join(UPLOAD_DIR, name);
+}
+
 // Best-effort creation: a missing or read-only uploads folder must NOT crash
 // the whole API at import time (upload requests fail with a clear error
 // instead, and the standalone server keeps serving everything else).
