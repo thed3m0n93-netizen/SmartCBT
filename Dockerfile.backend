@@ -39,7 +39,9 @@ RUN chown -R appuser:appgroup /app/server
 # but the volume mount point must be writable by appuser. We use a tiny
 # entrypoint wrapper to fix volume ownership on first start.
 COPY deploy/backend-entrypoint.sh /app/server/entrypoint.sh
-RUN chmod +x /app/server/entrypoint.sh
+# Build 145: buang CR agar `set -eu` baris pertama tidak terbaca `set -e\r`
+# oleh dash Alpine ("illegal option -").
+RUN sed -i 's/\r$//' /app/server/entrypoint.sh && chmod +x /app/server/entrypoint.sh
 
 EXPOSE 8441
 

@@ -119,6 +119,28 @@ Three named volumes survive `docker compose down` (unless `-v` is used):
 | `uploads-data` | `/app/uploads` | Student attachments, question images, learning materials |
 | `server-config` | `/app/server/dist` | `db-config.json` (DB config written by /setup page) |
 
+## Troubleshooting: Container Crash-Loop karena CRLF (build 145)
+
+| Log container | Penyebab |
+|---|---|
+| `smartcbt-frontend`: `exec /entrypoint.sh: no such file or directory` (berulang) | Shebang terbaca `#!/bin/sh\r` — file deploy bereol **CRLF** hasil checkout Windows (`core.autocrlf=true`) |
+| `smartcbt-backend`: `/app/server/entrypoint.sh: set: line 9: illegal option -` | `set -eu` terbaca `set -e\r` oleh dash Alpine — akar yang sama |
+
+File-nya ADA; yang merusak adalah carriage-return. Sejak build 145 proyek dilindungi
+tiga lapis: aturan `text eol=lf` di `.gitattributes` (untuk `*.sh`, `Dockerfile*`,
+`*.template`, contoh conf/service), working copy sudah dinormalisasi LF, dan KEDUA
+Dockerfile menjalankan `sed -i 's/\r$//'` pada entrypoint (+ template nginx) saat
+image build — jadi image tetap sehat walau file disalin dari luar git.
+
+Kalau image lama masih tertanam, rebuild tanpa cache:
+
+```bash
+npm run build:server          # bundle backend harus segar
+docker compose build --no-cache backend frontend
+docker compose up -d
+docker compose logs -f backend frontend   # keduanya "Up" tanpa restart
+```
+
 ## Production Checklist
 
 - [ ] Change `POSTGRES_PASSWORD` in `.env`

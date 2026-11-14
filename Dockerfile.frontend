@@ -24,9 +24,13 @@ RUN apk add --no-cache gettext
 
 # Konfigurasi entrypoint dan Nginx template
 COPY deploy/entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
-
 COPY deploy/nginx.docker.conf.template /etc/nginx/conf.d/smartcbt.conf.template
+
+# Build 145: buang carriage-return (checkout Windows bisa bereol CRLF) agar
+# shebang `#!/bin/sh` & direktif nginx tidak rusak di Alpine — penyebab
+# crash-loop "exec /entrypoint.sh: no such file or directory".
+RUN sed -i 's/\r$//' /entrypoint.sh /etc/nginx/conf.d/smartcbt.conf.template \
+    && chmod +x /entrypoint.sh
 
 # Salin hasil build dari stage builder ke folder public Nginx
 COPY --from=builder /app/dist /usr/share/nginx/html

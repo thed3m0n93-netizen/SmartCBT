@@ -1,7 +1,7 @@
 # SmartCBT — Status Implementasi Fitur
 
 > Dokumen ini mencerminkan status implementasi yang berlaku pada build terbaru.
-> **Terakhir disinkronkan dengan kode: 2026-11-14 (build 144)** — seluruh status
+> **Terakhir disinkronkan dengan kode: 2026-11-14 (build 145)** — seluruh status
 > diverifikasi ulang langsung terhadap kode sumber (route `addRoute`, file, dan
 > diff terhadap snapshot `z134/`), mencakup pekerjaan yang selesai setelah build
 > 135 dan tercatat retroaktif di `CHANGELOG.md` sebagai build 136. Termasuk
@@ -234,6 +234,7 @@
 | Backup / restore database dari UI | ✅ | server backup handlers + UI |
 | Multi-bahasa (i18n) | ✅ | dictionary `id` + `en` |
 | Deployment Docker all-in-one (postgres + backend + frontend nginx) | ✅ | `Dockerfile.backend`, `Dockerfile.frontend`, `docker-compose.yml`, `deploy/entrypoint.sh`, `DOCKER_README.md` (±7–17 Okt, build 136). Wajib `npm run build:server` di host sebelum compose up |
+| Deployment Docker tahan-CRLF (build 145) | ✅ | Aturan `text eol=lf` di `.gitattributes` untuk `*.sh`/Dockerfile/template + `sed 's/\r$//'` di kedua Dockerfile — memperbaiki crash-loop `exec /entrypoint.sh: no such file` & `set: illegal option -` |
 | Server standalone single-origin (API + `/uploads` + SPA via `STATIC_DIR`) | ✅ | `src/lib/server/standalone.ts`, `scripts/build-standalone-server.mjs` → `server/dist/server.mjs` |
 | PWA: manifest, service worker (shell network-first, `/api/*` selalu live), install banner | ✅ | `public/manifest.webmanifest`, `public/sw.js`, `src/hooks/usePwa.ts`, `PwaInstallBanner.tsx` |
 | Engine pagination & sorting server-side (kontrak `parsePagedRequest`/`jsonPaged`/`apiGetPaged`) | 🔶 | `src/lib/server/utils.ts`, `src/lib/api.ts` — tersedia & dipakai endpoint storage, tetapi mayoritas halaman masih client-side paging (`useDataTable`) |
@@ -452,7 +453,7 @@
 | 9. Penyimpanan File & Branding Sekolah | 12 | 0 | 0 |
 | 10. AI & Integrasi Eksternal | 8 | 0 | 0 |
 | 11. Berita & Pengumuman Sekolah | 32 | 0 | 2 |
-| 12. Infrastruktur Teknis | 8 | 2 | 2 |
+| 12. Infrastruktur Teknis | 9 | 2 | 2 |
 | 13. E-Rapor & Integrasi Dapodik (rencana) | 0 | 4 | 48 |
 | 14. Modul Belajar (LMS) | 9 | 0 | 2 |
 | 15. Tugas & Pengumpulan | 16 | 0 | 1 |
@@ -480,9 +481,9 @@
 
 1. **Gelombang otorisasi hasil audit 144** — `students.ts` sudah ditutup
    (build 144, matriks 9/9). Urutan berikutnya dengan pola `requireStaff`/
-   `requireAdmin` yang sama: **145** = exams tulis + questions/banks tulis +
+   `requireAdmin` yang sama: **146** = exams tulis + questions/banks tulis +
    grading esai + AI grade esai (keempatnya KRITIS — self-grading & vandalisme
-   ujian mungkin dilakukan siswa); **146** = questions/import + GET results +
+   ujian mungkin dilakukan siswa); **147** = questions/import + GET results +
    tokens (actor-id dari body → dari sesi) + SEB config/file + storage
    ownerId/legacy delete. Tiap gelombang wajib matriks peran sendiri.
 2. **Lanjutkan verifikasi E2E** — lobi kelas + persistensi + ownership +

@@ -144,3 +144,14 @@
 *.stl                filter=lfs diff=lfs merge=lfs -text
 *.nc                 filter=lfs diff=lfs merge=lfs -text
 *.mat                filter=lfs diff=lfs merge=lfs -text
+
+# ── Build/deploy scripts WAJIB LF ─────────────────────────────────────────
+# core.autocrlf=true di Windows mengubah working copy jadi CRLF — ini
+# merusak shebang `#!/bin/sh` dan `set -e` di dalam container Alpine
+# (error: "exec /entrypoint.sh: no such file or directory" /
+#  "set: line 9: illegal option -"). (build 145)
+*.sh                 text eol=lf
+Dockerfile*          text eol=lf
+*.template           text eol=lf
+*.service.example    text eol=lf
+*.conf.example       text eol=lf
