@@ -108,7 +108,7 @@ Status umum saat ini:
 ### 14. Lainnya
 - PWA installable; service worker tidak pernah mengintervensi `/api/*`
 - i18n ID/EN berbasis kamus string→terjemahan
-- Game Mode **Nusantara High** (build 141–142): MMO sekolah isometrik React in-app — multiplayer Socket.IO di backend yang sama (`/game-socket.io`, handshake token login), **identitas terkunci akun**, **lobi terpisah per kelas** (chat & avatar hanya sesama sekelas), **progres XP/uang/posisi persisten** per siswa, dan panel **Modul & Tugas in-game** yang memakai API siswa asli + navigasi ke halaman sebenarnya
+- Game Mode **Nusantara High** (build 141–144): MMO sekolah isometrik React in-app — multiplayer Socket.IO di backend yang sama (`/game-socket.io`, handshake token login), **identitas terkunci akun**, **lobi terpisah per kelas** (chat & avatar hanya sesama sekelas), **progres XP/uang/posisi persisten** per siswa, panel **Modul & Tugas in-game**, dan **kompatibel smartphone Android/iPhone dengan floating gamepad** (D-pad 8-arah + tombol E/Lompat/Lari, multi-touch, safe-area)
 
 ---
 

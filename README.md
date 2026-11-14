@@ -1,6 +1,6 @@
 # SmartCBT
 
-Platform **Computer Based Test (CBT)** sekolah multi-peran (admin / guru / siswa) — ujian digital dengan anti-cheat dua lapis, monitoring real-time, penilaian manual & AI, plus modul belajar (LMS), tugas, berita sekolah, penyimpanan berkas, PWA, dan game mode multiplayer **Nusantara High** — sekolah isometrik dalam-app dengan lobi terpisah per kelas, terikat akun login, dan akses modul & tugas langsung dari dalam game.
+Platform **Computer Based Test (CBT)** sekolah multi-peran (admin / guru / siswa) — ujian digital dengan anti-cheat dua lapis, monitoring real-time, penilaian manual & AI, plus modul belajar (LMS), tugas, berita sekolah, penyimpanan berkas, PWA, dan game mode multiplayer **Nusantara High** — sekolah isometrik dalam-app dengan lobi terpisah per kelas, terikat akun login, akses modul & tugas langsung dari dalam game, dan **ramah smartphone (floating gamepad Android/iPhone)**.
 
 > Build dokumentasi saat ini: **144 (2026-11-14)**. Riwayat lengkap: [`CHANGELOG.md`](./CHANGELOG.md) · Status fitur: [`FEATURES.md`](./FEATURES.md) · Katalog API: [`API_ENDPOINTS.md`](./API_ENDPOINTS.md)
 

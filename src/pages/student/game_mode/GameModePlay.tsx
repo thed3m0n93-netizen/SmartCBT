@@ -18,7 +18,7 @@ export default function GameModePlay() {
       {/* Pintu keluar selalu tersedia meski UI game sedang penuh (HUD/chat). */}
       <button
         onClick={() => navigate("/student/game-mode", { replace: true })}
-        className="absolute top-3 right-3 z-[60] px-3 py-1.5 text-[11px] font-semibold rounded-lg border border-slate-700/70 bg-slate-900/80 text-slate-300 hover:text-white hover:bg-slate-800 backdrop-blur transition-colors"
+        className="absolute top-3 right-3 max-sm:left-3 max-sm:right-auto z-[60] px-3 py-1.5 text-[11px] font-semibold rounded-lg border border-slate-700/70 bg-slate-900/80 text-slate-300 hover:text-white hover:bg-slate-800 backdrop-blur transition-colors"
         title="Kembali ke lobby"
       >
         ← Lobby

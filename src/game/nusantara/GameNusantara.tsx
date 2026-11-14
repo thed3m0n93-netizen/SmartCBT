@@ -4,6 +4,7 @@ import { io, type Socket } from 'socket.io-client';
 import { LoginScreen } from './LoginScreen';
 import { QuizModal } from './QuizModal';
 import { LearningHub } from './LearningHub';
+import { Gamepad, type VirtualDirection } from './Gamepad';
 import { useAuth } from '../../app/AuthContext';
 import {
   renderMinimap,
@@ -98,6 +99,36 @@ export default function GameNusantara() {
   const { user: authUser } = useAuth();
   const [lobbyLabel, setLobbyLabel] = useState<string | null>(null);
   const [studyOpen, setStudyOpen] = useState(false);
+
+  // ── Dukungan smartphone (build 144 lanjutan) ──────────────────────────
+  // Deteksi pointer kasar (touch). Gamepad virtual HANYA menulis ke keysRef/
+  // jumpRef — seluruh pipeline gerak (iso, sprint, energi, collision,
+  // playerMove) dipakai apa adanya dari logika keyboard.
+  const isTouch =
+    typeof window !== "undefined" &&
+    (!!window.matchMedia?.("(pointer: coarse)").matches || "ontouchstart" in window);
+  const [chatOpen, setChatOpen] = useState(!isTouch);
+
+  const applyVirtualDirection = useCallback((dir: VirtualDirection | null) => {
+    const k = keysRef.current;
+    k["w"] = !!dir?.up;
+    k["s"] = !!dir?.down;
+    k["a"] = !!dir?.left;
+    k["d"] = !!dir?.right;
+    if (dir && (dir.up || dir.down || dir.left || dir.right)) moveTargetRef.current = null;
+  }, []);
+  const virtualJump = useCallback(() => {
+    if (jumpRef.current.active) return; // guard sama persis dgn handler Space
+    jumpRef.current.active = true;
+    jumpRef.current.vel = 6.6;
+    const sid = selfIdRef.current;
+    const me = sid ? playersRef.current[sid] : null;
+    if (me) me.sitting = false;
+    soundFX.playJump();
+  }, []);
+  const virtualSprint = useCallback((active: boolean) => {
+    keysRef.current["shift"] = active;
+  }, []);
   const [hudStats, setHudStats] = useState({ xp: 0, money: 10000, energy: 100 });
   const [onlineCount, setOnlineCount] = useState(1);
   const [phase, setPhase] = useState<SchoolPhase>(SCHEDULES[0]);
@@ -792,7 +823,10 @@ export default function GameNusantara() {
       : 'Siswa Baru';
 
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-slate-950">
+    <div
+      className="relative w-screen h-screen overflow-hidden bg-slate-950 touch-none select-none"
+      style={{ height: "100dvh" } as React.CSSProperties}
+    >
       <canvas
         ref={canvasRef}
         onClick={handleCanvasClick}
@@ -807,7 +841,7 @@ export default function GameNusantara() {
       {gameState === 'PLAYING' && (
         <div className="pointer-events-none fixed inset-0 z-20">
           {/* Top Left: Player Stats */}
-          <div className="pointer-events-auto fixed top-3.5 left-3.5 w-64 bg-slate-900/85 backdrop-blur-md border border-slate-700/75 rounded-xl p-3.5 shadow-lg">
+          <div className="pointer-events-auto fixed top-3.5 max-sm:top-14 left-3.5 w-64 max-sm:w-44 bg-slate-900/85 backdrop-blur-md border border-slate-700/75 rounded-xl p-3.5 max-sm:p-2.5 shadow-lg">
             <div className="flex items-baseline justify-between gap-2">
               <span className="font-display font-bold text-sm text-slate-50 truncate">
                 {playerName}
@@ -848,7 +882,7 @@ export default function GameNusantara() {
           </div>
 
           {/* Top Center: Schedule & Current Zone */}
-          <div className="pointer-events-auto fixed top-3.5 left-1/2 -translate-x-1/2 bg-slate-900/85 backdrop-blur-md border border-slate-700/75 rounded-xl px-5 py-2.5 text-center shadow-lg min-w-[240px]">
+          <div className="pointer-events-auto fixed top-3.5 max-sm:top-14 left-1/2 -translate-x-1/2 bg-slate-900/85 backdrop-blur-md border border-slate-700/75 rounded-xl px-5 py-2.5 max-sm:px-3 max-sm:py-1.5 text-center shadow-lg min-w-[240px] max-sm:min-w-0">
             <div className="flex items-center justify-center gap-2 text-xs font-medium text-slate-300">
               <span className="font-semibold" style={{ color: phase.accent === '#2563eb' ? '#60a5fa' : phase.accent === '#059669' ? '#34d399' : '#fbbf24' }}>
                 {phase.name}
@@ -869,12 +903,14 @@ export default function GameNusantara() {
           {/* Top Right: Minimap & Utility Controls */}
           <div className="pointer-events-auto fixed top-3.5 right-3.5 flex flex-col items-end gap-2">
             <div className="bg-slate-900/85 backdrop-blur-md border border-slate-700/75 rounded-xl p-2 shadow-lg">
+              {!isTouch && (
               <canvas
                 ref={minimapRef}
                 width={128}
                 height={128}
                 className="block rounded-md border border-slate-800 bg-slate-950"
               />
+              )}
               <div className="mt-1.5 flex items-center justify-between gap-1">
                 <button
                   type="button"
@@ -955,13 +991,54 @@ export default function GameNusantara() {
           <button
             type="button"
             onClick={() => setStudyOpen(true)}
-            className="pointer-events-auto fixed bottom-40 right-3.5 px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 border border-emerald-400/50 text-white font-semibold text-sm shadow-xl transition-colors cursor-pointer whitespace-nowrap"
+            className={`pointer-events-auto fixed right-3.5 px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 border border-emerald-400/50 text-white font-semibold text-sm shadow-xl transition-colors cursor-pointer whitespace-nowrap ${isTouch ? "top-24" : "bottom-40"}`}
           >
             📚 Modul &amp; Tugas
           </button>
 
+          {/* Build 144 lanjutan — gamepad melayang untuk perangkat sentuh */}
+          {isTouch && !chatOpen && !studyOpen && !activeQuiz && (
+            <Gamepad
+              onDirection={applyVirtualDirection}
+              onInteract={performInteraction}
+              onJump={virtualJump}
+              onSprint={virtualSprint}
+            />
+          )}
+
+          {/* Build 144 lanjutan — di HP panel chat kolaps jadi gelembung
+              (gamepad butuh tempat); desktop tetap selalu terbuka. */}
+          {!chatOpen && isTouch && (
+            <button
+              type="button"
+              onClick={() => setChatOpen(true)}
+              className="pointer-events-auto fixed z-30 flex items-center gap-1.5 px-3 py-2 rounded-full bg-slate-900/85 border border-slate-700/75 text-slate-200 text-xs font-semibold backdrop-blur"
+              style={{
+                left: `calc(1rem + env(safe-area-inset-left))`,
+                bottom: `calc(10.25rem + env(safe-area-inset-bottom))`,
+              }}
+              aria-label="Buka obrolan"
+            >
+              💬 <span className="text-slate-400">{chatLog.length}</span>
+            </button>
+          )}
+
           {/* Bottom Left: Live Chat & Emotes */}
-          <div className="pointer-events-auto fixed bottom-3.5 left-3.5 w-80 sm:w-96 bg-slate-900/85 backdrop-blur-md border border-slate-700/75 rounded-xl p-3 shadow-lg">
+          {chatOpen && (
+          <div className="pointer-events-auto fixed bottom-3.5 left-3.5 w-80 max-sm:w-[min(22rem,calc(100vw-1.5rem))] sm:w-96 bg-slate-900/85 backdrop-blur-md border border-slate-700/75 rounded-xl p-3 shadow-lg">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Obrolan</span>
+              {isTouch && (
+                <button
+                  type="button"
+                  onClick={() => setChatOpen(false)}
+                  className="text-[10px] px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 cursor-pointer"
+                  aria-label="Tutup obrolan"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
             <div className="h-32 overflow-y-auto chat-scroll space-y-1.5 text-xs pr-1">
               {chatLog.map((m) => (
                 <div key={m.id} className="leading-snug break-words">
@@ -1021,6 +1098,7 @@ export default function GameNusantara() {
               </button>
             </form>
           </div>
+          )}
         </div>
       )}
 

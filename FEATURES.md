@@ -430,6 +430,8 @@
 | Kuis papan tulis in-game (XP + uang) | 🔶 | jalan penuh, tapi masih `QUIZ_BANK` statis template — belum dari bank soal SmartCBT |
 | Status lobi per kelas untuk guru | ✅ | `GET /api/game/nusantara/status` → `lobbies: [{room,label,players}]` |
 | Guru "berkunjung" ke lobi kelas tertentu (saat ini selalu Ruang Guru) | ❌ | rencana — butuh pemilih kelas di sisi staff |
+| **Kompatibilitas smartphone + floating gamepad** (kontinuasi build 144): D-pad 8-arah, E/Lompat/Lari, multi-touch, layout ponsel & safe-area | ✅ | `src/game/nusantara/Gamepad.tsx` (hanya menulis `keysRef`/`jumpRef` — pipeline gerak teruji dipakai ulang), `GameNusantara.tsx` (deteksi `pointer: coarse`, chat kolaps, minimap hidden, HUD kompak), `GameModePlay.tsx` |
+| Uji sentuh di perangkat nyata (Android/iPhone) | ❌ | belum ada sesi device testing — kelayakan posisi kontrol & keyboard layar iOS baru terkonfirmasi visual; rumus arah teruji unit 8/8 |
 | Integrasi nilai/ujian sungguhan ke progres game | ❌ | misalnya konversi hasil ujian jadi XP — belum ada |
 | E2E lobi dua kelas + persistensi + ownership terhadap DB nyata | ✅ | Lulus 19/19 (2026-11-14, Postgres lokal dev `dbsmartcbt`): isolasi room per kelas, chat ter-segmentasi, anti-spoof nama, baris `game_nusantara_state` + `profile.restored`, akses lintas siswa → 403 `NOT_OWNER` |
 | Uji visual gameplay di browser | ❌ | render canvas/panel belum diperiksa mata — jadwalkan bersama sesi penguji siswa |
@@ -454,7 +456,7 @@
 | 13. E-Rapor & Integrasi Dapodik (rencana) | 0 | 4 | 48 |
 | 14. Modul Belajar (LMS) | 9 | 0 | 2 |
 | 15. Tugas & Pengumpulan | 16 | 0 | 1 |
-| 16. Game Mode — Nusantara High | 12 | 1 | 4 |
+| 16. Game Mode — Nusantara High | 13 | 1 | 5 |
 
 > Status umum: fitur inti CBT (bank soal → ujian → sesi → nilai → ekspor),
 > monitoring SSE, penilaian manual + AI, modul belajar, tugas, berita,
