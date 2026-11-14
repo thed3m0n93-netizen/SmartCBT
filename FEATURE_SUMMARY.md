@@ -115,7 +115,8 @@ Status umum saat ini:
 ## Gap yang masih ada
 
 ### Perlu segera (keamanan/keadilan ujian)
-- ~~Otorisasi ROLE di `auth-users.ts`~~ — **selesai build 143** (matriks peran 16/16): users GET/POST/PUT/DELETE + tulis classes/subjects + import kini khusus admin (`requireAdmin` di `ownership.ts`, `403 ADMIN_ONLY`); bonus: `GET /api/classes` jadi publik read-only sehingga `/register` anonim kembali berfungsi. Lanjutan: audit peran endpoint `students.ts` (promote/graduate/status)
+- **Gelombang otorisasi lanjutan (audit build 144, terurut):** tulis exams; tulis questions/banks; grading esai manual; **AI grade esai (siswa bisa menilai esainya sendiri)**; questions/import; GET /api/results (bocor ke siswa); tokens generate/revoke (actor-id dari body yang terbaca publik) + SEB config/file; storage ownerId dari body + legacy delete. Pola siap pakai: `requireAdmin`/`requireStaff`/`ownership.ts` — detail di CHANGELOG 144
+- ~~Otorisasi ROLE di `auth-users.ts`~~ — **selesai build 143** (matriks peran 16/16); ~~`students.ts`~~ — **selesai build 144** (matriks 9/9, `requireStaff`)
 - ~~Validasi kepemilikan `sessionId`/`studentId`~~ — **selesai build 139 & TERUJI E2E DB nyata 2026-11-14 (19/19)**: lintas siswa → 403 `NOT_OWNER`, lobi game per kelas terisolasi, progres `game_nusantara_state` pulih saat reconnect
 - ~~Penegakan durasi/`end_time` + extra time di server~~ — **selesai build 138**; uji alur ujian penuh start→lewat-batas→auto-close dengan DB nyata menyusul
 - Rotasi secret bawaan: key NVIDIA (`ai-keys.ts`), kredensial DB default (`db.ts`), password compose, akun demo, sisa `.env.local`

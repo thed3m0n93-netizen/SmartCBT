@@ -1,7 +1,7 @@
 # SmartCBT — Status Implementasi Fitur
 
 > Dokumen ini mencerminkan status implementasi yang berlaku pada build terbaru.
-> **Terakhir disinkronkan dengan kode: 2026-11-14 (build 143)** — seluruh status
+> **Terakhir disinkronkan dengan kode: 2026-11-14 (build 144)** — seluruh status
 > diverifikasi ulang langsung terhadap kode sumber (route `addRoute`, file, dan
 > diff terhadap snapshot `z134/`), mencakup pekerjaan yang selesai setelah build
 > 135 dan tercatat retroaktif di `CHANGELOG.md` sebagai build 136. Termasuk
@@ -47,6 +47,8 @@
 | Manajemen sesi aktif & revoke self pada logout | ✅ | `GET /api/sessions`, `POST /api/sessions/revoke-self` |
 | Registrasi / sign-up mandiri siswa | ✅ | `src/pages/StudentRegisterPage.tsx` (rute `/register`), `POST /api/register/student`, gerbang lunak setting `student_registration_open` (build 121) |
 | Otorisasi ROLE di CRUD users/classes/subjects | ✅ | **Build 143** (ditutup dari temuan E2E): `requireAdmin` (diekspor dari `ownership.ts`, payload `ADMIN_ONLY`) dipasang di `auth-users.ts` (users GET/POST/PUT/DELETE, classes & subjects tulis) + `user-import.ts` (import massal). GET classes/subjects/teachers/students tetap terautentikasi; **GET /api/classes kini publik read-only — memperbaiki /register anonim yang selama ini 401**. Matriks peran teruji 16/16 |
+| Manajemen siswa massal (Data Siswa: roster/promote/graduate/status) khusus staff | ✅ | **Build 144**: `requireStaff` (dari `ownership.ts`) di 4 rute `students.ts`; matriks peran 9/9 (siswa 403 STAFF_ONLY, guru/admin 200, anonim 401) |
+| Gelombang otorisasi berikutnya (hasil audit 144) | ❌ | **Terbuka & terurut**: exams tulis, questions/banks tulis, grading esai manual, AI grade esai (self-grading!), questions/import, GET /api/results, tokens generate/revoke (actor-id dari body) + SEB config/file, storage ownerId body & legacy delete — detail lengkap di `CHANGELOG.md` build 144 |
 | Ubah password / reset password sendiri | ❌ | — |
 | Edit profil pengguna (nama, avatar, kontak) | ✅ | Siswa: `StudentDashboard.tsx` (`GET/PUT /api/student/profile` + `uploadAvatar`); staff: `src/pages/admin/UsersPage.tsx` |
 
@@ -438,7 +440,7 @@
 | Kategori | ✅ Selesai | 🔶 Sebagian | ❌ Belum |
 |---|---:|---:|---:|
 | 1. Infrastruktur DB & Instalasi | 11 | 0 | 0 |
-| 2. Autentikasi & Pengguna | 13 | 0 | 1 |
+| 2. Autentikasi & Pengguna | 14 | 0 | 2 |
 | 3. Dashboard Admin & Aktivitas | 9 | 0 | 0 |
 | 4. Bank Soal, Media, dan AI Generate | 13 | 0 | 0 |
 | 5. Manajemen Ujian | 10 | 0 | 0 |
@@ -474,11 +476,13 @@
 
 ## Prioritas Pengembangan yang Disarankan
 
-1. **Lanjutkan audit otorisasi peran** (lanjutan build 143) — gerbang admin untuk
-   users/classes/subjects sudah dipasang & teruji (matriks 16/16); gelombang
-   berikutnya: endpoint management siswa massal di `students.ts`
-   (promote/graduate/status) dan endpoint manajemen lain — pola `requireAdmin`
-   / `isStaffCaller` sudah tersedia, tinggal dipasang per-rute + tes lintas-role.
+1. **Gelombang otorisasi hasil audit 144** — `students.ts` sudah ditutup
+   (build 144, matriks 9/9). Urutan berikutnya dengan pola `requireStaff`/
+   `requireAdmin` yang sama: **145** = exams tulis + questions/banks tulis +
+   grading esai + AI grade esai (keempatnya KRITIS — self-grading & vandalisme
+   ujian mungkin dilakukan siswa); **146** = questions/import + GET results +
+   tokens (actor-id dari body → dari sesi) + SEB config/file + storage
+   ownerId/legacy delete. Tiap gelombang wajib matriks peran sendiri.
 2. **Lanjutkan verifikasi E2E** — lobi kelas + persistensi + ownership +
    matriks peran sudah LULUS di DB lokal nyata (2026-11-14); sisa: uji visual
    gameplay & alur ujian penuh start→lewat-batas→auto-close di browser

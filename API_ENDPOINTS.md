@@ -62,10 +62,10 @@ Dasar arsitektur:
 | GET | `/api/users` | Daftar semua user. Query `?role=` untuk filter. Siswa disertakan detail kelas. **Build 143:** khusus admin. | Ya (admin) |
 | GET | `/api/teachers` | Daftar guru (id, fullName) untuk pemilik ujian. | Ya |
 | GET | `/api/students` | Daftar siswa dengan student_number + kelas. | Ya |
-| GET | `/api/students/manage` | Roster siswa untuk pengelolaan bulk (search, classId, status). | Ya |
-| POST | `/api/students/promote` | Naikkan kelas siswa terpilih. Body: `{ studentIds[], targetClassId, renameStrategy }`. | Ya |
-| POST | `/api/students/graduate` | Tandai siswa sebagai lulusan. Body: `{ studentIds[] }`. | Ya |
-| POST | `/api/students/status` | Ubah status akun siswa. Body: `{ studentIds[], status }`. | Ya |
+| GET | `/api/students/manage` | Roster siswa untuk pengelolaan bulk (search, classId, status). **Build 144:** khusus staff. | Ya (staff) |
+| POST | `/api/students/promote` | Naikkan kelas siswa terpilih. Body: `{ studentIds[], targetClassId, renameStrategy }`. **Build 144:** khusus staff. | Ya (staff) |
+| POST | `/api/students/graduate` | Tandai siswa sebagai lulusan. Body: `{ studentIds[] }`. **Build 144:** khusus staff. | Ya (staff) |
+| POST | `/api/students/status` | Ubah status akun siswa. Body: `{ studentIds[], status }`. **Build 144:** khusus staff. | Ya (staff) |
 | POST | `/api/users` | Buat user baru. Body: `CreateUserPayload`. **Build 143:** khusus admin (sebelumnya cukup login apa pun — temuan E2E). | Ya (admin) |
 | POST | `/api/register/student` | Registrasi mandiri siswa (tidak butuh sesi). | Tidak |
 | PUT | `/api/users/:id` | Perbarui user. **Build 143:** khusus admin. | Ya (admin) |

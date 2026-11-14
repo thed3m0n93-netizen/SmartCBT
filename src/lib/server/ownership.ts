@@ -134,6 +134,27 @@ export function requireAdmin(
 }
 
 /**
+ * Build 144 — gerbang manajemen siswa (Data Siswa / promote / graduate /
+ * status): guru ATAU admin. Mirip `requireAdmin` tapi menerima role teacher.
+ * Menulis respons 401/403 sendiri; kembalikan true bila boleh lanjut.
+ */
+export function requireStaff(
+  req: { headers: Record<string, any>; authUser?: Caller | null },
+  res: any,
+): boolean {
+  const caller = callerFromRequest(req);
+  if (!caller) {
+    json(res, NO_CALLER.payload, NO_CALLER.status);
+    return false;
+  }
+  if (!isStaffCaller(caller)) {
+    json(res, NOT_STAFF.payload, NOT_STAFF.status);
+    return false;
+  }
+  return true;
+}
+
+/**
  * Pemilik sesi ujian (user id pada student_sessions.student_id), atau null
  * bila sesi tidak ada. Dipakai handler yang belum terlanjur men-SELECT baris
  * sesi (jalur beacon/violation); handler yang sudah memuat sesi memakai

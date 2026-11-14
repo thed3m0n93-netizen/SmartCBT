@@ -11,6 +11,11 @@
  */
 import { query, queryOne, addRoute, json, likeParam } from "./utils.js";
 import { getDbType } from "../db.js";
+import { requireStaff } from "./ownership.js";
+
+// Build 144: keempat rute ini dulunya tanpa cek peran (temuan audit) —
+// siswa mana pun bisa me-promote / meluluskan / menangguhkan akun siswa
+// lain. Semua hanya untuk guru/admin (halaman "Data Siswa").
 
 /** Resolve the target class for promote actions; returns the class id or null. */
 async function resolvePromoteTarget(
@@ -54,6 +59,7 @@ async function ensureGraduatedColumn(): Promise<void> {
  * `?status=graduated|active` filters the graduation flag.
  * ──────────────────────────────────────────────────────────────────────── */
 addRoute("GET", /^\/api\/students\/manage$/, async (req, res) => {
+  if (!requireStaff(req, res)) return;
   await ensureGraduatedColumn();
 
   const url = req.url || "";
@@ -105,7 +111,8 @@ addRoute("GET", /^\/api\/students\/manage$/, async (req, res) => {
  * student_number, the NISN is suffixed "-A"…"-Z" (default `suffix` strategy).
  * The `keep` strategy skips the row and reports it as an error instead.
  * ──────────────────────────────────────────────────────────────────────── */
-addRoute("POST", /^\/api\/students\/promote$/, async (_req, res, body) => {
+addRoute("POST", /^\/api\/students\/promote$/, async (req, res, body) => {
+  if (!requireStaff(req, res)) return;
   await ensureGraduatedColumn();
 
   const ids: unknown = body?.studentIds;
@@ -212,7 +219,8 @@ addRoute("POST", /^\/api\/students\/promote$/, async (_req, res, body) => {
  * every exam record (sessions/answers/results) stays intact.
  * Body: { studentIds: string[] }
  * ──────────────────────────────────────────────────────────────────────── */
-addRoute("POST", /^\/api\/students\/graduate$/, async (_req, res, body) => {
+addRoute("POST", /^\/api\/students\/graduate$/, async (req, res, body) => {
+  if (!requireStaff(req, res)) return;
   await ensureGraduatedColumn();
 
   const ids: unknown = body?.studentIds;
@@ -252,7 +260,8 @@ addRoute("POST", /^\/api\/students\/graduate$/, async (_req, res, body) => {
  * Set the account status for the selected students (re-activate alumni or
  * suspend). Body: { studentIds: string[], status: "active"|"inactive" }
  * ──────────────────────────────────────────────────────────────────────── */
-addRoute("POST", /^\/api\/students\/status$/, async (_req, res, body) => {
+addRoute("POST", /^\/api\/students\/status$/, async (req, res, body) => {
+  if (!requireStaff(req, res)) return;
   await ensureGraduatedColumn();
 
   const ids: unknown = body?.studentIds;
