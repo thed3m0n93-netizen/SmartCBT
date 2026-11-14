@@ -46,6 +46,7 @@
 | Sinkronisasi profil siswa dan class_id saat update user | ✅ | `src/lib/server/auth-users.ts` |
 | Manajemen sesi aktif & revoke self pada logout | ✅ | `GET /api/sessions`, `POST /api/sessions/revoke-self` |
 | Registrasi / sign-up mandiri siswa | ✅ | `src/pages/StudentRegisterPage.tsx` (rute `/register`), `POST /api/register/student`, gerbang lunak setting `student_registration_open` (build 121) |
+| Otorisasi ROLE di CRUD users/classes/subjects | ❌ | **Temuan E2E 2026-11-14**: `auth-users.ts` tidak membaca `req.authUser` — `POST/PUT/DELETE /api/users|classes|subjects` cukup modal login apa pun (siswa secara teori bisa membuat user). Prioritas keamanan #1 berikutnya |
 | Ubah password / reset password sendiri | ❌ | — |
 | Edit profil pengguna (nama, avatar, kontak) | ✅ | Siswa: `StudentDashboard.tsx` (`GET/PUT /api/student/profile` + `uploadAvatar`); staff: `src/pages/admin/UsersPage.tsx` |
 
@@ -428,7 +429,8 @@
 | Status lobi per kelas untuk guru | ✅ | `GET /api/game/nusantara/status` → `lobbies: [{room,label,players}]` |
 | Guru "berkunjung" ke lobi kelas tertentu (saat ini selalu Ruang Guru) | ❌ | rencana — butuh pemilih kelas di sisi staff |
 | Integrasi nilai/ujian sungguhan ke progres game | ❌ | misalnya konversi hasil ujian jadi XP — belum ada |
-| Uji visual gameplay di browser + E2E dua kelas dengan DB staging | ❌ | teruji sampai transport + logika (integration test tanpa DB); Postgres lokal sudah hidup (tinggal perbaiki kredensial `db-config.json`) |
+| E2E lobi dua kelas + persistensi + ownership terhadap DB nyata | ✅ | Lulus 19/19 (2026-11-14, Postgres lokal dev `dbsmartcbt`): isolasi room per kelas, chat ter-segmentasi, anti-spoof nama, baris `game_nusantara_state` + `profile.restored`, akses lintas siswa → 403 `NOT_OWNER` |
+| Uji visual gameplay di browser | ❌ | render canvas/panel belum diperiksa mata — jadwalkan bersama sesi penguji siswa |
 | Multi-instance / scale horizontal lobi | ❌ | state pemain in-memory (sama seperti sesi login & SSE) |
 
 ## Ringkasan
@@ -436,7 +438,7 @@
 | Kategori | ✅ Selesai | 🔶 Sebagian | ❌ Belum |
 |---|---:|---:|---:|
 | 1. Infrastruktur DB & Instalasi | 11 | 0 | 0 |
-| 2. Autentikasi & Pengguna | 12 | 0 | 1 |
+| 2. Autentikasi & Pengguna | 12 | 0 | 2 |
 | 3. Dashboard Admin & Aktivitas | 9 | 0 | 0 |
 | 4. Bank Soal, Media, dan AI Generate | 13 | 0 | 0 |
 | 5. Manajemen Ujian | 10 | 0 | 0 |
@@ -450,7 +452,7 @@
 | 13. E-Rapor & Integrasi Dapodik (rencana) | 0 | 4 | 48 |
 | 14. Modul Belajar (LMS) | 9 | 0 | 2 |
 | 15. Tugas & Pengumpulan | 16 | 0 | 1 |
-| 16. Game Mode — Nusantara High | 11 | 1 | 4 |
+| 16. Game Mode — Nusantara High | 12 | 1 | 4 |
 
 > Status umum: fitur inti CBT (bank soal → ujian → sesi → nilai → ekspor),
 > monitoring SSE, penilaian manual + AI, modul belajar, tugas, berita,
@@ -472,30 +474,33 @@
 
 ## Prioritas Pengembangan yang Disarankan
 
-1. **Verifikasi hardening server-side di DB staging** — build 138 (durasi) &
-   139 (kepemilikan/peran) baru teruji logika + bundle; jalankan uji nyata:
-   siswa A memanggil resource sesi siswa B → 403, jawaban pasca-deadline →
-   auto-close, reset ⇒ jam baru, guru force-submit → OK, siswa force-submit →
-   403, beacon tab-switch tercatat lagi (sebelum build 139 diam-diam 401).
-   Libatkan siswa sebagai penguji sesuai rencana.
-2. Rotasi/jauhkan secret dari repo: key NVIDIA di `src/lib/server/ai-keys.ts`,
+1. **Otorisasi role pada endpoint master data** (temuan E2E 2026-11-14) —
+   `auth-users.ts` sama sekali tidak membaca `req.authUser`: pasang gerbang
+   admin/super_admin untuk `POST/PUT/DELETE /api/users`, dan staff untuk
+   `/api/classes|/api/subjects` (reuse `isStaffCaller`/`isAdminCaller` dari
+   `ownership.ts`), plus tes lintas-role (siswa → 403) seperti pola build 139.
+2. **Lanjutkan verifikasi E2E** — lobi kelas + persistensi + ownership sudah
+   LULUS 19/19 terhadap DB lokal nyata (2026-11-14); sisa: uji visual
+   gameplay di browser bersama penguji siswa, dan alur ujian penuh
+   start→jawab→lewat-batas→auto-close dengan DB nyata.
+3. Rotasi/jauhkan secret dari repo: key NVIDIA di `src/lib/server/ai-keys.ts`,
    kredensial DB default di `src/lib/db.ts`, password `postgres` di
    `docker-compose.yml`, kredensial demo di log instalasi, dan sisa token
    Supabase/Vercel di `.env.local`.
-3. Tampilkan UI blokir SEB (`sebBlocked` sudah di-set di `ExamTakingPage` tapi
+4. Tampilkan UI blokir SEB (`sebBlocked` sudah di-set di `ExamTakingPage` tapi
    tidak pernah dirender) dan hidupkan tombol stub di kartu `ExamsPage`
    (Regenerate token, Monitor, Force End, View Results, Export).
-4. Audit log aktivitas admin/guru untuk traceability (nilai, sesi, perubahan
+5. Audit log aktivitas admin/guru untuk traceability (nilai, sesi, perubahan
    settings) — fondasi untuk §13.
-5. Lengkapi akun: ubah/reset password mandiri, lalu putuskan nasib
+6. Lengkapi akun: ubah/reset password mandiri, lalu putuskan nasib
    `SummaryPage.tsx` (rute-kan atau hapus).
-6. Notifikasi pengingat ujian (email/push) + scheduler — dibutuhkan juga oleh
+7. Notifikasi pengingat ujian (email/push) + scheduler — dibutuhkan juga oleh
    modul & tugas.
-7. Bersihkan artefak: ~~arsip `z134/`~~ & ~~duplikat aset trivia~~ & ~~plugin
+8. Bersihkan artefak: ~~arsip `z134/`~~ & ~~duplikat aset trivia~~ & ~~plugin
    stellar mati di `vite.config.ts`~~ (semuanya dibereskan build 139/141);
    tersisa dua lockfile (npm + pnpm) dan `public/uploads/` berisi file user
    yang ikut ter-build ke `dist/`.
-8. Mulai develop e-Rapor bertahap sesuai rencana di §13:
+9. Mulai develop e-Rapor bertahap sesuai rencana di §13:
    - **Tahap 1 — Identitas & master data:** kolom ID Dapodik + pull data
      (sekolah, PTK, siswa, rombel, pembelajaran) dengan upsert idempotent.
    - **Tahap 2 — Peran & periode:** wali kelas, kepala sekolah, operator sekolah,

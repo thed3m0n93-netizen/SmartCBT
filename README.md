@@ -96,7 +96,8 @@ Variabel environment utama (nama saja): `PORT`, `HOST`, `STATIC_DIR`, `UPLOADS_D
 ## Catatan keamanan sebelum produksi
 
 - **Rotasi semua secret bawaan**: API key NVIDIA ter-bundle di `src/lib/server/ai-keys.ts`, kredensial DB default di `src/lib/db.ts`, password Postgres di `docker-compose.yml`, akun demo hasil seed, dan sisa token lama di `.env.local` (hapus filenya).
-- **Celah yang diketahui** (detail di `FEATURES.md` → Prioritas): sesi login & SSE in-memory (tidak bisa multi-instance). Penegakan durasi ujian **build 138** (`SESSION_EXPIRED` di `POST /api/answers`) dan kepemilikan sesi/peran **build 139** (`src/lib/server/ownership.ts` — `NOT_OWNER`/`STAFF_ONLY`, termasuk fix beacon focus-loss yang dulu diam-diam 401) sudah ditutup; verifikasi E2E di DB staging menyusul.
+- **Celah yang diketahui** (detail di `FEATURES.md` → Prioritas): **CRUD users/classes/subjects belum memeriksa ROLE** (temuan E2E 2026-11-14 — modal login apa pun bisa memanggilnya; perbaikan = prioritas #1); sesi login & SSE & state game in-memory (tidak bisa multi-instance). Penegakan durasi (138), kepemilikan sesi (139), lobi per kelas + persistensi game (142) **sudah teruji E2E terhadap DB Postgres lokal nyata — lulus 19/19 (2026-11-14)**; tersisa uji visual browser.
+- **DB dev lokal E2E**: Postgres lokal kini punya role+database `dbsmartcbt` (kredensial di `src/lib/db-config.json` & `server/dist/db-config.json` — dua-duanya gitignored) dan PIN setup `/setup` sempat dibuat di mesin ini (`server/dist/setup-auth.json`, gitignored). Jangan file-file itu ikut tersalin ke repo manapun.
 - `public/uploads/` berisi berkas user sungguhan dan ikut ter-copy ke `dist/` saat build — pindahkan folder upload ke luar proyek (`UPLOADS_DIR`) sebelum deploy.
 
 ## Konvensi kode
