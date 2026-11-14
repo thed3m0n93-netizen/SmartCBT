@@ -59,37 +59,37 @@ Dasar arsitektur:
 
 | Method | Endpoint | Deskripsi | Auth |
 |--------|----------|-----------|------|
-| GET | `/api/users` | Daftar semua user. Query `?role=` untuk filter. Siswa disertakan detail kelas. | Ya |
+| GET | `/api/users` | Daftar semua user. Query `?role=` untuk filter. Siswa disertakan detail kelas. **Build 143:** khusus admin. | Ya (admin) |
 | GET | `/api/teachers` | Daftar guru (id, fullName) untuk pemilik ujian. | Ya |
 | GET | `/api/students` | Daftar siswa dengan student_number + kelas. | Ya |
 | GET | `/api/students/manage` | Roster siswa untuk pengelolaan bulk (search, classId, status). | Ya |
 | POST | `/api/students/promote` | Naikkan kelas siswa terpilih. Body: `{ studentIds[], targetClassId, renameStrategy }`. | Ya |
 | POST | `/api/students/graduate` | Tandai siswa sebagai lulusan. Body: `{ studentIds[] }`. | Ya |
 | POST | `/api/students/status` | Ubah status akun siswa. Body: `{ studentIds[], status }`. | Ya |
-| POST | `/api/users` | Buat user baru. Body: `CreateUserPayload`. | Ya |
+| POST | `/api/users` | Buat user baru. Body: `CreateUserPayload`. **Build 143:** khusus admin (sebelumnya cukup login apa pun — temuan E2E). | Ya (admin) |
 | POST | `/api/register/student` | Registrasi mandiri siswa (tidak butuh sesi). | Tidak |
-| PUT | `/api/users/:id` | Perbarui user. | Ya |
-| DELETE | `/api/users/:id` | Hapus user. | Ya |
+| PUT | `/api/users/:id` | Perbarui user. **Build 143:** khusus admin. | Ya (admin) |
+| DELETE | `/api/users/:id` | Hapus user. **Build 143:** khusus admin. | Ya (admin) |
 | GET | `/api/users/template` | Unduh template impor (excel/csv) sebagai base64. | Ya |
-| POST | `/api/users/import` | Impor user dari spreadsheet (file dalam base64). | Ya |
+| POST | `/api/users/import` | Impor user dari spreadsheet (file dalam base64). **Build 143:** khusus admin. | Ya (admin) |
 
 ## Kelas (Classes)
 
 | Method | Endpoint | Deskripsi | Auth |
 |--------|----------|-----------|------|
-| GET | `/api/classes` | Daftar kelas (mendukung paging, sorting, search). | Ya |
-| POST | `/api/classes` | Buat kelas baru. Body: `{ className, gradeLevel }`. | Ya |
-| PUT | `/api/classes/:id` | Perbarui kelas. | Ya |
-| DELETE | `/api/classes/:id` | Hapus kelas. | Ya |
+| GET | `/api/classes` | Daftar kelas (mendukung paging, sorting, search). **Build 143:** publik read-only — memperbaiki daftar kelas di halaman `/register` anonim yang selama ini 401. | Publik (baca) |
+| POST | `/api/classes` | Buat kelas baru. Body: `{ className, gradeLevel }`. **Build 143:** khusus admin. | Ya (admin) |
+| PUT | `/api/classes/:id` | Perbarui kelas. **Build 143:** khusus admin. | Ya (admin) |
+| DELETE | `/api/classes/:id` | Hapus kelas. **Build 143:** khusus admin. | Ya (admin) |
 
 ## Mata Pelajaran (Subjects)
 
 | Method | Endpoint | Deskripsi | Auth |
 |--------|----------|-----------|------|
 | GET | `/api/subjects` | Daftar mata pelajaran. | Ya |
-| POST | `/api/subjects` | Buat mapel baru. Body: `{ subjectCode, subjectName, targetClassIds? }`. | Ya |
-| PUT | `/api/subjects/:id` | Perbarui mapel. | Ya |
-| DELETE | `/api/subjects/:id` | Hapus mapel. | Ya |
+| POST | `/api/subjects` | Buat mapel baru. Body: `{ subjectCode, subjectName, targetClassIds? }`. **Build 143:** khusus admin. | Ya (admin) |
+| PUT | `/api/subjects/:id` | Perbarui mapel. **Build 143:** khusus admin. | Ya (admin) |
+| DELETE | `/api/subjects/:id` | Hapus mapel. **Build 143:** khusus admin. | Ya (admin) |
 
 ## Bank Soal & Soal (Question Banks & Questions)
 

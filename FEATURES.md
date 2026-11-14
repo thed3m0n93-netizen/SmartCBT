@@ -1,7 +1,7 @@
 # SmartCBT — Status Implementasi Fitur
 
 > Dokumen ini mencerminkan status implementasi yang berlaku pada build terbaru.
-> **Terakhir disinkronkan dengan kode: 2026-11-13 (build 142)** — seluruh status
+> **Terakhir disinkronkan dengan kode: 2026-11-14 (build 143)** — seluruh status
 > diverifikasi ulang langsung terhadap kode sumber (route `addRoute`, file, dan
 > diff terhadap snapshot `z134/`), mencakup pekerjaan yang selesai setelah build
 > 135 dan tercatat retroaktif di `CHANGELOG.md` sebagai build 136. Termasuk
@@ -46,7 +46,7 @@
 | Sinkronisasi profil siswa dan class_id saat update user | ✅ | `src/lib/server/auth-users.ts` |
 | Manajemen sesi aktif & revoke self pada logout | ✅ | `GET /api/sessions`, `POST /api/sessions/revoke-self` |
 | Registrasi / sign-up mandiri siswa | ✅ | `src/pages/StudentRegisterPage.tsx` (rute `/register`), `POST /api/register/student`, gerbang lunak setting `student_registration_open` (build 121) |
-| Otorisasi ROLE di CRUD users/classes/subjects | ❌ | **Temuan E2E 2026-11-14**: `auth-users.ts` tidak membaca `req.authUser` — `POST/PUT/DELETE /api/users|classes|subjects` cukup modal login apa pun (siswa secara teori bisa membuat user). Prioritas keamanan #1 berikutnya |
+| Otorisasi ROLE di CRUD users/classes/subjects | ✅ | **Build 143** (ditutup dari temuan E2E): `requireAdmin` (diekspor dari `ownership.ts`, payload `ADMIN_ONLY`) dipasang di `auth-users.ts` (users GET/POST/PUT/DELETE, classes & subjects tulis) + `user-import.ts` (import massal). GET classes/subjects/teachers/students tetap terautentikasi; **GET /api/classes kini publik read-only — memperbaiki /register anonim yang selama ini 401**. Matriks peran teruji 16/16 |
 | Ubah password / reset password sendiri | ❌ | — |
 | Edit profil pengguna (nama, avatar, kontak) | ✅ | Siswa: `StudentDashboard.tsx` (`GET/PUT /api/student/profile` + `uploadAvatar`); staff: `src/pages/admin/UsersPage.tsx` |
 
@@ -438,7 +438,7 @@
 | Kategori | ✅ Selesai | 🔶 Sebagian | ❌ Belum |
 |---|---:|---:|---:|
 | 1. Infrastruktur DB & Instalasi | 11 | 0 | 0 |
-| 2. Autentikasi & Pengguna | 12 | 0 | 2 |
+| 2. Autentikasi & Pengguna | 13 | 0 | 1 |
 | 3. Dashboard Admin & Aktivitas | 9 | 0 | 0 |
 | 4. Bank Soal, Media, dan AI Generate | 13 | 0 | 0 |
 | 5. Manajemen Ujian | 10 | 0 | 0 |
@@ -474,15 +474,15 @@
 
 ## Prioritas Pengembangan yang Disarankan
 
-1. **Otorisasi role pada endpoint master data** (temuan E2E 2026-11-14) —
-   `auth-users.ts` sama sekali tidak membaca `req.authUser`: pasang gerbang
-   admin/super_admin untuk `POST/PUT/DELETE /api/users`, dan staff untuk
-   `/api/classes|/api/subjects` (reuse `isStaffCaller`/`isAdminCaller` dari
-   `ownership.ts`), plus tes lintas-role (siswa → 403) seperti pola build 139.
-2. **Lanjutkan verifikasi E2E** — lobi kelas + persistensi + ownership sudah
-   LULUS 19/19 terhadap DB lokal nyata (2026-11-14); sisa: uji visual
-   gameplay di browser bersama penguji siswa, dan alur ujian penuh
-   start→jawab→lewat-batas→auto-close dengan DB nyata.
+1. **Lanjutkan audit otorisasi peran** (lanjutan build 143) — gerbang admin untuk
+   users/classes/subjects sudah dipasang & teruji (matriks 16/16); gelombang
+   berikutnya: endpoint management siswa massal di `students.ts`
+   (promote/graduate/status) dan endpoint manajemen lain — pola `requireAdmin`
+   / `isStaffCaller` sudah tersedia, tinggal dipasang per-rute + tes lintas-role.
+2. **Lanjutkan verifikasi E2E** — lobi kelas + persistensi + ownership +
+   matriks peran sudah LULUS di DB lokal nyata (2026-11-14); sisa: uji visual
+   gameplay & alur ujian penuh start→lewat-batas→auto-close di browser
+   bersama penguji siswa, lalu pengulangan singkat di staging sungguhan.
 3. Rotasi/jauhkan secret dari repo: key NVIDIA di `src/lib/server/ai-keys.ts`,
    kredensial DB default di `src/lib/db.ts`, password `postgres` di
    `docker-compose.yml`, kredensial demo di log instalasi, dan sisa token

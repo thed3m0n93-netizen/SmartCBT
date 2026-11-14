@@ -10,7 +10,7 @@ SmartCBT adalah platform CBT (Computer Based Test) sekolah multi-peran yang fitu
 Status umum saat ini:
 - Fitur inti CBT: berjalan; durasi (138) & kepemilikan sesi (139) ditegakkan server — E2E lobi/ownership LULUS di DB lokal nyata (2026-11-14), uji visual browser menyusul
 - Fitur pengawasan, AI, LMS, tugas, berita, storage: sudah terintegrasi & operasional
-- Gap utama: otorisasi role endpoint master data (temuan E2E), rotasi secret bawaan di repo, audit log, reset password, notifikasi
+- Gap utama: lanjutan audit peran endpoint manajemen (`students.ts` dkk.), rotasi secret bawaan di repo, audit log, reset password, notifikasi
 
 ---
 
@@ -115,7 +115,7 @@ Status umum saat ini:
 ## Gap yang masih ada
 
 ### Perlu segera (keamanan/keadilan ujian)
-- **Otorisasi ROLE di `auth-users.ts`** (temuan E2E 2026-11-14): `POST/PUT/DELETE /api/users|classes|subjects` belum memeriksa peran — cukup modal login apa pun. Pasang gerbang admin/staff + tes lintas-role
+- ~~Otorisasi ROLE di `auth-users.ts`~~ — **selesai build 143** (matriks peran 16/16): users GET/POST/PUT/DELETE + tulis classes/subjects + import kini khusus admin (`requireAdmin` di `ownership.ts`, `403 ADMIN_ONLY`); bonus: `GET /api/classes` jadi publik read-only sehingga `/register` anonim kembali berfungsi. Lanjutan: audit peran endpoint `students.ts` (promote/graduate/status)
 - ~~Validasi kepemilikan `sessionId`/`studentId`~~ — **selesai build 139 & TERUJI E2E DB nyata 2026-11-14 (19/19)**: lintas siswa → 403 `NOT_OWNER`, lobi game per kelas terisolasi, progres `game_nusantara_state` pulih saat reconnect
 - ~~Penegakan durasi/`end_time` + extra time di server~~ — **selesai build 138**; uji alur ujian penuh start→lewat-batas→auto-close dengan DB nyata menyusul
 - Rotasi secret bawaan: key NVIDIA (`ai-keys.ts`), kredensial DB default (`db.ts`), password compose, akun demo, sisa `.env.local`

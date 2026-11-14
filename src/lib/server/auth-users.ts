@@ -12,6 +12,14 @@ import {
 import bcrypt from "bcryptjs";
 import { createSession, getBearerToken, getSession, revokeSession } from "./auth-session.js";
 import { ensureColumn } from "./schema.js";
+import { NO_CALLER, callerFromRequest, isAdminCaller, requireAdmin } from "./ownership.js";
+
+/**
+ * Build 143 — penemuan E2E: rute-rute ini dulunya hanya "harus login" tanpa
+ * cek peran, jadi siswa mana pun bisa membuat/menghapus user & master data.
+ * `requireAdmin` (dari ownership.ts) kini menegakkan admin/super_admin di
+ * seluruh rute sensitif file ini; pola code mengikuti NOT_OWNER/STAFF_ONLY.
+ */
 
 // POST /api/login
 // Password digests are stored as bcrypt hashes ($2a$/$2b$). Verification is
@@ -88,6 +96,7 @@ addRoute("POST", /^\/api\/logout$/, async (req, res, body) => {
 // Without any of those parameters the legacy bare-array response is returned,
 // so older bundles keep working unchanged.
 addRoute("GET", /^\/api\/users$/, async (req, res) => {
+  if (!requireAdmin(req, res)) return;
   const url = new URL(req.url, "http://localhost");
   const roleFilter = cleanStr(url.searchParams.get("role"), 32);
 
@@ -237,7 +246,8 @@ addRoute("GET", /^\/api\/classes$/, async (req, res) => {
 // ── Classes ────────────────────────────────────────────────────────────
 
 // POST /api/classes
-addRoute("POST", /^\/api\/classes$/, async (_req, res, body) => {
+addRoute("POST", /^\/api\/classes$/, async (req, res, body) => {
+  if (!requireAdmin(req, res)) return;
   const className = cleanStr(body.className, 64);
   const gradeLevel = cleanStr(body.gradeLevel, 32);
   if (!className || !gradeLevel) {
@@ -259,6 +269,7 @@ addRoute("POST", /^\/api\/classes$/, async (_req, res, body) => {
 
 // PUT /api/classes/:id
 addRoute("PUT", /^\/api\/classes\/[^/]+$/, async (req, res, body) => {
+  if (!requireAdmin(req, res)) return;
   const classId = req.url.match(/^\/api\/classes\/([^/]+)$/)?.[1];
   if (!classId) return json(res, { error: "Class id required" }, 400);
 
@@ -286,6 +297,7 @@ addRoute("PUT", /^\/api\/classes\/[^/]+$/, async (req, res, body) => {
 
 // DELETE /api/classes/:id
 addRoute("DELETE", /^\/api\/classes\/[^/]+$/, async (req, res) => {
+  if (!requireAdmin(req, res)) return;
   const classId = req.url.match(/^\/api\/classes\/([^/]+)$/)?.[1];
   if (!classId) return json(res, { error: "Class id required" }, 400);
 
@@ -322,7 +334,8 @@ addRoute("DELETE", /^\/api\/classes\/[^/]+$/, async (req, res) => {
 // ── Subjects ───────────────────────────────────────────────────────────
 
 // POST /api/subjects
-addRoute("POST", /^\/api\/subjects$/, async (_req, res, body) => {
+addRoute("POST", /^\/api\/subjects$/, async (req, res, body) => {
+  if (!requireAdmin(req, res)) return;
   const subjectCode = cleanStr(body.subjectCode, 16);
   const subjectName = cleanStr(body.subjectName, 100);
   if (!subjectCode || !subjectName) {
@@ -358,6 +371,7 @@ addRoute("POST", /^\/api\/subjects$/, async (_req, res, body) => {
 
 // PUT /api/subjects/:id
 addRoute("PUT", /^\/api\/subjects\/[^/]+$/, async (req, res, body) => {
+  if (!requireAdmin(req, res)) return;
   const subjectId = req.url.match(/^\/api\/subjects\/([^/]+)$/)?.[1];
   if (!subjectId) return json(res, { error: "Subject id required" }, 400);
 
@@ -399,6 +413,7 @@ addRoute("PUT", /^\/api\/subjects\/[^/]+$/, async (req, res, body) => {
 
 // DELETE /api/subjects/:id
 addRoute("DELETE", /^\/api\/subjects\/[^/]+$/, async (req, res) => {
+  if (!requireAdmin(req, res)) return;
   const subjectId = req.url.match(/^\/api\/subjects\/([^/]+)$/)?.[1];
   if (!subjectId) return json(res, { error: "Subject id required" }, 400);
 
@@ -706,7 +721,8 @@ async function fetchTeacherAssignments(
 }
 
 // POST /api/users — create a user (admin only, enforced at UI level for now)
-addRoute("POST", /^\/api\/users$/, async (_req, res, body) => {
+addRoute("POST", /^\/api\/users$/, async (req, res, body) => {
+  if (!requireAdmin(req, res)) return;
   const username = cleanStr(body.username, 64);
   const fullName = cleanStr(body.fullName ?? body.full_name, 128);
   const password = String(body.password ?? "");
@@ -869,6 +885,7 @@ addRoute("POST", /^\/api\/register\/student$/, async (_req, res, body) => {
 
 // PUT /api/users/:id — update a user (name, username, role, status, password, class/NISN)
 addRoute("PUT", /^\/api\/users\/[^/]+$/, async (req, res, body) => {
+  if (!requireAdmin(req, res)) return;
   const match = req.url.match(/^\/api\/users\/([^/]+)$/);
   const userId = match?.[1];
   if (!userId) return json(res, { error: "User id required" }, 400);
@@ -991,6 +1008,7 @@ addRoute("PUT", /^\/api\/users\/[^/]+$/, async (req, res, body) => {
 
 // DELETE /api/users/:id — remove a user
 addRoute("DELETE", /^\/api\/users\/[^/]+$/, async (req, res) => {
+  if (!requireAdmin(req, res)) return;
   const match = req.url.match(/^\/api\/users\/([^/]+)$/);
   const userId = match?.[1];
   if (!userId) return json(res, { error: "User id required" }, 400);

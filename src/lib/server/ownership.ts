@@ -20,7 +20,7 @@
  */
 
 import { getBearerToken, getSession } from "./auth-session.js";
-import { queryOne } from "./utils.js";
+import { json, queryOne } from "./utils.js";
 
 /** Bentuk `req.authUser` yang dipasang dispatcher (role = nilai DB asli). */
 export interface Caller {
@@ -98,10 +98,40 @@ export const NOT_STAFF = {
   },
 } as const;
 
+/** Build 143 — gerbang master data/user management: khusus admin. */
+export const NOT_ADMIN = {
+  status: 403,
+  payload: {
+    error: "Hanya admin yang dapat melakukan operasi ini.",
+    code: "ADMIN_ONLY",
+  },
+} as const;
+
 export const NO_CALLER = {
   status: 401,
   payload: { error: "Authentication required" },
 } as const;
+
+/**
+ * Tulis respons 401/403 sendiri dan kembalikan false bila caller bukan admin.
+ * Dipakai rute sensitif auth-users/user-import (temuan E2E 2026-11-14:
+ * endpoint ini dulu hanya menuntut "login apa pun").
+ */
+export function requireAdmin(
+  req: { headers: Record<string, any>; authUser?: Caller | null },
+  res: any,
+): boolean {
+  const caller = callerFromRequest(req);
+  if (!caller) {
+    json(res, NO_CALLER.payload, NO_CALLER.status);
+    return false;
+  }
+  if (!isAdminCaller(caller)) {
+    json(res, NOT_ADMIN.payload, NOT_ADMIN.status);
+    return false;
+  }
+  return true;
+}
 
 /**
  * Pemilik sesi ujian (user id pada student_sessions.student_id), atau null

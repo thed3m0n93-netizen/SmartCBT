@@ -19,6 +19,7 @@ import { randomUUID } from "node:crypto";
 import bcrypt from "bcryptjs";
 import { query, queryOne, addRoute, json } from "./utils.js";
 import { ensureColumn } from "./schema.js";
+import { requireAdmin } from "./ownership.js";
 
 const IMPORTABLE_ROLES = ["teacher", "student"] as const;
 type ImportableRole = (typeof IMPORTABLE_ROLES)[number];
@@ -114,7 +115,9 @@ async function insertUser(user: ParsedUser, classId: number | null): Promise<str
 }
 
 // POST /api/users/import
-addRoute("POST", /^\/api\/users\/import$/, async (_req, res, body) => {
+addRoute("POST", /^\/api\/users\/import$/, async (req, res, body) => {
+  // Build 143: dulu cukup "login apa pun" — kini khusus admin (lihat auth-users.ts).
+  if (!requireAdmin(req, res)) return;
   const { file: dataBase64, fileName, importType } = body || {};
   if (!dataBase64) return json(res, { error: "file (base64) is required" }, 400);
   const buf = Buffer.from(String(dataBase64), "base64");

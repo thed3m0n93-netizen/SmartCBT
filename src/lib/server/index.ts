@@ -109,6 +109,10 @@ export async function handleRequest(
     // validates every field and always creates a `student` account, so an
     // anonymous caller can never escalate privileges.
     (method === "POST" && url === "/api/register/student") ||
+    // Build 143: the /register page lists classes BEFORE anyone logs in — an
+    // anonymous GET here used to 401, silently breaking self-registration.
+    // Read-only master data (nama kelas); every write stays admin-gated.
+    (method === "GET" && url === "/api/classes") ||
     url === "/api/db-config" ||
     url === "/api/db-config/test" ||
     url.startsWith("/api/setup/") ||
