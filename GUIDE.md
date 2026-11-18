@@ -50,7 +50,7 @@ Buka `server/dist/db-config.json` dan pastikan isinya sesuai database di server 
   "port": 5432,
   "user": "dbsmartcbt",
   "database": "dbsmartcbt",
-  "password": "Karawang@01",
+  "password": "smartcbt123",
   "ssl": false
 }
 ```
@@ -439,7 +439,7 @@ sudo -u postgres psql
 ```
 
 ```sql
-CREATE USER dbsmartcbt WITH PASSWORD 'Karawang@01';
+CREATE USER dbsmartcbt WITH PASSWORD 'smartcbt123';
 CREATE DATABASE dbsmartcbt OWNER dbsmartcbt;
 \q
 ```

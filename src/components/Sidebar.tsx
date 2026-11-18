@@ -181,6 +181,7 @@ function eraporGroup(role: Role): NavGroup {
 const flatNavByRole: Partial<Record<Role, NavItem[]>> = {
   student: [
     { path: "/student/dashboard", label: "My Exams", icon: "📝" },
+    { path: "/student/summary", label: "Ringkasan Nilai", icon: "📊" },
     { path: "/student/modules", label: "Modul Belajar", icon: "📖" },
     { path: "/student/assignments", label: "Tugas Saya", icon: "📝" },
     { path: "/storage", label: "File Storage", icon: "📁" },

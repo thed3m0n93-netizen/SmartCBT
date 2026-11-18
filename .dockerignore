@@ -23,7 +23,15 @@ validate-yaml.cjs
 .env.local
 .env.docker
 *.env*
-db-config.json
+# Runtime credentials — MUST never be baked into the image. Bare `db-config.json`
+# only matches the context root, NOT the nested `server/dist/` copy that
+# Dockerfile.backend COPYs. Use `**/` so the dev machine's setup PIN + DB password
+# can't leak into the image and get initialized into the fresh `server-config`
+# volume — that was the build-146 bug where `/setup` rejected the documented
+# default `Admin@123` (the server saw a pre-existing setup-auth.json and skipped
+# seeding the default). The server recreates both on first boot.
+**/db-config.json
+**/setup-auth.json
 CLAUDE.md
 AGENTS.md
 FEATURES.md

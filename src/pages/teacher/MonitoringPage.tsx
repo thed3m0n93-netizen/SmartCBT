@@ -5,6 +5,7 @@ import {
   forceSubmitSession,
   addExtraTime,
   resetSession,
+  flagSession,
   getAuthToken,
 } from "../../lib/api";
 import { C, alpha } from "../../styles/tokens";
@@ -34,6 +35,8 @@ interface Student {
   score?: number;
   ip: string;
   device: string;
+  /** Alasan penandaan manual (build 147), terisi saat status flagged/disrupted. */
+  flagReason?: string | null;
 }
 
 const statusConfig: Record<StudentStatus, { label: string; bg: string; text: string; border: string; dot: string; order: number }> = {
@@ -95,6 +98,7 @@ function mapDbStudent(row: any): Student {
     completedAtMs,
     score: row.score != null ? Number(row.score) : undefined,
     ip: row.ip_address ?? "—",
+    flagReason: row.flag_reason ?? null,
     device:
       row.device_id
         ? `SEB (device: ${row.device_id})`
@@ -116,6 +120,11 @@ export default function MonitoringPage() {
   const [visibleLimit, setVisibleLimit] = useState(24);
   const [extraTimeStudent, setExtraTimeStudent] = useState<string | null>(null);
   const [extraMinutes, setExtraMinutes] = useState("10");
+  /** Build 147 — dialog konfirmasi penandaan sesi manual. */
+  const [flagDialog, setFlagDialog] = useState<{ student: Student; next: "flagged" | "disrupted" | "in_progress" } | null>(null);
+  const [flagReason, setFlagReason] = useState("");
+  /** Build 147 — dialog konfirmasi aksi destruktif (Reset / Force Submit). */
+  const [confirmDialog, setConfirmDialog] = useState<{ student: Student; action: "reset" | "force-submit" } | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -316,14 +325,7 @@ export default function MonitoringPage() {
       : examOptions.find((o) => o.id === selectedExam)?.title ?? t("All exams");
 
   /** Reset a disconnected/flagged session back to in_progress via the server. */
-  const handleResetSession = async (s: Student) => {
-    if (
-      !window.confirm(
-        t("Reset sesi \"{name}\"? Status akan dikembalikan ke \"In Progress\" dan sesi dapat diakses ulang.", { name: s.name })
-      )
-    ) {
-      return;
-    }
+  const runResetSession = async (s: Student): Promise<boolean> => {
     setActionError(null);
     setNotice(null);
     setBusyId(s.id);
@@ -331,22 +333,17 @@ export default function MonitoringPage() {
       await resetSession(s.id);
       setNotice(t("Sesi \"{name}\" berhasil di-reset.", { name: s.name }));
       await loadRows();
+      return true;
     } catch (err: any) {
       setActionError(err?.message || t("Gagal me-reset sesi."));
+      return false;
     } finally {
       setBusyId(null);
     }
   };
 
   /** Teacher-forced submission via the server. */
-  const handleForceSubmit = async (s: Student) => {
-    if (
-      !window.confirm(
-        t("Force submit ujian for \"{name}\"? Sesi akan ditandai selesai dan dinilai dari jawaban yang sudah tersimpan.", { name: s.name })
-      )
-    ) {
-      return;
-    }
+  const runForceSubmit = async (s: Student): Promise<boolean> => {
     setActionError(null);
     setNotice(null);
     setBusyId(s.id);
@@ -354,8 +351,80 @@ export default function MonitoringPage() {
       await forceSubmitSession(s.id);
       setNotice(t("Ujian \"{name}\" berhasil di-force submit.", { name: s.name }));
       await loadRows();
+      return true;
     } catch (err: any) {
       setActionError(err?.message || t("Gagal melakukan force submit."));
+      return false;
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  /**
+   * Build 147 — dialog konfirmasi in-app (komponen `Modal`) untuk aksi destruktif
+   * Reset Session & Force Submit, menggantikan `window.confirm` agar konsisten
+   * dengan dialog penandaan sesi. Tombol Cancel menutup, Konfirmasi menjalankan.
+   */
+  const openConfirmDialog = (s: Student, action: "reset" | "force-submit") => {
+    setActionError(null);
+    setConfirmDialog({ student: s, action });
+  };
+
+  const closeConfirmDialog = () => {
+    if (busyId) return;
+    setConfirmDialog(null);
+  };
+
+  const runConfirmAction = async () => {
+    if (!confirmDialog) return;
+    const { student, action } = confirmDialog;
+    const ok = action === "reset" ? await runResetSession(student) : await runForceSubmit(student);
+    if (ok) setConfirmDialog(null);
+  };
+
+  /**
+   * Build 147 — manual flagging. Buka dialog konfirmasi (komponen `Modal`,
+   * bukan `window.prompt`/`confirm`) untuk menandai sesi 'flagged'
+   * (mencurigakan) / 'disrupted' (terganggu/terputus) beserta alasan yang
+   * tersimpan ke DB, atau membersihkan tanda ('in_progress').
+   */
+  const openFlagDialog = (
+    s: Student,
+    next: "flagged" | "disrupted" | "in_progress",
+  ) => {
+    setFlagReason("");
+    setActionError(null);
+    setFlagDialog({ student: s, next });
+  };
+
+  const closeFlagDialog = () => {
+    if (busyId) return;
+    setFlagDialog(null);
+    setFlagReason("");
+  };
+
+  const confirmFlag = async () => {
+    if (!flagDialog) return;
+    const { student: s, next } = flagDialog;
+    const reason =
+      next === "flagged" || next === "disrupted"
+        ? flagReason.trim() || undefined
+        : undefined;
+    setActionError(null);
+    setNotice(null);
+    setBusyId(s.id);
+    try {
+      await flagSession(s.id, next, reason);
+      setNotice(
+        next === "in_progress"
+          ? t("Tanda pada sesi \"{name}\" dibersihkan.", { name: s.name })
+          : t("Sesi \"{name}\" berhasil ditandai.", { name: s.name })
+      );
+      setFlagDialog(null);
+      setFlagReason("");
+      await loadRows();
+    } catch (err: any) {
+      setActionError(err?.message || t("Gagal menandai sesi."));
     } finally {
       setBusyId(null);
     }
@@ -740,9 +809,45 @@ export default function MonitoringPage() {
                 {t("Admin Actions")}
               </div>
 
+              {selectedStudent.flagReason && (
+                <div className="text-xs px-2 py-1.5 rounded-md" style={{ background: C.danger.bg, color: C.danger.deep }}>
+                  {t("Alasan tanda")}: {selectedStudent.flagReason}
+                </div>
+              )}
+
+              {selectedStudent.status !== "completed" && (
+                <>
+                  <Btn
+                    onClick={() => openFlagDialog(selectedStudent, "flagged")}
+                    disabled={busyId === selectedStudent.id}
+                    className="w-full"
+                    variant="danger"
+                  >
+                    {busyId === selectedStudent.id ? t("Memproses…") : t("🚩 Tandai Mencurigakan")}
+                  </Btn>
+                  <Btn
+                    onClick={() => openFlagDialog(selectedStudent, "disrupted")}
+                    disabled={busyId === selectedStudent.id}
+                    className="w-full"
+                    variant="amber"
+                  >
+                    {busyId === selectedStudent.id ? t("Memproses…") : t("⚠ Tandai Terputus")}
+                  </Btn>
+                  {(selectedStudent.status === "flagged" || selectedStudent.status === "disconnected") && (
+                    <Btn
+                      onClick={() => openFlagDialog(selectedStudent, "in_progress")}
+                      disabled={busyId === selectedStudent.id}
+                      className="w-full"
+                    >
+                      {busyId === selectedStudent.id ? t("Memproses…") : t("✓ Bersihkan Tanda")}
+                    </Btn>
+                  )}
+                </>
+              )}
+
                             {selectedStudent.status === "disconnected" && (
                 <Btn
-                  onClick={() => handleResetSession(selectedStudent)}
+                  onClick={() => openConfirmDialog(selectedStudent, "reset")}
                   disabled={busyId === selectedStudent.id}
                   style={{ background: C.ok.main, color: C.base.surface }}
                   className="w-full"
@@ -762,7 +867,7 @@ export default function MonitoringPage() {
 
               {selectedStudent.status !== "completed" && (
                 <Btn
-                  onClick={() => handleForceSubmit(selectedStudent)}
+                  onClick={() => openConfirmDialog(selectedStudent, "force-submit")}
                   disabled={busyId === selectedStudent.id}
                   className="w-full"
                   style={{ color: C.danger.main, borderColor: C.danger.border }}
@@ -812,6 +917,112 @@ export default function MonitoringPage() {
               style={{ background: C.warn.main, color: C.base.surface }}
             >
               {busyId === extraTimeStudent ? t("Menyimpan…") : t("Apply")}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {/* Manual session flag confirmation dialog (build 147) */}
+      {flagDialog && (
+        <Modal
+          title={
+            flagDialog.next === "flagged"
+              ? t("Tandai Mencurigakan")
+              : flagDialog.next === "disrupted"
+                ? t("Tandai Terputus")
+                : t("Bersihkan Tanda")
+          }
+          onClose={closeFlagDialog}
+          dismissable={!busyId}
+        >
+          <p className="text-sm mb-4" style={{ color: C.base.textMuted }}>
+            {flagDialog.next === "in_progress"
+              ? t("Bersihkan tanda pada sesi \"{name}\"? Status kembali ke \"In Progress\".", { name: flagDialog.student.name })
+              : t("Anda akan menandai sesi \"{name}\" sebagai {label}. Tindakan ini tersimpan ke database.", {
+                  name: flagDialog.student.name,
+                  label: flagDialog.next === "flagged" ? t("mencurigakan") : t("terganggu/terputus"),
+                })}
+          </p>
+
+          {flagDialog.next !== "in_progress" && (
+            <textarea
+              value={flagReason}
+              onChange={(e) => setFlagReason(e.target.value)}
+              rows={3}
+              maxLength={500}
+              placeholder={t("Alasan (opsional)…")}
+              className="w-full px-3 py-2 rounded-lg text-sm outline-none mb-4 resize-none"
+              style={controlStyle}
+            />
+          )}
+
+          {actionError && (
+            <div className="text-xs mb-3" style={{ color: C.danger.main }}>{actionError}</div>
+          )}
+
+          <div className="flex gap-2">
+            <button
+              onClick={closeFlagDialog}
+              disabled={!!busyId}
+              className="flex-1 py-2 rounded-lg text-sm font-medium disabled:opacity-60"
+              style={{ border: `1px solid ${C.base.border}`, color: C.base.textMuted }}
+            >
+              {t("Cancel")}
+            </button>
+            <button
+              onClick={confirmFlag}
+              disabled={busyId === flagDialog.student.id}
+              className="flex-1 py-2 rounded-lg text-sm font-medium disabled:opacity-60"
+              style={{
+                background:
+                  flagDialog.next === "flagged" ? C.danger.main
+                  : flagDialog.next === "disrupted" ? C.warn.main
+                  : C.brand.main,
+                color: C.base.surface,
+              }}
+            >
+              {busyId === flagDialog.student.id ? t("Memproses…") : t("Konfirmasi")}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {/* Reset / Force Submit confirmation dialog (build 147) */}
+      {confirmDialog && (
+        <Modal
+          title={confirmDialog.action === "reset" ? t("Reset Session") : t("Force Submit")}
+          onClose={closeConfirmDialog}
+          dismissable={!busyId}
+        >
+          <p className="text-sm mb-4" style={{ color: C.base.textMuted }}>
+            {confirmDialog.action === "reset"
+              ? t("Reset sesi \"{name}\"? Status akan dikembalikan ke \"In Progress\" dan sesi dapat diakses ulang.", { name: confirmDialog.student.name })
+              : t("Force submit ujian for \"{name}\"? Sesi akan ditandai selesai dan dinilai dari jawaban yang sudah tersimpan.", { name: confirmDialog.student.name })}
+          </p>
+
+          {actionError && (
+            <div className="text-xs mb-3" style={{ color: C.danger.main }}>{actionError}</div>
+          )}
+
+          <div className="flex gap-2">
+            <button
+              onClick={closeConfirmDialog}
+              disabled={!!busyId}
+              className="flex-1 py-2 rounded-lg text-sm font-medium disabled:opacity-60"
+              style={{ border: `1px solid ${C.base.border}`, color: C.base.textMuted }}
+            >
+              {t("Cancel")}
+            </button>
+            <button
+              onClick={runConfirmAction}
+              disabled={busyId === confirmDialog.student.id}
+              className="flex-1 py-2 rounded-lg text-sm font-medium disabled:opacity-60"
+              style={{
+                background: confirmDialog.action === "reset" ? C.ok.main : C.danger.main,
+                color: C.base.surface,
+              }}
+            >
+              {busyId === confirmDialog.student.id ? t("Memproses…") : t("Konfirmasi")}
             </button>
           </div>
         </Modal>

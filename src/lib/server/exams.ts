@@ -1,6 +1,7 @@
 /** SmartCBT — Exams API handlers (server-side only) */
 import { randomUUID } from "node:crypto";
 import { query, queryOne, addRoute, json, jsonPaged, likeParam, parsePagedRequest } from "./utils.js";
+import { requireStaff } from "./ownership.js";
 
 const EXAM_STATUSES = ["draft", "published", "archived"] as const;
 
@@ -199,7 +200,8 @@ addRoute("GET", /^\/api\/exam\/[^/]+$/, async (req, res) => {
 // ── Exam mutations (CRUD) ──────────────────────────────────────────────
 
 // POST /api/exams — create a new exam (+ class assignments + optional token)
-addRoute("POST", /^\/api\/exams$/, async (_req, res, body) => {
+addRoute("POST", /^\/api\/exams$/, async (req, res, body) => {
+  if (!requireStaff(req, res)) return;
   const title = typeof body.title === "string" ? body.title.trim() : "";
   const bankId = typeof body.bankId === "string" ? body.bankId : "";
   const createdBy = typeof body.createdBy === "string" ? body.createdBy : "";
@@ -273,6 +275,7 @@ addRoute("POST", /^\/api\/exams$/, async (_req, res, body) => {
 
 // PUT /api/exams/:id — update an exam (fields, status/archive, assignments, token)
 addRoute("PUT", /^\/api\/exams\/[^/]+$/, async (req, res, body) => {
+  if (!requireStaff(req, res)) return;
   const examId = req.url.split("?")[0].match(/^\/api\/exams\/([^/]+)$/)![1];
   const existing = await queryOne(`SELECT * FROM exams WHERE id = $1`, [examId]);
   if (!existing) return json(res, { error: "Exam not found" }, 404);
@@ -369,6 +372,7 @@ addRoute("PUT", /^\/api\/exams\/[^/]+$/, async (req, res, body) => {
 
 // DELETE /api/exams/:id — delete an exam (archives are the safer alternative)
 addRoute("DELETE", /^\/api\/exams\/[^/]+$/, async (req, res) => {
+  if (!requireStaff(req, res)) return;
   const examId = req.url.split("?")[0].match(/^\/api\/exams\/([^/]+)$/)![1];
   const existing = await queryOne(`SELECT id FROM exams WHERE id = $1`, [examId]);
   if (!existing) return json(res, { error: "Exam not found" }, 404);

@@ -75,7 +75,7 @@ const DEFAULTS: DatabaseConfig = {
   port: 5432,
   user: "smartcbt",
   database: "smartcbt",
-  password: "Karawang@01",
+  password: "smartcbt123",
   ssl: false,
 };
 

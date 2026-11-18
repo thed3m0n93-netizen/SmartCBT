@@ -1,0 +1,85 @@
+# SmartCBT — Docker Compose menggunakan image dari Docker Hub
+# Tidak perlu build dari source, langsung pakai image yang sudah di-push
+
+name: smartcbt
+
+services:
+  # ── PostgreSQL ──
+  postgres:
+    image: postgres:16-alpine
+    container_name: smartcbt-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: db_smartcbt
+      POSTGRES_PASSWORD: smartcbt123
+      POSTGRES_DB: db_smartcbt
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U db_smartcbt -d db_smartcbt"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - appnet
+
+  # ── Backend (dari Docker Hub) ──
+  backend:
+    image: devlover0594/smartcbt-backend:latest
+    container_name: smartcbt-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 8447
+      HOST: 0.0.0.0
+      UPLOADS_DIR: /app/uploads
+      PGTYPE: postgres
+      PGHOST: postgres
+      PGPORT: 5432
+      PGUSER: db_smartcbt
+      PGPASSWORD: smartcbt123
+      PGDATABASE: db_smartcbt
+      PGSSL: "false"
+      # Jika true, setup-auth.json dihapus dan di-re-seed ke Admin@123 setiap boot.
+      SETUP_AUTH_FORCE_DEFAULT: "true"
+      # Jika true, database akan di-install dan di-seed otomatis saat backend boot.
+      SETUP_AUTO_SEED: "true"
+    volumes:
+      - uploads-data:/app/uploads
+      - server-config:/app/server/dist
+    healthcheck:
+      test: ["CMD", "node", "-e", "const http=require('http');const req=http.get('http://localhost:8447/api/health',(r)=>{process.exit(r.statusCode===200?0:1);});req.on('error',()=>process.exit(1));req.on('close',()=>process.exit(1));"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - appnet
+
+  # ── Frontend (dari Docker Hub) ──
+  frontend:
+    image: devlover0594/smartcbt-frontend:latest
+    container_name: smartcbt-frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_started
+    environment:
+      API_HOST: backend:8447
+    ports:
+      - "8080:80"
+    networks:
+      - appnet
+
+volumes:
+  postgres-data:
+  uploads-data:
+  server-config:
+
+networks:
+  appnet:
+    driver: bridge

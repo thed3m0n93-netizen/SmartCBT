@@ -1,6 +1,7 @@
 /** SmartCBT — Questions & Question Banks API handlers (server-side only) */
 import { randomUUID } from "node:crypto";
 import { query, queryOne, addRoute, json, jsonPaged, likeParam, parsePagedRequest } from "./utils.js";
+import { requireStaff } from "./ownership.js";
 
 export const QUESTION_TYPES = [
   "single_choice",
@@ -265,7 +266,8 @@ addRoute("GET", /^\/api\/question-banks$/, async (req, res) => {
 // ── Question bank mutations ────────────────────────────────────────────
 
 // POST /api/question-banks — create a question bank
-addRoute("POST", /^\/api\/question-banks$/, async (_req, res, body) => {
+addRoute("POST", /^\/api\/question-banks$/, async (req, res, body) => {
+  if (!requireStaff(req, res)) return;
   const title = typeof body.title === "string" ? body.title.trim() : "";
   const subjectId = Number(body.subjectId);
   const teacherId = typeof body.teacherId === "string" ? body.teacherId.trim() : "";
@@ -293,6 +295,7 @@ addRoute("POST", /^\/api\/question-banks$/, async (_req, res, body) => {
 
 // PUT /api/question-banks/:id — rename a bank / move it to another subject
 addRoute("PUT", /^\/api\/question-banks\/[^/]+$/, async (req, res, body) => {
+  if (!requireStaff(req, res)) return;
   const bankId = req.url.split("?")[0].match(/^\/api\/question-banks\/([^/]+)$/)![1];
   const existing = await queryOne(`SELECT * FROM question_banks WHERE id = $1`, [bankId]);
   if (!existing) return json(res, { error: "Question bank not found" }, 404);
@@ -318,6 +321,7 @@ addRoute("PUT", /^\/api\/question-banks\/[^/]+$/, async (req, res, body) => {
 
 // DELETE /api/question-banks/:id — delete a bank (its questions cascade)
 addRoute("DELETE", /^\/api\/question-banks\/[^/]+$/, async (req, res) => {
+  if (!requireStaff(req, res)) return;
   const bankId = req.url.split("?")[0].match(/^\/api\/question-banks\/([^/]+)$/)![1];
   const existing = await queryOne(`SELECT id FROM question_banks WHERE id = $1`, [bankId]);
   if (!existing) return json(res, { error: "Question bank not found" }, 404);
@@ -346,7 +350,8 @@ addRoute("DELETE", /^\/api\/question-banks\/[^/]+$/, async (req, res) => {
 // ── Question mutations ─────────────────────────────────────────────────
 
 // POST /api/questions — create a question inside a bank
-addRoute("POST", /^\/api\/questions$/, async (_req, res, body) => {
+addRoute("POST", /^\/api\/questions$/, async (req, res, body) => {
+  if (!requireStaff(req, res)) return;
   const bankId = typeof body.bankId === "string" ? body.bankId : "";
   const questionType = String(body.questionType ?? "");
   const content = typeof body.content === "string" ? body.content.trim() : "";
@@ -405,6 +410,7 @@ addRoute("POST", /^\/api\/questions$/, async (_req, res, body) => {
 
 // PUT /api/questions/:id — update a question (partial, validated)
 addRoute("PUT", /^\/api\/questions\/[^/]+$/, async (req, res, body) => {
+  if (!requireStaff(req, res)) return;
   const questionId = req.url.split("?")[0].match(/^\/api\/questions\/([^/]+)$/)![1];
   const existing = await queryOne(`SELECT * FROM questions WHERE id = $1`, [questionId]);
   if (!existing) return json(res, { error: "Question not found" }, 404);
@@ -493,6 +499,7 @@ addRoute("PUT", /^\/api\/questions\/[^/]+$/, async (req, res, body) => {
 
 // DELETE /api/questions/:id — delete a question
 addRoute("DELETE", /^\/api\/questions\/[^/]+$/, async (req, res) => {
+  if (!requireStaff(req, res)) return;
   const questionId = req.url.split("?")[0].match(/^\/api\/questions\/([^/]+)$/)![1];
   const existing = await queryOne(`SELECT id, bank_id FROM questions WHERE id = $1`, [
     questionId,

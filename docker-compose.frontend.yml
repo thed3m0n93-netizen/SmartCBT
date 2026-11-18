@@ -13,8 +13,9 @@ services:
       context: .
       dockerfile: Dockerfile.frontend
       args:
-        # Build-time base URL for Vite (VITE_API_BASE_URL)
-        VITE_API_BASE_URL: /api
+        # Build-time base URL for Vite (VITE_API_BASE_URL) — same-origin, leave
+        # empty. api.ts paths already start with `/api`; `/api` caused `/api/api/*`.
+        VITE_API_BASE_URL: ""
     ports:
       - "80:80"
     environment:

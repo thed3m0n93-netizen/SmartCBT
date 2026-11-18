@@ -2,7 +2,7 @@
 
 Platform **Computer Based Test (CBT)** sekolah multi-peran (admin / guru / siswa) — ujian digital dengan anti-cheat dua lapis, monitoring real-time, penilaian manual & AI, plus modul belajar (LMS), tugas, berita sekolah, penyimpanan berkas, PWA, dan game mode multiplayer **Nusantara High** — sekolah isometrik dalam-app dengan lobi terpisah per kelas, terikat akun login, akses modul & tugas langsung dari dalam game, dan **ramah smartphone (floating gamepad Android/iPhone)**.
 
-> Build dokumentasi saat ini: **145 (2026-11-14)**. Riwayat lengkap: [`CHANGELOG.md`](./CHANGELOG.md) · Status fitur: [`FEATURES.md`](./FEATURES.md) · Katalog API: [`API_ENDPOINTS.md`](./API_ENDPOINTS.md)
+> Build dokumentasi saat ini: **146 (2026-11-14)**. Riwayat lengkap: [`CHANGELOG.md`](./CHANGELOG.md) · Status fitur: [`FEATURES.md`](./FEATURES.md) · Katalog API: [`API_ENDPOINTS.md`](./API_ENDPOINTS.md)
 
 ## Fitur utama
 
@@ -71,10 +71,10 @@ npm run build:server   # backend  → server/dist/server.mjs (bundle tunggal)
 npm run build:all      # keduanya
 ```
 
-Tiga jalur produksi (detail: `GUIDE.md`, `DOCKER_README.md`, `server/README.md`):
+Tiga jalur produksi:
 
-1. **Docker Compose** — `npm run build:server` dulu (image backend menyalin bundle prebuilt), lalu `docker compose up -d --build` → frontend nginx di host `:8080`, proxy `/api` & `/uploads` ke backend `:8447` dengan `proxy_buffering off` (syarat SSE).
-2. **Standalone + Nginx/systemd** — jalankan `PORT=8447 HOST=127.0.0.1 node dist/server.mjs` (env `server/.env`), sajikan `dist/` via Nginx + proxy. Contoh unit & conf di `deploy/`.
+1. **Docker Compose** — panduan lengkap ada di [`DOCKER_README.md`](./DOCKER_README.md).
+2. **Standalone + Nginx/systemd** — jalankan `PORT=8447 HOST=127.0.0.1 node dist/server.mjs` (env `server/.env`), sajikan `dist/` via Nginx + proxy. Contoh unit & conf di `deploy/`. Detail: [`GUIDE.md`](./GUIDE.md).
 3. **Single-origin** — set `STATIC_DIR=/path/ke/dist` pada server standalone: satu proses melayani SPA + API + uploads.
 
 Variabel environment utama (nama saja): `PORT`, `HOST`, `STATIC_DIR`, `UPLOADS_DIR`, `UPLOAD_SUBDIR` (isolasi file per domain), `PUBLIC_BASE_URL`, `PG*`/`DATABASE_URL`/`PGTYPE`, `AI_GRADE_CONCURRENCY`, `SETUP_AUTH_FILE`, `VITE_API_BASE_URL`. Kredensial DB runtime disimpan di `db-config.json` (gitignored), bukan di source.
@@ -96,7 +96,7 @@ Variabel environment utama (nama saja): `PORT`, `HOST`, `STATIC_DIR`, `UPLOADS_D
 ## Catatan keamanan sebelum produksi
 
 - **Rotasi semua secret bawaan**: API key NVIDIA ter-bundle di `src/lib/server/ai-keys.ts`, kredensial DB default di `src/lib/db.ts`, password Postgres di `docker-compose.yml`, akun demo hasil seed, dan sisa token lama di `.env.local` (hapus filenya).
-- **Celah yang diketahui** (detail di `FEATURES.md` → Prioritas + CHANGELOG 144): ~~CRUD users/classes/subjects~~ (build 143) dan ~~manajemen Data Siswa `students.ts`~~ (build 144, `requireStaff`) sudah digerbangi & teruji matriks peran. **Gelombang terbuka hasil audit**: exams tulis, questions/banks tulis, grading esai, AI grade esai (self-grading!), questions/import, GET results, tokens/SEB config (actor-id dari body), storage attribution — urutan 145–146. Sesi login & SSE & state game in-memory (tidak bisa multi-instance). Penegakan durasi (138), kepemilikan sesi (139), lobi per kelas + persistensi game (142) **sudah teruji E2E DB Postgres lokal nyata**; tersisa uji visual browser.
+- **Celah yang diketahui** (detail di `FEATURES.md` → Prioritas + CHANGELOG 144/146): ~~CRUD users/classes/subjects~~ (build 143), ~~manajemen Data Siswa `students.ts`~~ (build 144, `requireStaff`), dan ~~AI grade esai + generate soal (self-grading!)~~ (build 146, `requireStaff`) sudah digerbangi & teruji matriks peran. **Gelombang terbuka hasil audit**: exams tulis, questions/banks tulis, grading esai manual, questions/import, GET results, tokens/SEB config (actor-id dari body), storage attribution — urutan 147–148. Sesi login & SSE & state game in-memory (tidak bisa multi-instance). Penegakan durasi (138), kepemilikan sesi (139), lobi per kelas + persistensi game (142) **sudah teruji E2E DB Postgres lokal nyata**; tersisa uji visual browser.
 - **DB dev lokal E2E**: Postgres lokal kini punya role+database `dbsmartcbt` (kredensial di `src/lib/db-config.json` & `server/dist/db-config.json` — dua-duanya gitignored) dan PIN setup `/setup` sempat dibuat di mesin ini (`server/dist/setup-auth.json`, gitignored). Jangan file-file itu ikut tersalin ke repo manapun.
 - `public/uploads/` berisi berkas user sungguhan dan ikut ter-copy ke `dist/` saat build — pindahkan folder upload ke luar proyek (`UPLOADS_DIR`) sebelum deploy.
 

@@ -9,7 +9,7 @@ import { query, queryOne, addRoute, json } from "./utils.js";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { getUploadDir } from "./storage.js";
 
 /**
  * Absolute origin this API is reachable at, derived from the request.
@@ -157,12 +157,12 @@ addRoute("PUT", /^\/api\/settings$/, async (req, res, body) => {
 // ── School branding uploads (logo / background / favicon) ─────────────
 
 /**
- * Absolute path of the public uploads folder.
- * `src/lib/server/` → project root → `public/uploads`, matching the storage
- * module so `/uploads/<file>` keeps resolving in development and in the
- * bundled standalone server.
+ * Absolute path of the uploads folder — resolved by the SINGLE source of truth
+ * in storage.ts (honors $UPLOADS_DIR), so branding files land in the same dir
+ * the server serves. Hardcoding `../../../public/uploads` here previously
+ * pointed at `/public/uploads` inside the Docker image (build 146).
  */
-const UPLOAD_DIR = join(fileURLToPath(new URL("../../../public", import.meta.url)), "uploads");
+const UPLOAD_DIR = getUploadDir();
 
 /**
  * Branding slots and the exact upload settings they accept.

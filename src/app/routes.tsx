@@ -19,6 +19,7 @@ import TeacherLearningModulesPage from "../pages/teacher/LearningModulesPage";
 import TeacherAssignmentsPage from "../pages/teacher/AssignmentsPage";
 import StudentDataPage from "../pages/teacher/StudentDataPage";
 import StudentDashboard from "../pages/student/StudentDashboard";
+import StudentSummaryPage from "../pages/student/SummaryPage";
 import NewsDetailPage from "../pages/student/NewsDetailPage";
 import ExamTakingPage from "../pages/student/ExamTakingPage";
 import StudentLearningModulesPage from "../pages/student/LearningModulesPage";
@@ -61,6 +62,7 @@ export const router = createBrowserRouter([
       { path: "teacher/assignments", element: <TeacherAssignmentsPage /> },
       { path: "teacher/students", element: <StudentDataPage /> },
       { path: "student/dashboard", element: <StudentDashboard /> },
+      { path: "student/summary", element: <StudentSummaryPage /> },
       // Detail berita dibuka dari slider headline di dashboard siswa. Path-nya
       // di luar `student/` karena staff juga boleh membuka draft untuk pratinjau.
       { path: "news/:newsId", element: <NewsDetailPage /> },

@@ -4,8 +4,11 @@ import { query, queryOne, addRoute, json } from "./utils.js";
 import {
   NO_CALLER,
   NOT_OWNER,
+  NOT_STAFF,
   callerFromRequest,
+  isStaffCaller,
   isAdminCaller,
+  requireStaff,
   sessionOwnerOf,
 } from "./ownership.js";
 
@@ -17,7 +20,8 @@ function generateTokenValue(): string {
 }
 
 // GET /api/tokens
-addRoute("GET", /^\/api\/tokens$/, async (_req, res) => {
+addRoute("GET", /^\/api\/tokens$/, async (req, res) => {
+  if (!requireStaff(req, res)) return;
   const rows = await query(`
     SELECT
       e.id as exam_id, e.title as exam_title, e.dynamic_token as token,
@@ -32,35 +36,62 @@ addRoute("GET", /^\/api\/tokens$/, async (_req, res) => {
 });
 
 // POST /api/tokens/generate
-addRoute("POST", /^\/api\/tokens\/generate$/, async (_req, res, body) => {
-  const { examId, teacherId } = body;
-  if (!examId || !teacherId) {
-    return json(res, { error: "examId and teacherId required" }, 400);
+// Build 147: actor id is taken from the SESSION, never from the request body.
+// Previously `teacherId` came from `body`, so any logged-in user who knew a
+// teacher's id could rotate that teacher's exam entry token. A teacher may only
+// act on exams they created; admins may act on any exam.
+addRoute("POST", /^\/api\/tokens\/generate$/, async (req, res, body) => {
+  const caller = callerFromRequest(req);
+  if (!caller) return json(res, NO_CALLER.payload, NO_CALLER.status);
+  if (!isStaffCaller(caller)) return json(res, NOT_STAFF.payload, NOT_STAFF.status);
+  const { examId } = body ?? {};
+  if (!examId) {
+    return json(res, { error: "examId required" }, 400);
+  }
+  const exam = await queryOne<{ created_by: string }>(
+    `SELECT id, created_by FROM exams WHERE id = $1`,
+    [examId]
+  );
+  if (!exam) return json(res, { error: "Ujian tidak ditemukan" }, 404);
+  if (!isAdminCaller(caller) && String(exam.created_by) !== String(caller.id)) {
+    return json(res, NOT_OWNER.payload, NOT_OWNER.status);
   }
   const token = generateTokenValue();
   await query(
-    `UPDATE exams SET dynamic_token = $1, is_token_active = TRUE
-     WHERE id = $2 AND created_by = $3`,
-    [token, examId, teacherId]
+    `UPDATE exams SET dynamic_token = $1, is_token_active = TRUE WHERE id = $2`,
+    [token, examId]
   );
   const updated = await queryOne(
     `SELECT dynamic_token, is_token_active FROM exams WHERE id = $1`,
     [examId]
   );
-     json(res, { token: updated?.dynamic_token, isActive: updated?.is_token_active });
+  json(res, { token: updated?.dynamic_token, isActive: updated?.is_token_active });
 });
 
 // POST /api/tokens/revoke — deactivate a dynamic token for an exam
-addRoute("POST", /^\/api\/tokens\/revoke$/, async (_req, res, body) => {
-  const { examId, teacherId } = body;
-  if (!examId || !teacherId) {
-    return json(res, { error: "examId and teacherId required" }, 400);
+// Build 147: actor id from the SESSION (was `teacherId` from body). Teacher
+// restricted to own exams, admin to any.
+addRoute("POST", /^\/api\/tokens\/revoke$/, async (req, res, body) => {
+  const caller = callerFromRequest(req);
+  if (!caller) return json(res, NO_CALLER.payload, NO_CALLER.status);
+  if (!isStaffCaller(caller)) return json(res, NOT_STAFF.payload, NOT_STAFF.status);
+  const { examId } = body ?? {};
+  if (!examId) {
+    return json(res, { error: "examId required" }, 400);
+  }
+  const exam = await queryOne<{ created_by: string }>(
+    `SELECT id, created_by FROM exams WHERE id = $1`,
+    [examId]
+  );
+  if (!exam) return json(res, { error: "Ujian tidak ditemukan" }, 404);
+  if (!isAdminCaller(caller) && String(exam.created_by) !== String(caller.id)) {
+    return json(res, NOT_OWNER.payload, NOT_OWNER.status);
   }
   await query(
     `UPDATE exams
         SET is_token_active = FALSE
-      WHERE id = $1 AND created_by = $2 AND dynamic_token IS NOT NULL`,
-    [examId, teacherId]
+      WHERE id = $1 AND dynamic_token IS NOT NULL`,
+    [examId]
   );
   const updated = await queryOne(
     `SELECT dynamic_token, is_token_active FROM exams WHERE id = $1`,
@@ -219,6 +250,7 @@ addRoute("GET", /^\/api\/seb\/config\/[^/]+$/, async (req, res) => {
 
 // PUT /api/seb/config/:examId — save (or clear) the approved hash.
 addRoute("PUT", /^\/api\/seb\/config\/[^/]+$/, async (req, res, body) => {
+  if (!requireStaff(req, res)) return;
   const examId = req.url.match(/^\/api\/seb\/config\/([^/]+)$/)![1];
   const existing = await queryOne(`SELECT id FROM exams WHERE id = $1`, [examId]);
   if (!existing) return json(res, { error: "Ujian tidak ditemukan" }, 404);
@@ -313,6 +345,7 @@ const sebFileStore = new Map<string, { fileName: string; base64: string }>();
 // The server hashes the bytes itself and pins seb_config_hash — the hash is
 // NEVER trusted from the client, only recomputed here.
 addRoute("PUT", /^\/api\/seb\/file\/[^/]+$/, async (req, res, body) => {
+  if (!requireStaff(req, res)) return;
   const examId = req.url.match(/^\/api\/seb\/file\/([^/]+)$/)![1];
   const existing = await queryOne(`SELECT id FROM exams WHERE id = $1`, [examId]);
   if (!existing) return json(res, { error: "Ujian tidak ditemukan" }, 404);

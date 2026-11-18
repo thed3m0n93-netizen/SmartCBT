@@ -14,6 +14,7 @@ import XLSX from "xlsx";
 import { XMLParser } from "fast-xml-parser";
 import { randomUUID } from "node:crypto";
 import { query, queryOne, addRoute, json, type AuthenticatedRequest } from "./utils.js";
+import { requireStaff } from "./ownership.js";
 import {
   normalizeOptions,
   normalizeAnswer,
@@ -643,7 +644,8 @@ ${buildParagraph("Setelah diisi, simpan sebagai .docx dan upload untuk import.")
 /* ── Route handlers ─────────────────────────────────────────────────────── */
 
 // POST /api/questions/import — bulk import questions
-addRoute("POST", /^\/api\/questions\/import$/, async (_req: AuthenticatedRequest, res, body) => {
+addRoute("POST", /^\/api\/questions\/import$/, async (req: AuthenticatedRequest, res, body) => {
+  if (!requireStaff(req, res)) return;
   const bankId = typeof body.bankId === "string" ? body.bankId : "";
   const importType = String(body.importType || "").trim() || null;
   const fileBase64 = String(body.file || "").trim();

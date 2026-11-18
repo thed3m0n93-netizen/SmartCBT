@@ -1,4 +1,4 @@
-# ──────────────────────────────────────────────────────────────────────────────
+﻿# ──────────────────────────────────────────────────────────────────────────────
 # SmartCBT — Docker Compose (All-in-One)
 #
 # Satu file yang build dan menjalankan seluruh stack (PostgreSQL + Backend API
@@ -10,9 +10,26 @@
 #   docker compose down                 # matikan semua service
 #   docker compose down -v              # matikan + hapus volume (data hilang)
 #
+# docker logout
+# docker login -u devlover0594
+
+# Rebuild image backend (Node.js) dan frontend (Vite + nginx) dari source code lokal:
+# docker build -f Dockerfile.backend -t devlover0594/smartcbt-backend:latest .
+# Rebuild frontend tanpa prefix API (same-origin)
+# docker build -f Dockerfile.frontend --build-arg VITE_API_BASE_URL="" -t devlover0594/smartcbt-frontend:latest .
+
+# Beri tag pada kedua image sesuai format Docker Hub
+# docker tag smartcbt-frontend:latest devlover0594/smartcbt-frontend:latest
+# docker tag smartcbt-backend:latest devlover0594/smartcbt-backend:latest
+
+# Push kedua image ke Docker Hub
+# docker push devlover0594/smartcbt-frontend:latest
+# docker push devlover0594/smartcbt-backend:latest
+
+#
 # Credentials default (sesuaikan dengan .env jika ada):
 #   POSTGRES_USER   = db_smartcbt
-#   POSTGRES_PASSWORD = Karawang@01
+#   POSTGRES_PASSWORD = smartcbt123
 #   POSTGRES_DB     = db_smartcbt
 #   Backend port    = 8447 (di dalam container)
 #   Frontend port   = 8080 (di host)
@@ -28,7 +45,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: db_smartcbt
-      POSTGRES_PASSWORD: Karawang@01
+      POSTGRES_PASSWORD: smartcbt123
       POSTGRES_DB: db_smartcbt
     volumes:
       - postgres-data:/var/lib/postgresql/data
@@ -60,9 +77,13 @@ services:
       PGHOST: postgres
       PGPORT: 5432
       PGUSER: db_smartcbt
-      PGPASSWORD: Karawang@01
+      PGPASSWORD: smartcbt123
       PGDATABASE: db_smartcbt
       PGSSL: "false"
+      # Jika true, setup-auth.json dihapus dan di-re-seed ke Admin@123 setiap boot.
+      SETUP_AUTH_FORCE_DEFAULT: "true"
+      # Jika true, database akan di-install dan di-seed otomatis saat backend boot.
+      SETUP_AUTO_SEED: "true"
     volumes:
       - uploads-data:/app/uploads
       - server-config:/app/server/dist
@@ -81,7 +102,9 @@ services:
       context: .
       dockerfile: Dockerfile.frontend
       args:
-        VITE_API_BASE_URL: /api
+        # Same-origin: leave empty. api.ts paths already start with `/api` and
+        # nginx proxies `/api/` to backend. `/api` here caused `/api/api/*` 401.
+        VITE_API_BASE_URL: ""
     container_name: smartcbt-frontend
     restart: unless-stopped
     depends_on:

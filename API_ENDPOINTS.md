@@ -233,9 +233,9 @@ Dasar arsitektur:
 
 | Method | Endpoint | Deskripsi | Auth |
 |--------|----------|-----------|------|
-| POST | `/api/ai/grade/essay` | Minta penyedia AI menilai satu jawaban esai. Body: `{ answerId }`. | Ya |
-| POST | `/api/ai/grade/essay/all` | Batch AI-grade setiap esai yang belum dinilai dalam ujian. Body: `{ examId }`. | Ya |
-| POST | `/api/ai/questions/generate` | Generate soal dengan AI. Body: `{ bankId, prompt, count, questionTypes[], random, material? }`. **Build 140:** `material = { mode: "off"\|"manual"\|"auto", uploadIds?: string[], subjectId? }` men-grounding soal pada lampiran materi guru; respons sukses menambah `material` (ringkasan berkas/chunks/skipped) + `sourceTags[]`. Mode non-off tanpa materi terekstrak → **400** dengan daftar alasan per berkas. | Ya |
+| POST | `/api/ai/grade/essay` | Minta penyedia AI menilai satu jawaban esai. Body: `{ answerId }`. **Build 146:** `requireStaff` — siswa → 403 `STAFF_ONLY`. | Ya (staff) |
+| POST | `/api/ai/grade/essay/all` | Batch AI-grade setiap esai yang belum dinilai dalam ujian. Body: `{ examId }`. **Build 146:** `requireStaff` (403 `STAFF_ONLY` untuk siswa). | Ya (staff) |
+| POST | `/api/ai/questions/generate` | Generate soal dengan AI. Body: `{ bankId, prompt, count, questionTypes[], random, material? }`. **Build 140:** `material = { mode: "off"\|"manual"\|"auto", uploadIds?: string[], subjectId? }` men-grounding soal pada lampiran materi guru; respons sukses menambah `material` (ringkasan berkas/chunks/skipped) + `sourceTags[]`. Mode non-off tanpa materi terekstrak → **400** dengan daftar alasan per berkas. **Build 146:** `requireStaff` — siswa → 403 `STAFF_ONLY`. | Ya (staff) |
 | GET | `/api/ai/materials` | **Build 140.** Daftar lampiran materi (kind `learning-material`/`exam-material`/`assignment-material`) yang terlihat caller (guru: miliknya, admin: semua) — untuk pemilih referensi. Query: `?subjectId=`. Tiap entri `{ id, fileName, kind, subjectName, contextTitle, supported }`. | Ya (staff) |
 
 ## Dashboard

@@ -1,7 +1,7 @@
 # SmartCBT — Status Implementasi Fitur
 
 > Dokumen ini mencerminkan status implementasi yang berlaku pada build terbaru.
-> **Terakhir disinkronkan dengan kode: 2026-11-14 (build 145)** — seluruh status
+> **Terakhir disinkronkan dengan kode: 2026-11-15 (build 147)** — seluruh status
 > diverifikasi ulang langsung terhadap kode sumber (route `addRoute`, file, dan
 > diff terhadap snapshot `z134/`), mencakup pekerjaan yang selesai setelah build
 > 135 dan tercatat retroaktif di `CHANGELOG.md` sebagai build 136. Termasuk
@@ -48,7 +48,7 @@
 | Registrasi / sign-up mandiri siswa | ✅ | `src/pages/StudentRegisterPage.tsx` (rute `/register`), `POST /api/register/student`, gerbang lunak setting `student_registration_open` (build 121) |
 | Otorisasi ROLE di CRUD users/classes/subjects | ✅ | **Build 143** (ditutup dari temuan E2E): `requireAdmin` (diekspor dari `ownership.ts`, payload `ADMIN_ONLY`) dipasang di `auth-users.ts` (users GET/POST/PUT/DELETE, classes & subjects tulis) + `user-import.ts` (import massal). GET classes/subjects/teachers/students tetap terautentikasi; **GET /api/classes kini publik read-only — memperbaiki /register anonim yang selama ini 401**. Matriks peran teruji 16/16 |
 | Manajemen siswa massal (Data Siswa: roster/promote/graduate/status) khusus staff | ✅ | **Build 144**: `requireStaff` (dari `ownership.ts`) di 4 rute `students.ts`; matriks peran 9/9 (siswa 403 STAFF_ONLY, guru/admin 200, anonim 401) |
-| Gelombang otorisasi berikutnya (hasil audit 144) | ❌ | **Terbuka & terurut**: exams tulis, questions/banks tulis, grading esai manual, AI grade esai (self-grading!), questions/import, GET /api/results, tokens generate/revoke (actor-id dari body) + SEB config/file, storage ownerId body & legacy delete — detail lengkap di `CHANGELOG.md` build 144 |
+| Gelombang otorisasi berikutnya (hasil audit 144) | 🔶 | **Build 146** menutup AI grade esai + generate soal (`POST /api/ai/grade/essay`, `/essay/all`, `/api/ai/questions/generate` → `requireStaff`, matriks 12/12). **Build 147** menutup **exams tulis, questions/banks tulis, grading esai manual** (`POST/PUT/DELETE /api/exams[/:id]`, `/api/questions[/:id]`, `/api/question-banks[/:id]`, `POST /api/grading/essay` → `requireStaff`, matriks 10/10) **dan kelanjutan #148**: `POST /api/questions/import` → `requireStaff`; `GET /api/tokens` (bocorkan semua token) → `requireStaff`; `POST /api/tokens/generate|revoke` → `requireStaff` + **actor-id diambil dari SESI (bukan body `teacherId`)** + guru hanya boleh ujian miliknya (`NOT_OWNER`), admin lintas-ujian; `PUT /api/seb/config|file/:examId` → `requireStaff`; `POST /api/storage/upload` & `/upload-contextual` → `owner_id` dari SESI (bukan body `ownerId`); `POST /api/storage/delete` (legacy) → auth + kepemilikan (siswa hanya berkasnya, staff semua). `GET /api/results*` diverifikasi **sudah aman** (sessions/results `NOT_OWNER` build 139 + results/export staff-gate). Matriks #147 lanjutan teruji **15/15** di DB nyata. **Sisa (bukan daftar #148 awal)**: kepemilikan antar-staff untuk exams/questions/grading (guru A vs guru B) & `createdBy` `POST /api/exams` masih dari body — detail di `CHANGELOG.md` build 144/146/147 |
 | Ubah password / reset password sendiri | ❌ | — |
 | Edit profil pengguna (nama, avatar, kontak) | ✅ | Siswa: `StudentDashboard.tsx` (`GET/PUT /api/student/profile` + `uploadAvatar`); staff: `src/pages/admin/UsersPage.tsx` |
 
@@ -73,8 +73,8 @@
 | Lihat daftar soal + filter mapel/tipe/tingkat kesulitan/pencarian | ✅ | `src/pages/teacher/QuestionBankPage.tsx`, `GET /api/questions` |
 | Daftar bank soal dan pengelolaannya | ✅ | `GET /api/question-banks`, `src/lib/server/questions.ts` |
 | Detail soal, opsi, kunci jawaban, bobot, media flag | ✅ | QuestionBankPage |
-| Buat/edit/hapus soal dengan validasi server-side | ✅ | `POST/PUT/DELETE /api/questions` |
-| Buat/hapus bank soal dengan guard FK | ✅ | `POST/PUT/DELETE /api/question-banks` |
+| Buat/edit/hapus soal dengan validasi server-side | ✅ | `POST/PUT/DELETE /api/questions` — **gerbang staff build 147** (`requireStaff`) |
+| Buat/hapus bank soal dengan guard FK | ✅ | `POST/PUT/DELETE /api/question-banks` — **gerbang staff build 147** |
 | Upload media soal (gambar/audio/video) | ✅ | `src/components/QuestionMedia.tsx`, `POST /api/storage/upload` |
 | Render media inline di bank soal dan ujian siswa | ✅ | `src/components/QuestionMedia.tsx` |
 | Render LaTeX / formula matematika | ✅ | `src/components/MathText.tsx` |
@@ -82,7 +82,7 @@
 | **Generate soal ber-grounding MATERI guru** (build 140): referensi dari lampiran Modul/Ujian/Tugas, mode off/auto/manual | ✅ | `src/lib/server/material-context.ts` (ekstraksi docx/pdf/xlsx/csv/md/txt + chunk + skor relevansi + budget), `GET /api/ai/materials`, blok REFERENSI di prompt `aiagent.ts` |
 | **Provenance per soal** (build 140): label `materi`/`campuran` + sumber M<n>, tersimpan & jadi badge daftar soal | ✅ | kolom `questions.ai_source`/`ai_source_ref` (`schema.ts` `COLUMN_MIGRATIONS`), `normalizeSourceRef` di `aiagent.ts`, badge di `QuestionBankPage.tsx` |
 | Timeout + parser robust untuk model kecil agar JSON tidak terpotong | ✅ | `src/lib/server/aiagent.ts` |
-| Impor/ekspor soal Excel/CSV/Word/QTI + unduh template | ✅ | `src/lib/server/question-import.ts` (`POST /api/questions/import`, `GET /api/questions/export`, `GET /api/questions/template`; xlsx + mammoth + fast-xml-parser), UI di `QuestionBankPage.tsx` |
+| Impor/ekspor soal Excel/CSV/Word/QTI + unduh template | ✅ | `src/lib/server/question-import.ts` (`POST /api/questions/import` — **gerbang staff build 147**, `GET /api/questions/export`, `GET /api/questions/template`; xlsx + mammoth + fast-xml-parser), UI di `QuestionBankPage.tsx` |
 
 ## 5. Manajemen Ujian (Guru)
 
@@ -90,13 +90,13 @@
 |---|---|---|
 | Lihat daftar ujian + filter status | ✅ | `src/pages/teacher/ExamsPage.tsx`, `GET /api/exams` |
 | Detail ujian: kelas, token, randomize, SEB, jadwal, target siswa | ✅ | `GET /api/exam/:id` |
-| Buat ujian baru dengan wizard 3 langkah | ✅ | `POST /api/exams` |
-| Edit / arsipkan / hapus ujian dengan guard sesi aktif | ✅ | `PUT/DELETE /api/exams/:id` |
+| Buat ujian baru dengan wizard 3 langkah | ✅ | `POST /api/exams` — **gerbang staff build 147** (`requireStaff`) |
+| Edit / arsipkan / hapus ujian dengan guard sesi aktif | ✅ | `PUT/DELETE /api/exams/:id` — **gerbang staff build 147** |
 | Penugasan ujian ke kelas via `exam_class_assignments` | ✅ | `POST/PUT /api/exams` |
 | Randomisasi soal & opsi per siswa | ✅ | `seededShuffle` di `ExamTakingPage.tsx` |
 | Penjadwalan start/end/durasi + timer ujian | ✅ | `GET /api/exams`, `ExamTakingPage.tsx` |
-| Token masuk ujian 6 karakter (generate / revoke / validate) | ✅ | `src/lib/server/tokens.ts` (`POST /api/tokens/generate\|revoke\|validate`), `SEBConfigPage.tsx`; divalidasi server di `POST /api/sessions/start` |
-| Konfigurasi & unduh file `.seb` per ujian + QR login SEB | ✅ | `tokens.ts` (`/api/seb/config`, `/api/qr/seb-login`), `src/pages/teacher/SEBConfigPage.tsx` |
+| Token masuk ujian 6 karakter (generate / revoke / validate) | ✅ | `src/lib/server/tokens.ts` (`POST /api/tokens/generate\|revoke\|validate`), `SEBConfigPage.tsx`; divalidasi server di `POST /api/sessions/start`. **Build 147**: `GET /api/tokens` + `generate`/`revoke` → `requireStaff`, **actor-id dari sesi** (bukan body `teacherId`), guru hanya ujian miliknya (`NOT_OWNER`), admin lintas |
+| Konfigurasi & unduh file `.seb` per ujian + QR login SEB | ✅ | `tokens.ts` (`/api/seb/config`, `/api/qr/seb-login`), `src/pages/teacher/SEBConfigPage.tsx`. **Build 147**: `PUT /api/seb/config|file/:examId` → `requireStaff` (siswa tak bisa lagi membuka kunci/pin SEB) |
 | Hapus ujian dengan guard 409 + force delete `?force=true` | ✅ | `src/lib/server/exams.ts`, `ExamsPage.tsx` |
 
 ## 6. Pelaksanaan Ujian (Siswa)
@@ -122,7 +122,7 @@
 | Anti-cheat klien: kiosk fullscreen, blokir shortcut copy/paste/devtools, violation tracker + auto-submit | ✅ | `src/lib/anticheat.ts` (policy engine, dedupe 700 ms, `maxViolations` 5/3, force-submit saat limit) — model ancaman "browser-honest": perangkat kedua tetap tidak terdeteksi |
 | Enforce `seb_required` saat ujian berjalan | ✅ | Gerbang keras server: `POST /api/sessions/start` 403 tanpa bukti SEB, `POST /api/answers` menolak sesi tanpa `seb_verified_at`, loop `POST /api/seb/enforce` tiap 15 dtk di `ExamTakingPage.tsx`. ⚠️ Overlay blokir klien (`sebBlocked`) di-set tapi tidak pernah dirender — UI "mahasiswa keluar SEB" masih bolong, meski server tetap menolak jawaban |
 | Antrean jawaban offline + flush saat online kembali | ✅ | `localStorage smartcbt:pending-answers:<sessionId>` di `ExamTakingPage.tsx` + `useOnlineStatus()` |
-| Halaman ringkasan hasil terpisah untuk siswa | 🔶 | `src/pages/student/SummaryPage.tsx` dibuat (±24 Okt) tetapi **tidak terdaftar di router** — yatim; hasil saat ini lewat modal submit + `GET /api/sessions/results/:sessionId` |
+| Halaman ringkasan hasil terpisah untuk siswa | ✅ | **Build 147**: `src/pages/student/SummaryPage.tsx` diimplementasikan penuh & **didaftarkan di router** (`/student/summary`, menu sidebar "Ringkasan Nilai"). Dulu yatim (tak ter-route) + render baris hasil sebagai template-string (markup tampil sebagai teks) + data modul hardcode. Kini memakai data nyata role-scoped: `fetchStudentDashboard().completed` (hasil ujian + statistik rata/tertinggi), `fetchLearningModules()` (progress `max_scroll_percent`/`completed`), `fetchAssignments()` (status `submission_status`/nilai) |
 
 ## 7. Monitoring Real-Time & Pengawasan Ujian
 
@@ -138,7 +138,7 @@
 | Gerbang STAFF untuk feed & aksi monitoring (build 139) | ✅ | `staffGate()` di `monitoring.ts` (feed GET ×3 + mutasi ×6 → 403 `STAFF_ONLY`), `sse.ts` menolak subscriber non-staff; force-submit/extra-time/reset tidak lagi bisa dipanggil siswa |
 | Pelaporan focus-loss/violation terautentikasi — beacon kini kirim token di body (fix 401 senyap build 139) | ✅ | `callerFromRequest(req, body)` fallback `body.sessionToken`; `postFocusLossWithBeacon()`/`reportViolationWithBeacon()` menyertakan token; kepemilikan dicek via `ownerGate()` |
 | Tracking tab switch / focus-loss count di sisi server | ✅ | `POST /api/monitoring/focus-loss`, `POST /api/sessions/:id/focus-loss` |
-| Tandai sesi mencurigakan / disrupted manual | ❌ | belum ada alur manual yang masuk ke DB |
+| Tandai sesi mencurigakan / disrupted manual | ✅ | **Build 147**: `POST /api/monitoring/flag` & `/api/sessions/:id/flag` (staff-only, `staffGate`) memindahkan sesi ke `flagged`/`disrupted` beserta **alasan tersimpan** (`student_sessions.flag_reason` + `flagged_at`, self-heal via `ensureColumn` + `COLUMN_MIGRATIONS`), atau `in_progress` untuk membersihkan; sesi `completed` → 409. UI: tombol "Tandai Mencurigakan / Tandai Terputus / Bersihkan Tanda" dengan **dialog konfirmasi in-app (`Modal`)** + input alasan + banner alasan di panel siswa `MonitoringPage.tsx`; aksi **Reset Session & Force Submit** juga kini memakai `Modal` dengan tombol **Cancel/Konfirmasi** (bukan `window.confirm`); feed monitoring kini mengembalikan `flag_reason`. (Perbaikan bonus: `resetSessionCore` yang selama ini menulis kolom `updated_at` tak ada di `student_sessions` → 500 senyap, kini dihapus.) |
 
 ## 8. Penilaian & Analisis (Guru)
 
@@ -148,8 +148,8 @@
 | Ringkasan semua ujian yang sudah dinilai | ✅ | `GET /api/grading` |
 | Analisis butir soal (difficulty / correct counts) | ✅ | `GET /api/grading/analysis/:examId` |
 | Auto-generate `exam_results` saat submit | ✅ | `src/lib/server/answers.ts` |
-| Penilaian esai manual guru | ✅ | `POST /api/grading/essay`, `GET /api/grading/:examId/essays` |
-| Koreksi otomatis esai via AI multi-provider | ✅ | `callProvider()` di `src/lib/server/aiagent.ts` |
+| Penilaian esai manual guru | ✅ | `POST /api/grading/essay`, `GET /api/grading/:examId/essays`; **build 147**: `POST /api/grading/essay` digerbangi `requireStaff` (403 `STAFF_ONLY` untuk siswa — menutup self-grading manual) |
+| Koreksi otomatis esai via AI multi-provider | ✅ | `callProvider()` di `src/lib/server/aiagent.ts`; **build 146**: `POST /api/ai/grade/essay[/all]` digerbangi `requireStaff` (403 `STAFF_ONLY` untuk siswa — menutup self-grading AI) |
 | Ekspor hasil XLSX (2 sheet: Rekap + Hasil Siswa) / CSV | ✅ | `src/lib/server/results-export.ts` (`GET /api/results/export`), `GradingPage.tsx` |
 | Ekspor PDF hasil ujian | ❌ | belum ada (dulu tertulis "CSV/PDF" — PDF tidak pernah diimplementasikan) |
 | Rapor / cetak lembar hasil siswa | ❌ | rencana lengkap di §13 (E-Rapor & Integrasi Dapodik) |
@@ -159,7 +159,7 @@
 
 | Fitur | Status | Lokasi Kode |
 |---|---|---|
-| Upload file umum ke storage server | ✅ | `src/lib/api.ts`, `src/lib/server/storage.ts` |
+| Upload file umum ke storage server | ✅ | `src/lib/api.ts`, `src/lib/server/storage.ts`. **Build 147**: `POST /api/storage/upload` & `/upload-contextual` menyimpan `owner_id` **dari sesi**, bukan `body.ownerId` (anti klaim kepemilikan palsu) |
 | Upload branding sekolah (logo, background, favicon) | ✅ | `POST /api/settings/branding` |
 | Hapus branding sekolah & file lama | ✅ | `POST /api/settings/branding/remove` |
 | Pratinjau logo/background/favicon dengan URL absolut yang aman | ✅ | `resolveAssetUrl()`, `SchoolBranding.tsx` |
@@ -169,7 +169,7 @@
 | Pengaturan sekolah dapat disimpan tanpa mematikan file lama | ✅ | `POST /api/settings/branding` |
 | Upload kontekstual per keperluan (8 kind: avatar, answer-attachment, material, question-media, submission, news-media, dll.) | ✅ | `POST /api/storage/upload-contextual` di `src/lib/server/storage.ts`, helper di `src/lib/api.ts` |
 | Tampilan daftar berkas list / details / grid / preview + salin link + hapus | ✅ | `src/components/FileViews.tsx`, `StoragePage.tsx`, seksi "File Saya" di `StudentDashboard.tsx` (±21 Okt, build 136) |
-| Hapus berkas via REST dengan otorisasi pemilik + anti path-traversal | ✅ | `DELETE /api/storage/:id` di `storage.ts` (build 130) |
+| Hapus berkas via REST dengan otorisasi pemilik + anti path-traversal | ✅ | `DELETE /api/storage/:id` di `storage.ts` (build 130). **Build 147**: jalur legacy `POST /api/storage/delete` yang semula tanpa cek apa pun kini dapat auth + kepemilikan (siswa hanya berkasnya, staff semua) |
 | Isolasi folder upload per domain/sekolah (`UPLOAD_SUBDIR`) | ✅ | `storage.ts`, `standalone.ts`, `health.ts` (±19 Okt, build 136) |
 
 ## 10. AI & Integrasi Eksternal
@@ -180,6 +180,7 @@
 | `callProvider()` memproses model cloud/self-hosted dengan protokol yang sesuai | ✅ | `src/lib/server/aiagent.ts` |
 | Grading esai AI otomatis | ✅ | `POST /api/ai/grade/essay`, `callProvider()` |
 | Generate soal AI berkualitas dengan timeout & parser yang aman | ✅ | `POST /api/ai/questions/generate` |
+| **Gerbang peran aksi AI authoring/penilaian (build 146)** — grade esai (single+batch) & generate soal khusus staff | ✅ | `requireStaff` di `src/lib/server/aiagent.ts` (3 rute POST), pola `ownership.ts` — matriks peran 12/12 teruji DB nyata |
 | Pengaturan AI default konsisten di frontend & backend | ✅ | `src/lib/aiagent.ts`, `src/lib/ai-providers.ts` |
 | Key API NVIDIA NIM bawaan (server-only, provider langsung jalan tanpa isi form) | ✅ | `src/lib/server/ai-keys.ts` + flag `hasBuiltInApiKey` + `resolveAiApiKey()` (prioritas: key tersimpan → bawaan → env). ⚠️ Key ter-bundle di repo — **rotasi wajib sebelum produksi** |
 | Seksi "AI Agent" penuh di Pengaturan sekolah (provider, model, key, base URL) | ✅ | `src/pages/admin/SettingsPage.tsx` (±22 Okt), tersimpan di settings `ai_*` |
@@ -443,15 +444,15 @@
 | Kategori | ✅ Selesai | 🔶 Sebagian | ❌ Belum |
 |---|---:|---:|---:|
 | 1. Infrastruktur DB & Instalasi | 11 | 0 | 0 |
-| 2. Autentikasi & Pengguna | 14 | 0 | 2 |
+| 2. Autentikasi & Pengguna | 14 | 1 | 1 |
 | 3. Dashboard Admin & Aktivitas | 9 | 0 | 0 |
 | 4. Bank Soal, Media, dan AI Generate | 13 | 0 | 0 |
 | 5. Manajemen Ujian | 10 | 0 | 0 |
-| 6. Pelaksanaan Ujian (Siswa) | 19 | 1 | 0 |
-| 7. Monitoring Real-Time & Pengawasan | 10 | 0 | 1 |
+| 6. Pelaksanaan Ujian (Siswa) | 20 | 0 | 0 |
+| 7. Monitoring Real-Time & Pengawasan | 11 | 0 | 0 |
 | 8. Penilaian & Analisis | 7 | 0 | 3 |
 | 9. Penyimpanan File & Branding Sekolah | 12 | 0 | 0 |
-| 10. AI & Integrasi Eksternal | 8 | 0 | 0 |
+| 10. AI & Integrasi Eksternal | 9 | 0 | 0 |
 | 11. Berita & Pengumuman Sekolah | 32 | 0 | 2 |
 | 12. Infrastruktur Teknis | 9 | 2 | 2 |
 | 13. E-Rapor & Integrasi Dapodik (rencana) | 0 | 4 | 48 |
@@ -479,13 +480,17 @@
 
 ## Prioritas Pengembangan yang Disarankan
 
-1. **Gelombang otorisasi hasil audit 144** — `students.ts` sudah ditutup
-   (build 144, matriks 9/9). Urutan berikutnya dengan pola `requireStaff`/
-   `requireAdmin` yang sama: **146** = exams tulis + questions/banks tulis +
-   grading esai + AI grade esai (keempatnya KRITIS — self-grading & vandalisme
-   ujian mungkin dilakukan siswa); **147** = questions/import + GET results +
-   tokens (actor-id dari body → dari sesi) + SEB config/file + storage
-   ownerId/legacy delete. Tiap gelombang wajib matriks peran sendiri.
+1. **Gelombang otorisasi hasil audit 144** — `students.ts` ditutup (build 144,
+   matriks 9/9); AI grade esai + generate soal ditutup (build 146, matriks 12/12);
+   **exams tulis + questions/banks tulis + grading esai manual ditutup (build 147,
+   matriks 10/10)**; **kelanjutan #148 juga ditutup di build 147 (matriks 15/15)**:
+   questions/import + `GET /api/tokens` + tokens generate/revoke (actor-id **kini dari
+   sesi**, guru hanya ujian miliknya) + SEB config/file + storage ownerId (dari sesi)
+   & legacy delete ber-otorisasi; `GET /api/results*` diverifikasi sudah aman. Vandalisme
+   ujian, coret-bank, self-grading, rotasi token lintas-guru, dan klaim/hapus berkas palsu
+   tak lagi mungkin. **Sisa (di luar daftar #148 awal)**: kepemilikan **antar-staff** untuk
+   exams/questions/grading (guru A vs guru B) & `createdBy` `POST /api/exams` masih dari
+   body (perlu diambil dari sesi). Tiap gelombang wajib matriks peran sendiri.
 2. **Lanjutkan verifikasi E2E** — lobi kelas + persistensi + ownership +
    matriks peran sudah LULUS di DB lokal nyata (2026-11-14); sisa: uji visual
    gameplay & alur ujian penuh start→lewat-batas→auto-close di browser
@@ -499,8 +504,8 @@
    (Regenerate token, Monitor, Force End, View Results, Export).
 5. Audit log aktivitas admin/guru untuk traceability (nilai, sesi, perubahan
    settings) — fondasi untuk §13.
-6. Lengkapi akun: ubah/reset password mandiri, lalu putuskan nasib
-   `SummaryPage.tsx` (rute-kan atau hapus).
+6. Lengkapi akun: ubah/reset password mandiri (**sisa** — `SummaryPage.tsx`
+   sudah dirute-kan & diimplementasikan penuh di build 147 sebagai `/student/summary`).
 7. Notifikasi pengingat ujian (email/push) + scheduler — dibutuhkan juga oleh
    modul & tugas.
 8. Bersihkan artefak: ~~arsip `z134/`~~ & ~~duplikat aset trivia~~ & ~~plugin

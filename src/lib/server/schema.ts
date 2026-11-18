@@ -403,6 +403,8 @@ CREATE INDEX IF NOT EXISTS idx_exams_created_by   ON exams (created_by);`,
     focus_loss_count   INT         NOT NULL DEFAULT 0
                        CHECK (focus_loss_count >= 0),
     anticheat_violations INT        NOT NULL DEFAULT 0,
+    flag_reason        TEXT,
+    flagged_at         TIMESTAMPTZ,
 
     CONSTRAINT pk_student_sessions            PRIMARY KEY (id),
     CONSTRAINT fk_student_sessions_exam       FOREIGN KEY (exam_id)
@@ -1331,6 +1333,14 @@ export const COLUMN_MIGRATIONS: ColumnMigration[] = [
   { table: "student_sessions", label: "student_sessions.focus_loss_count", column: "focus_loss_count", pg: "INT NOT NULL DEFAULT 0", mysql: "INT NOT NULL DEFAULT 0" },
   { table: "student_sessions", label: "student_sessions.seb_verified_at", column: "seb_verified_at", pg: "TIMESTAMPTZ NULL", mysql: "TIMESTAMP NULL" },
   { table: "student_sessions", label: "student_sessions.anticheat_violations", column: "anticheat_violations", pg: "INT NOT NULL DEFAULT 0", mysql: "INT NOT NULL DEFAULT 0" },
+  // Build 147 — penandaan sesi manual oleh guru/admin (Tandai mencurigakan /
+  // disrupted). `flagged`/`disrupted` status sudah ada di CHECK, tetapi belum
+  // ada kolom untuk menyimpan alasan & waktu penandaan. ensureColumn di
+  // monitoring.ts membuatnya saat first-use; entri ini agar "Update Database"
+  // di /setup & instalasi baru (termasuk MySQL, yang tak punya inline DDL untuk
+  // kolom anti-cheat) ikut menyediakannya.
+  { table: "student_sessions", label: "student_sessions.flag_reason", column: "flag_reason", pg: "TEXT NULL", mysql: "TEXT NULL" },
+  { table: "student_sessions", label: "student_sessions.flagged_at", column: "flagged_at", pg: "TIMESTAMPTZ NULL", mysql: "TIMESTAMP NULL" },
   { label: "student_answers.is_flagged", table: "student_answers", column: "is_flagged", pg: "BOOLEAN NOT NULL DEFAULT FALSE", mysql: "BOOLEAN NOT NULL DEFAULT FALSE" },
   { label: "student_answers.updated_at", table: "student_answers", column: "updated_at", pg: "TIMESTAMPTZ NOT NULL DEFAULT NOW()", mysql: "TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP" },
   { label: "settings.updated_at", table: "settings", column: "updated_at", pg: "TIMESTAMPTZ NOT NULL DEFAULT NOW()", mysql: "TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP" },

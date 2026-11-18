@@ -21,7 +21,7 @@ import {
 } from "../ai-providers.js";
 import { getBuiltInAiApiKey } from "./ai-keys.js";
 import { ensureColumn } from "./schema.js";
-import { isStaffCaller } from "./ownership.js";
+import { isStaffCaller, requireStaff } from "./ownership.js";
 import {
   buildMaterialContext,
   listMaterials,
@@ -553,6 +553,9 @@ function parseAiGradePayload(text: string, maxScore: number) {
 }
 
 addRoute("POST", /^\/api\/ai\/grade\/essay\/all$/, async (req: AuthenticatedRequest, res, body) => {
+  // Build 145: gerbang peran — dulu hanya menuntut login, sehingga AKUN SISWA
+  // mana pun bisa menilai esainya sendiri lewat AI (self-grading). Khusus staff.
+  if (!requireStaff(req, res)) return;
   const examId = String(body?.examId || "").trim();
   if (!examId) return json(res, { error: "examId is required" }, 400);
 
@@ -617,6 +620,8 @@ addRoute("POST", /^\/api\/ai\/grade\/essay\/all$/, async (req: AuthenticatedRequ
 });
 
 addRoute("POST", /^\/api\/ai\/grade\/essay$/, async (req: AuthenticatedRequest, res, body) => {
+  // Build 145: gerbang peran — khusus staff (lihat catatan /essay/all).
+  if (!requireStaff(req, res)) return;
   const answerId = String(body?.answerId || "").trim();
   if (!answerId) return json(res, { error: "answerId is required" }, 400);
 
@@ -699,7 +704,13 @@ addRoute("GET", /^\/api\/ai\/materials$/, async (req: AuthenticatedRequest, res)
 });
 
 addRoute("POST", /^\/api\/ai\/questions\/generate$/, async (req: AuthenticatedRequest, res, body) => {
-  if (!req.authUser) return json(res, { error: "Authentication required" }, 401);
+  // Build 145: generate soal adalah aksi authoring — khusus staff (sebelumnya
+  // cukup "login apa pun"; siswa bisa menyuntik soal ke bank guru). requireStaff
+  // menulis 401 (anonim) / 403 STAFF_ONLY (siswa) sendiri.
+  if (!requireStaff(req, res)) return;
+  // requireStaff sudah menjamin caller ada & role staff; tangkap untuk
+  // listMaterials (otorisasi materi per-guru, build 139/140).
+  const caller = req.authUser!;
 
   const bankId = typeof body.bankId === "string" ? body.bankId.trim() : "";
   const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
@@ -761,7 +772,7 @@ addRoute("POST", /^\/api\/ai\/questions\/generate$/, async (req: AuthenticatedRe
     skipped: unknown[];
   } | null = null;
   if (materialMode !== "off") {
-    const rows = await listMaterials(req.authUser);
+    const rows = await listMaterials(caller);
     const bankSubject = await queryOne<{ subject_id: number | null }>(
       `SELECT subject_id FROM question_banks WHERE id = $1`,
       [bankId]

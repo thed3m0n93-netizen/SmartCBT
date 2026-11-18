@@ -13,7 +13,11 @@ RUN npm ci || npm install
 
 # Salin seluruh source code dan lakukan build
 COPY . .
-ARG VITE_API_BASE_URL=/api
+# Same-origin by default: api.ts paths already begin with `/api`, and nginx
+# proxies `/api/` to the backend. A value of `/api` would double-prefix every
+# request to `/api/api/*` and break login (build 146). Only set this to a FULL
+# origin (e.g. https://api.school.sch.id) when the API lives on another host.
+ARG VITE_API_BASE_URL=
 RUN npm run build
 
 # ── Runtime image ─────────────────────────────────────────────────────────────

@@ -203,7 +203,7 @@ return (
         </form>
 
         <div className="text-xs text-center mt-4" style={{ color: "#94a3b8" }}>
-          {t("Lupa password? Buka file setup-auth.json melalui file manager panel hosting Anda.")}
+          {t("Lupa password? Coba password default awal: Admin@123 (segera ganti setelah masuk). Jika di Docker dan password tidak bekerja, set env SETUP_AUTH_FORCE_DEFAULT=true pada backend lalu restart container — setup-auth.json akan dihapus dan di-re-seed ke Admin@123. Atau buka file setup-auth.json melalui file manager panel hosting Anda untuk melihat password yang tersimpan.")}
         </div>
       </div>
     </div>

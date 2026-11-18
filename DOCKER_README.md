@@ -51,7 +51,7 @@ docker compose logs -f backend   # watch the API start
 
 ### Database (PostgreSQL)
 - Standard `postgres:16-alpine` image
-- Credentials from `.env.docker` (defaults: `db_smartcbt` / `Karawang@01`)
+- Credentials from `.env.docker` (defaults: `db_smartcbt` / `smartcbt123`)
 - Data persists in the `postgres-data` named volume
 
 ## Environment Variables
@@ -61,14 +61,14 @@ Copy `.env.docker` to `.env` and adjust:
 | Variable | Default | Description |
 |---|---|---|
 | `POSTGRES_USER` | `db_smartcbt` | PostgreSQL superuser |
-| `POSTGRES_PASSWORD` | `Karawang@01` | PostgreSQL password |
+| `POSTGRES_PASSWORD` | `smartcbt123` | PostgreSQL password |
 | `POSTGRES_DB` | `db_smartcbt` | Default database |
 | `FRONTEND_PORT` | `8080` | Host port for the web app |
 | `PGTYPE` | `postgres` | Database type (postgres/mysql/mariadb/supabase) |
 | `PGHOST` | `postgres` | Database host (must match Compose service name) |
 | `PGPORT` | `5432` | Database port |
 | `PGUSER` | `db_smartcbt` | Database user |
-| `PGPASSWORD` | `Karawang@01` | Database password |
+| `PGPASSWORD` | `smartcbt123` | Database password |
 | `PGDATABASE` | `db_smartcbt` | Database name |
 | `PGSSL` | `false` | Enable SSL for DB connection |
 
@@ -139,6 +139,56 @@ npm run build:server          # bundle backend harus segar
 docker compose build --no-cache backend frontend
 docker compose up -d
 docker compose logs -f backend frontend   # keduanya "Up" tanpa restart
+```
+
+## Troubleshooting: `/setup` menolak `Admin@123` (401) pada instalasi baru (build 146)
+
+Gejala: instalasi Docker baru, halaman `/setup` tidak bisa dibuka dengan password
+bawaan `Admin@123` (muncul "Password setup salah").
+
+Penyebab: kredensial runtime `setup-auth.json` (dan `db-config.json`) dari mesin
+developer ikut ter-bake ke image lewat `COPY server/dist/`, lalu terinisialisasi ke
+volume `server-config`. Server melihat PIN setup sudah ada sehingga tidak men-seed
+default `Admin@123` — yang berlaku adalah PIN lama dari mesin build.
+
+Sejak build 146: `.dockerignore` mengecualikan `**/setup-auth.json` dan
+`**/db-config.json`, dan `Dockerfile.backend` menjalankan `rm -f` pada keduanya
+setelah COPY, jadi image selalu bersih dan boot pertama men-seed ulang default.
+
+Kalau sudah terlanjur memakai image lama, pulihkan:
+
+```bash
+docker compose down -v                       # hapus volume server-config (setup-auth.json lama)
+npm run build:server                         # bundle backend segar
+docker compose build --no-cache backend      # rebuild image tanpa kredensial ter-bake
+docker compose up -d
+# lalu buka /setup dan masuk dengan Admin@123 (ganti segera setelah login)
+```
+
+Alternatif tanpa menghapus data: hapus `setup-auth.json` dari dalam volume
+`server-config`, lalu restart backend — PIN akan di-seed ulang ke default.
+
+## Troubleshooting: Install/Update database gagal `EACCES ... mkdir '/public/uploads'` (build 146)
+
+Gejala: `/setup` sudah terbuka (login berhasil), tetapi tombol **Install Database +
+Seed** atau **Update Database** membalas `EACCES: permission denied, mkdir '/public/uploads'`
+dan skema tidak jadi dibuat.
+
+Penyebab: build lama menghitung folder uploads dari path relatif modul server
+(`../../../public/uploads`). Di image Docker bundle berada di `/app/server/dist`,
+sehingga path itu resolve ke `/public/uploads` (root, tak dapat ditulisi user
+non-root) dan `mkdirSync` membatalkan seluruh install.
+
+Sejak build 146: `setup.ts` & `settings.ts` memakai resolver tunggal `getUploadDir()`
+dari `storage.ts` yang menghormati `UPLOADS_DIR` (= `/app/uploads` di compose), dan
+pembuatan folder bersifat best-effort (kegagalan hanya jadi peringatan, install
+tetap jalan). Rebuild backend untuk memakainya:
+
+```bash
+npm run build:server
+docker compose build --no-cache backend
+docker compose up -d
+# buka /setup lagi → Install Database + Seed kini berhasil
 ```
 
 ## Production Checklist

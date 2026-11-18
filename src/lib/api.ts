@@ -67,9 +67,27 @@ export function setAuthToken(token: string | null): void {
   }
 }
 
-/** Build a full URL for an API path. */
+/**
+ * Build a full URL for an API path.
+ *
+ * Every caller passes a path that already begins with `/api` (e.g. `/api/login`,
+ * `/api/settings`). `API_BASE` is therefore meant to be either empty
+ * (same-origin, the default) or a FULL origin such as `https://api.school.sch.id`.
+ *
+ * A historical Docker misconfiguration baked `VITE_API_BASE_URL=/api` into the
+ * bundle, so `apiUrl("/api/login")` produced `/api/api/login`. nginx forwarded
+ * that verbatim to the backend, which has no such route and answered 401 —
+ * breaking login on a fresh Docker install (build 146). Because Vite inlines
+ * this value at build time, a stale image keeps reproducing it even after the
+ * compose/Dockerfile default was fixed. Collapse a trailing `/api` on the base
+ * defensively so a mis-set or stale base can never double-prefix again.
+ */
 export function apiUrl(path: string): string {
-  return `${API_BASE}${path}`;
+  let base = API_BASE;
+  if (base && path.startsWith("/api") && /\/api$/.test(base)) {
+    base = base.replace(/\/api$/, "");
+  }
+  return `${base}${path}`;
 }
 
 export interface ApiFetchOptions extends RequestInit {
@@ -1389,6 +1407,19 @@ export function addExtraTime(
 /** Reset a disrupted session so the student can resume. */
 export function resetSession(sessionId: string): Promise<{ success: boolean }> {
   return apiPost("/api/monitoring/reset", { sessionId });
+}
+
+/**
+ * Build 147 — manually flag a session as suspicious ('flagged') or disrupted
+ * ('disrupted') with an optional reason, or clear the mark ('in_progress').
+ * Staff-only; the server persists `flag_reason` + `flagged_at`.
+ */
+export function flagSession(
+  sessionId: string,
+  status: "flagged" | "disrupted" | "in_progress",
+  reason?: string,
+): Promise<{ success: boolean; sessionId: string; status: string; flagReason: string | null; flaggedAt: string | null }> {
+  return apiPost("/api/monitoring/flag", { sessionId, status, reason });
 }
 
 /** Record a focus-loss / tab-switch event for anti-cheat scoring. */

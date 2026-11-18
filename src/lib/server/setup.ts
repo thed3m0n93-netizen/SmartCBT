@@ -15,17 +15,10 @@
  * (simple query protocol) and split on ";" for MySQL (no multi-statements).
  */
 import { mkdirSync } from "node:fs";
-import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { query, queryOne, addRoute, json } from "./utils.js";
 import { getDbType, isMySqlLike, probeActiveDatabase } from "../db.js";
+import { getUploadDir } from "./storage.js";
 import { CORE_TABLES, PG_DDL, MYSQL_DDL, COLUMN_MIGRATIONS, UPDATE_TABLES, SETTINGS_SEED_KEYS, SCHEMA_GROUPS, TABLE_GROUP, SEED_SUMMARY, type DdlStatement } from "./schema.js";
-
-/** Absolute path of the public uploads folder (project root/public/uploads). */
-const UPLOAD_DIR = join(
-  fileURLToPath(new URL("../../../public", import.meta.url)),
-  "uploads"
-);
 
 /** Drop order must respect foreign keys (children before parents). */
 const DROP_ORDER: string[] = [
@@ -651,9 +644,20 @@ addRoute("POST", /^\/api\/setup\/install$/, async (_req, res, body) => {
     );
     push(`Struktur tabel: ${mysqlLike ? "MySQL/MariaDB" : "PostgreSQL (sesuai SQL_SCRIPT.txt)"}.`);
 
-    // Pastikan folder penyimpanan file publik tersedia (public/uploads).
-    mkdirSync(UPLOAD_DIR, { recursive: true });
-    push("Folder penyimpanan file publik: public/uploads (dilayani di /uploads/...).");
+    // Best-effort: folder uploads dipakai dari resolver tunggal storage.ts
+    // (honor $UPLOADS_DIR) sehingga benar di Docker (/app/uploads) maupun
+    // standalone. Kegagalan mkdir TIDAK boleh membatalkan install/update.
+    try {
+      const uploadDir = getUploadDir();
+      mkdirSync(uploadDir, { recursive: true });
+      push(`Folder penyimpanan file publik: ${uploadDir} (dilayani di /uploads/...).`);
+    } catch (err) {
+      push(
+        `Peringatan: folder uploads tidak dapat dibuat (${
+          err instanceof Error ? err.message : String(err)
+        }) — instalasi tetap berjalan; unggah file akan gagal sampai folder tersedia.`,
+      );
+    }
 
     if (reset) {
       push("1. Menghapus tabel lama…");
@@ -714,8 +718,20 @@ addRoute("POST", /^\/api\/setup\/update$/, async (_req, res, _body) => {
     if (!reachable) throw new Error("Database unreachable");
 
     push(`Update: menyelaraskan struktur database pada ${type} (tanpa menghapus data).`);
-    mkdirSync(UPLOAD_DIR, { recursive: true });
-    push("Folder penyimpanan file publik: public/uploads (dilayani di /uploads/...).");
+    // Best-effort: folder uploads dipakai dari resolver tunggal storage.ts
+    // (honor $UPLOADS_DIR) sehingga benar di Docker (/app/uploads) maupun
+    // standalone. Kegagalan mkdir TIDAK boleh membatalkan install/update.
+    try {
+      const uploadDir = getUploadDir();
+      mkdirSync(uploadDir, { recursive: true });
+      push(`Folder penyimpanan file publik: ${uploadDir} (dilayani di /uploads/...).`);
+    } catch (err) {
+      push(
+        `Peringatan: folder uploads tidak dapat dibuat (${
+          err instanceof Error ? err.message : String(err)
+        }) — instalasi tetap berjalan; unggah file akan gagal sampai folder tersedia.`,
+      );
+    }
 
     await runUpdateMigrations(push);
 

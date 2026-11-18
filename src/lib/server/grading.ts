@@ -1,6 +1,7 @@
 // SmartCBT — Grading API handlers (server-side only)
 import { query, queryOne, addRoute, json } from "./utils.js";
 import { recomputeExamResults } from "./results.js";
+import { requireStaff } from "./ownership.js";
 
 // GET /api/grading/exams — list of gradable exams.
 // `fetchGradingExams()` in api.ts calls this path; it used to fall into
@@ -213,7 +214,8 @@ addRoute(
 // Updates `student_answers.score_obtained` (clamped to the question's
 // score_weight) and recomputes the session's `exam_results` row, flipping
 // `grade_status` to 'graded' once no essay answer is left unscored.
-addRoute("POST", /^\/api\/grading\/essay$/, async (_req, res, body) => {
+addRoute("POST", /^\/api\/grading\/essay$/, async (req, res, body) => {
+  if (!requireStaff(req, res)) return;
   const answerId = String((body || {}).answerId || "").trim();
   const rawScore = Number((body || {}).score);
   if (!answerId || !Number.isFinite(rawScore)) {

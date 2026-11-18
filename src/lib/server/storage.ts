@@ -10,6 +10,7 @@ import { mkdirSync, writeFileSync, unlinkSync } from "node:fs";
 import { join, basename, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { query, queryOne, addRoute, json, jsonPaged, likeParam, parsePagedRequest } from "./utils.js";
+import { callerFromRequest, NO_CALLER } from "./ownership.js";
 
 /** Absolute path of the public uploads folder.
  *
@@ -43,6 +44,17 @@ function resolveUploadDir(): string {
 
 const UPLOAD_DIR = resolveUploadDir();
 const MAX_BYTES = 50 * 1024 * 1024; // 50 MB per file
+
+/**
+ * Single source of truth for the uploads folder (honors $UPLOADS_DIR first).
+ * Exported so setup.ts / settings.ts create & write into the SAME directory
+ * storage actually serves — previously they hardcoded `../../../public/uploads`,
+ * which resolves to `/public/uploads` inside the Docker image (bundle lives at
+ * /app/server/dist) and crashed `POST /api/setup/install` with EACCES (build 146).
+ */
+export function getUploadDir(): string {
+  return UPLOAD_DIR;
+}
 
 /**
  * Petakan URL tersimpan `/uploads/x.ext` ke path absolut di disk (build 140).
@@ -150,10 +162,14 @@ addRoute("GET", /^\/api\/storage$/, async (req: any, res) => {
 });
 
 // POST /api/storage/upload - store a file (JSON body: fileName, dataBase64, ...)
-addRoute("POST", /^\/api\/storage\/upload$/, async (_req, res, body) => {
-  const { fileName, dataBase64, mimeType, ownerId, kind } = body || {};
+// Build 147: `owner_id` is taken from the SESSION, never from `body.ownerId`
+// (a caller could otherwise claim ownership of a file as an arbitrary user).
+addRoute("POST", /^\/api\/storage\/upload$/, async (req, res, body) => {
+  const caller = callerFromRequest(req);
+  if (!caller) return json(res, NO_CALLER.payload, NO_CALLER.status);
+  const { fileName, dataBase64, mimeType, kind } = body || {};
   if (!fileName || !dataBase64) {
-    console.error("[storage/upload] missing fields:", { fileName, dataBase64: !!dataBase64, mimeType, ownerId, kind });
+    console.error("[storage/upload] missing fields:", { fileName, dataBase64: !!dataBase64, mimeType, kind });
     return json(res, { error: "fileName and dataBase64 are required" }, 400);
   }
   const { buf, error } = decodeBase64(String(dataBase64));
@@ -192,7 +208,7 @@ addRoute("POST", /^\/api\/storage\/upload$/, async (_req, res, body) => {
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
       [
         id,
-        ownerId || null,
+        caller.id,
         safeName,
         storedName,
         mimeType || null,
@@ -269,15 +285,24 @@ addRoute("DELETE", /^\/api\/storage\/[^/]+$/, async (req: any, res) => {
 });
 
 // POST /api/storage/delete - remove a file and its metadata row (legacy shape)
-addRoute("POST", /^\/api\/storage\/delete$/, async (_req, res, body) => {
+// Build 147: previously had NO auth/ownership check, so any logged-in user
+// could delete anyone's file by id. Mirrors the modern DELETE /api/storage/:id
+// (student → own files only, staff → any).
+addRoute("POST", /^\/api\/storage\/delete$/, async (req, res, body) => {
+  const caller = callerFromRequest(req);
+  if (!caller) return json(res, NO_CALLER.payload, NO_CALLER.status);
   const { id } = body || {};
   if (!id) return json(res, { error: "id is required" }, 400);
 
-  const row = await queryOne<{ path: string }>(
-    `SELECT path FROM uploads WHERE id = $1`,
+  const row = await queryOne<{ path: string; owner_id: string | null }>(
+    `SELECT path, owner_id FROM uploads WHERE id = $1`,
     [id]
   );
   if (!row) return json(res, { error: "File not found" }, 404);
+
+  if (caller.role === "student" && String(row.owner_id) !== String(caller.id)) {
+    return json(res, { error: "Tidak boleh menghapus berkas ini" }, 403);
+  }
 
   await query(`DELETE FROM uploads WHERE id = $1`, [id]);
 
@@ -316,8 +341,10 @@ export type ContextualKind = (typeof CONTEXTUAL_KINDS)[number];
 //     (answer/session id) and "assignment-submission" (submission id) and is
 //     persisted in uploads.reference so the file can be linked back to its
 //     profile / answer / material record
-addRoute("POST", /^\/api\/storage\/upload-contextual$/, async (_req, res, body) => {
-  const { fileName, dataBase64, mimeType, ownerId, kind, targetId } = body || {};
+addRoute("POST", /^\/api\/storage\/upload-contextual$/, async (req, res, body) => {
+  const caller = callerFromRequest(req);
+  if (!caller) return json(res, NO_CALLER.payload, NO_CALLER.status);
+  const { fileName, dataBase64, mimeType, kind, targetId } = body || {};
   if (!fileName || !dataBase64) {
     return json(res, { error: "fileName and dataBase64 are required" }, 400);
   }
@@ -375,7 +402,7 @@ addRoute("POST", /^\/api\/storage\/upload-contextual$/, async (_req, res, body) 
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [
         id,
-        ownerId || null,
+        caller.id,
         safeName,
         storedName,
         mimeType || null,

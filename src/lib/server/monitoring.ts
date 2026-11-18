@@ -30,6 +30,24 @@ function staffGate(req: any): boolean {
 const NOT_STAFF_RESULT = failResult(NOT_STAFF.status, NOT_STAFF.payload);
 
 /**
+ * Build 147 — ensure the manual-flag columns exist before anything reads or
+ * writes them. The monitoring feeds SELECT `flag_reason`/`flagged_at`, so an
+ * older DB that has not run "Update Database" yet would otherwise 500 on the
+ * first poll. Memoised so the catalog write happens once per process.
+ */
+let flagColumnsEnsured = false;
+async function ensureFlagColumns(): Promise<void> {
+  if (flagColumnsEnsured) return;
+  try {
+    await ensureColumn("student_sessions", "flag_reason", { pg: "TEXT NULL", mysql: "TEXT NULL" });
+    await ensureColumn("student_sessions", "flagged_at", { pg: "TIMESTAMPTZ NULL", mysql: "TIMESTAMP NULL" });
+    flagColumnsEnsured = true;
+  } catch (err) {
+    console.error("[monitoring] ensure flag columns failed:", err);
+  }
+}
+
+/**
  * Build 139 — pelaporan focus-loss/violation hanya untuk PEMILIK sesi.
  * Caller boleh datang dari header ATAU `body.sessionToken`, karena jalur
  * `navigator.sendBeacon` (pagehide/tab-switch) tidak bisa mengirim header
@@ -124,7 +142,7 @@ async function resetSessionCore(sessionId: string): Promise<ApiResult> {
   const updated = await queryOne(
     `UPDATE student_sessions
         SET status = 'in_progress', focus_loss_count = COALESCE(focus_loss_count, 0),
-            started_at = NOW(), submitted_at = NULL, updated_at = NOW()
+            started_at = NOW(), submitted_at = NULL
       WHERE id = $1
       RETURNING status, started_at`,
     [sessionId]
@@ -142,10 +160,58 @@ async function resetSessionCore(sessionId: string): Promise<ApiResult> {
   });
 }
 
+/**
+ * Build 147 — penandaan sesi manual oleh staff (guru/admin). Memindahkan sesi
+ * ke status 'flagged' (mencurigakan) atau 'disrupted' (terganggu/terputus)
+ * beserta alasan yang disimpan ke DB, atau 'in_progress' untuk membersihkan
+ * tanda. Sesi 'completed' tidak dapat ditandai.
+ */
+async function flagSessionCore(
+  sessionId: string,
+  status: unknown,
+  reason: unknown,
+): Promise<ApiResult> {
+  if (!sessionId) return failResult(400, { error: "Session id required" });
+  const next = String(status ?? "").trim();
+  if (next !== "flagged" && next !== "disrupted" && next !== "in_progress") {
+    return failResult(400, { error: "status harus 'flagged', 'disrupted', atau 'in_progress'" });
+  }
+  const cleanReason = typeof reason === "string" ? reason.trim().slice(0, 500) : "";
+
+  // Self-heal kolom saat first-use; definisi cermin ada di COLUMN_MIGRATIONS.
+  await ensureFlagColumns();
+
+  const session = await queryOne<{ status: string }>(
+    `SELECT status FROM student_sessions WHERE id = $1`,
+    [sessionId]
+  );
+  if (!session) return failResult(404, { error: "Sesi tidak ditemukan" });
+  if (session.status === "completed") {
+    return failResult(409, { error: "Sesi sudah selesai — tidak dapat ditandai" });
+  }
+
+  const clearing = next === "in_progress";
+  const updated = await queryOne(
+    `UPDATE student_sessions
+        SET status = $1,
+            flag_reason = $2,
+            flagged_at = $3
+      WHERE id = $4
+      RETURNING status, flag_reason, flagged_at`,
+    [next, clearing ? null : (cleanReason || null), clearing ? null : new Date(), sessionId]
+  );
+  return okResult({
+    success: true,
+    sessionId,
+    status: updated?.status ?? next,
+    flagReason: updated?.flag_reason ?? null,
+    flaggedAt: updated?.flagged_at ?? null,
+  });
+}
+
 /** Core recorder shared by the URL-param route and the body-based client route. */
 async function focusLossCore(sessionId: string): Promise<ApiResult> {
   if (!sessionId) return failResult(400, { error: "Session id required" });
-
   const updated = await queryOne(
     `UPDATE student_sessions
         SET focus_loss_count = COALESCE(focus_loss_count, 0) + 1
@@ -254,11 +320,13 @@ addRoute("POST", /^\/api\/monitoring\/violation$/, async (req, res, body) => {
 
 /** Row-per-student feed across every active exam (also the SSE snapshot query). */
 async function fetchAllMonitoringRows() {
+  await ensureFlagColumns();
   return query(`
     SELECT
       ss.id, ss.exam_id, ss.status, ss.started_at, ss.submitted_at,
       ss.ip_address, ss.device_id, ss.user_agent,
       ss.focus_loss_count, ss.extra_time_minutes,
+      ss.flag_reason, ss.flagged_at,
       u.id as student_id, u.full_name, u.username,
       sp.student_number, c.class_name,
       e.title as exam_title, e.duration_minutes as exam_duration_minutes,
@@ -299,11 +367,13 @@ addRoute("GET", /^\/api\/monitoring$/, async (req, res) => {
 addRoute("GET", /^\/api\/monitoring\/(?!all$)[^/]+$/, async (req, res) => {
   if (!staffGate(req)) return json(res, NOT_STAFF.payload, NOT_STAFF.status);
   const examId = req.url.match(/^\/api\/monitoring\/([^/]+)$/)![1];
+  await ensureFlagColumns();
   const rows = await query(
-    `SELECT
+    `     SELECT
        ss.id, ss.status, ss.started_at, ss.submitted_at,
        ss.ip_address, ss.device_id, ss.user_agent,
        ss.focus_loss_count, ss.extra_time_minutes,
+       ss.flag_reason, ss.flagged_at,
        u.id as student_id, u.username, u.full_name,
        sp.student_number, sp.class_id, c.class_name, c.grade_level,
        e.duration_minutes as exam_duration_minutes,
@@ -365,5 +435,30 @@ addRoute("POST", /^\/api\/monitoring\/extra-time$/, async (req, res, body) => {
 addRoute("POST", /^\/api\/monitoring\/reset$/, async (req, res, body) => {
   if (!staffGate(req)) return json(res, NOT_STAFF.payload, NOT_STAFF.status);
   const result = await resetSessionCore(String(body?.sessionId ?? ""));
+  json(res, result.payload, result.status);
+});
+
+// ── Manual session flagging (build 147) ─────────────────────────────────
+// Guru/admin menandai sesi mencurigakan ('flagged') atau terganggu/terputus
+// ('disrupted') beserta alasan, atau membersihkan tanda ('in_progress').
+// Kedua bentuk (URL-param & body) delegasi ke `flagSessionCore` — sama seperti
+// pola force-submit/extra-time/reset di atas.
+
+// POST /api/sessions/:sessionId/flag  body: { status, reason? }
+addRoute("POST", /^\/api\/sessions\/[^/]+\/flag$/, async (req, res, body) => {
+  if (!staffGate(req)) return json(res, NOT_STAFF.payload, NOT_STAFF.status);
+  const sessionId = req.url.match(/^\/api\/sessions\/([^/]+)\/flag$/)?.[1] ?? "";
+  const result = await flagSessionCore(sessionId, body?.status, body?.reason);
+  json(res, result.payload, result.status);
+});
+
+// POST /api/monitoring/flag  body: { sessionId, status, reason? }
+addRoute("POST", /^\/api\/monitoring\/flag$/, async (req, res, body) => {
+  if (!staffGate(req)) return json(res, NOT_STAFF.payload, NOT_STAFF.status);
+  const result = await flagSessionCore(
+    String(body?.sessionId ?? ""),
+    body?.status,
+    body?.reason,
+  );
   json(res, result.payload, result.status);
 });

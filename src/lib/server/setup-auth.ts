@@ -113,6 +113,47 @@ function writeSetupAuth(next: { password: string }): void {
   }
 }
 
+/** Default setup password seeded on first boot when no setup-auth.json exists.
+ *  Gives the operator a known credential to unlock /setup for the first time.
+ *  Change it immediately after first login. The plaintext copy is also written
+ *  to setup-auth.json (when SETUP_AUTH_STORE_PLAINTEXT !== "0") so it can be
+ *  recovered from the hosting file manager if forgotten. */
+const DEFAULT_SETUP_PASSWORD = "Admin@123";
+
+/** Saat di-set "true", setup-auth.json akan dihapus dan di-re-seed ke default
+ *  Admin@123 setiap boot. Berguna untuk Docker agar password selalu diketahui
+ *  meski volume server-config menyimpan file lama dari deploy sebelumnya. */
+const FORCE_DEFAULT = process.env.SETUP_AUTH_FORCE_DEFAULT === "true";
+
+/** Seed the default password on first boot so a fresh install is never wide
+ *  open and the operator always has a known credential. Runs once when the
+ *  module is first imported. */
+function ensureDefaultPassword(): void {
+  if (isSetupAuthConfigured() && !FORCE_DEFAULT) return;
+
+  // Jika force-default, hapus file lama terlebih dahulu agar re-seed paksa.
+  if (FORCE_DEFAULT) {
+    try {
+      const file = authFilePath();
+      if (existsSync(file)) unlinkSync(file);
+    } catch {
+      /* abaikan jika file tidak ada atau tidak bisa dihapus */
+    }
+  }
+
+  try {
+    writeSetupAuth({ password: DEFAULT_SETUP_PASSWORD });
+    console.log(
+      `[setup-auth] Seed default "${DEFAULT_SETUP_PASSWORD}" di ${authFilePath()}. Ganti segera setelah login pertama.`,
+    );
+  } catch (err) {
+    console.warn("[setup-auth] Gagal men-seed password setup default:", err);
+  }
+}
+
+// Seed once at module load.
+ensureDefaultPassword();
+
 /* ── Unlock tokens (in-memory; a restart requires re-entering the PIN) ──── */
 
 const tokens = new Map<string, number>(); // token -> expiresAt
