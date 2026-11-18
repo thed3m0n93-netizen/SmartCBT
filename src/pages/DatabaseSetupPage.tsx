@@ -1,8 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
+import { AlertTriangle, Cpu, Lock, RefreshCw, Settings } from "lucide-react";
 import { useNavigate } from "react-router";
 import DatabaseConfigForm from "../components/DatabaseConfigForm";
 import LanguageSwitcher from "../components/LanguageSwitcher";
+import ThemeToggle from "../components/ThemeToggle";
 import { useI18n } from "../i18n";
+import { C, S } from "../styles/tokens";
 import {
   fetchDbConfigWithProbe,
   describeProbe,
@@ -25,7 +28,6 @@ import {
   AI_PROVIDERS,
   DEFAULT_AI_PROVIDER_ID,
   defaultModelForProvider,
-  defaultBaseUrlForProvider,
   describeEffectiveBaseUrl,
   getAiProvider,
   type AiProviderInfo,
@@ -39,17 +41,6 @@ import {
   type SetupAuthStatus,
 } from "../lib/setupAuth";
 
-/**
- * SetupGate — password wall in front of the `/setup` page.
- *
- * This is a usability layer only: enforcement lives in the server auth
- * middleware (`src/lib/server/setup-auth.ts`), which answers 401
- * `SETUP_LOCKED` for `/api/setup/*` and `/api/db-config`. Rendering this page
- * without a valid token therefore reveals nothing the API would also refuse.
- *
- * Doubles as the "set / change password" panel, so arming or rotating the gate
- * never requires touching the server.
- */
 function SetupGate({
   status,
   onUnlocked,
@@ -110,35 +101,43 @@ function SetupGate({
   const inputStyle = {
     width: "100%",
     padding: "10px 12px",
-    borderRadius: 8,
-    border: "1px solid #cbd5e1",
+    minHeight: 44,
+    borderRadius: 10,
+    border: `1px solid ${C.base.border}`,
     fontSize: 14,
     outline: "none",
-    background: "#fff",
+    background: C.base.surfaceMuted,
+    color: C.base.text,
+    boxShadow: S.inset,
   } as const;
-return (
+
+  return (
     <div
-      className="min-h-screen flex items-center justify-center p-6"
-      style={{ background: "#F0F4F8" }}
+      className="min-h-screen flex items-center justify-center p-4 sm:p-6 safe-area-top safe-area-bottom"
+      style={{ background: C.base.page }}
     >
+      <div className="fixed top-4 right-4 flex items-center gap-2">
+        <ThemeToggle compact />
+        <LanguageSwitcher />
+      </div>
       <div
-        className="w-full max-w-sm rounded-2xl p-6"
-        style={{ background: "#fff", border: "1px solid #e2e8f0" }}
+        className="w-full max-w-sm rounded-2xl p-6 cbt-card"
+        style={{ background: C.base.surface, border: `1px solid ${C.base.border}`, boxShadow: S.card }}
       >
         <div className="text-center mb-5">
           <div
-            className="w-12 h-12 rounded-xl flex items-center justify-center text-xl mx-auto mb-3"
-            style={{ background: "#1D4ED8", color: "#fff" }}
+            className="w-12 h-12 rounded-xl flex items-center justify-center mx-auto mb-3"
+            style={{ background: C.brand.main, color: "#FFFFFF", boxShadow: S.btnPrimary }}
           >
-            &#128274;
+            <Lock className="w-5 h-5" />
           </div>
           <h2
             className="text-xl font-bold"
-            style={{ color: "#0f172a", fontFamily: "var(--font-serif)" }}
+            style={{ color: C.base.text, fontFamily: "var(--font-serif)" }}
           >
             {showSet ? "Atur Password Setup" : "Halaman Setup Terkunci"}
           </h2>
-          <p className="text-sm mt-2" style={{ color: "#64748b" }}>
+          <p className="text-sm mt-2" style={{ color: C.base.textMuted }}>
             {showSet
               ? "Halaman /setup mengatur database. Buat password untuk mengunci halaman ini dari akses anonim."
               : "Masukkan password setup untuk melanjutkan."}
@@ -147,8 +146,8 @@ return (
 
         {error && (
           <div
-            className="rounded-lg px-3 py-2 text-sm mb-4"
-            style={{ background: "#FEE2E2", color: "#B91C1C", border: "1px solid #FECACA" }}
+            className="rounded-xl px-3.5 py-2.5 text-sm mb-4"
+            style={{ background: C.danger.bgLight, color: C.danger.text, border: `1px solid ${C.danger.border}` }}
           >
             {error}
           </div>
@@ -156,15 +155,15 @@ return (
 
         {status.locked && (
           <div
-            className="rounded-lg px-3 py-2 text-sm mb-4"
-            style={{ background: "#FEF3C7", color: "#92400E", border: "1px solid #FDE68A" }}
+            className="rounded-xl px-3.5 py-2.5 text-sm mb-4"
+            style={{ background: C.warn.bg, color: C.warn.dark, border: `1px solid ${C.warn.border}` }}
           >
             Terlalu banyak percobaan gagal. Coba lagi dalam {status.retryAfterSec} detik.
           </div>
         )}
 
         <form onSubmit={showSet ? submitSet : submitUnlock} className="space-y-3">
-          <label className="block text-sm font-medium" style={{ color: "#334155" }}>
+          <label className="block text-sm font-medium" style={{ color: C.base.textBody }}>
             {showSet ? "Password baru" : "Password setup"}
             <input
               type="password"
@@ -172,21 +171,21 @@ return (
               autoFocus
               onChange={(e) => setPassword(e.target.value)}
               autoComplete="current-password"
-              className="mt-1"
+              className="mt-1.5"
               style={inputStyle}
               placeholder={showSet ? `Minimal ${minLength} karakter` : ""}
             />
           </label>
 
           {showSet && (
-            <label className="block text-sm font-medium" style={{ color: "#334155" }}>
+            <label className="block text-sm font-medium" style={{ color: C.base.textBody }}>
               Ulangi password
               <input
                 type="password"
                 value={confirm}
                 onChange={(e) => setConfirm(e.target.value)}
                 autoComplete="new-password"
-                className="mt-1"
+                className="mt-1.5"
                 style={inputStyle}
               />
             </label>
@@ -195,14 +194,14 @@ return (
           <button
             type="submit"
             disabled={busy || !password}
-            className="w-full py-2.5 rounded-lg text-sm font-semibold text-white disabled:opacity-60"
-            style={{ background: "#1D4ED8" }}
+            className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-60 min-h-[46px]"
+            style={{ background: C.brand.main, boxShadow: S.btnPrimary }}
           >
             {busy ? "Memproses..." : showSet ? "Simpan Password" : "Buka Halaman Setup"}
           </button>
         </form>
 
-        <div className="text-xs text-center mt-4" style={{ color: "#94a3b8" }}>
+        <div className="text-xs text-center mt-4" style={{ color: C.base.textFaint }}>
           {t("Lupa password? Coba password default awal: Admin@123 (segera ganti setelah masuk). Jika di Docker dan password tidak bekerja, set env SETUP_AUTH_FORCE_DEFAULT=true pada backend lalu restart container — setup-auth.json akan dihapus dan di-re-seed ke Admin@123. Atau buka file setup-auth.json melalui file manager panel hosting Anda untuk melihat password yang tersimpan.")}
         </div>
       </div>
@@ -210,34 +209,16 @@ return (
   );
 }
 
-/**
- * Demo credentials matching the database seed data (`runSeeds` in
- * `src/lib/server/setup.ts`). Passwords are bcrypt digests seeded there, so
- * these are exactly the accounts a fresh "Install Database + Seed" produces.
- */
 const DEMO_ACCOUNTS = [
   { role: "Super Admin", username: "superadmin", password: "Admin@123", color: "#f59e0b" },
   { role: "Guru", username: "guru_matematika", password: "Teacher@123", color: "#10b981" },
   { role: "Siswa", username: "siswa_andi", password: "Student@123", color: "#60a5fa" },
 ];
 
-/** Derivasi provider info untuk UI — model dropdown + hint. `null` models = self-hosted (Ollama). */
 function providerModels(p: AiProviderInfo): string[] | null {
   return p.models.length ? p.models : null;
 }
 
-/**
-/**
- * InstallDatabasePanel
- *
- * Membuat seluruh tabel yang dibutuhkan aplikasi plus data contoh (seed) di
- * dalam database yang sedang dikonfigurasi - tanpa perlu menjalankan
- * SQL_SCRIPT.txt secara manual. Mendukung mode "install" (idempotent) dan
- * "reset" (DROP semua tabel lalu buat ulang dari awal).
- *
- * `status` is owned by DatabaseSetupPage so the Install, Schema and Update
- * panels always render the same snapshot and refresh together.
- */
 function InstallDatabasePanel({
   status,
   onChanged,
@@ -254,7 +235,7 @@ function InstallDatabasePanel({
     if (
       reset &&
       !window.confirm(
-        t("PERINGATAN: Reset akan MENGHAPUS SEMUA data pada database yang aktif, lalu membuat ulang struktur + seed. Lanjutkan?")
+        t("PERINGATAN: Reset akan MENGHAPUS SEMUA data pada database yang aktif, lalu membuat ulang struktur + seed. Lanjutkan?"),
       )
     ) {
       return;
@@ -276,52 +257,58 @@ function InstallDatabasePanel({
   const ok = result?.ok === true;
   return (
     <div
-      className="rounded-xl p-6"
-      style={{ background: "#fff", border: "1px solid #e2e8f0" }}
+      className="cbt-card rounded-2xl p-5 sm:p-6"
+      style={{ background: C.base.surface, border: `1px solid ${C.base.border}`, boxShadow: S.card }}
     >
       <div className="flex items-center justify-between mb-4">
         <div>
-          <div
-            className="text-xs font-semibold uppercase tracking-widest"
-            style={{ color: "#94a3b8" }}
-          >
+          <div className="text-xs font-semibold uppercase tracking-widest" style={{ color: C.base.textFaint }}>
             Install & Seed Database
           </div>
-          <div className="text-sm mt-1" style={{ color: "#64748b" }}>
+          <div className="text-sm mt-1" style={{ color: C.base.textMuted }}>
             {t("Buat seluruh tabel + data contoh otomatis (pengganti menjalankan SQL_SCRIPT.txt secara manual).")}
           </div>
         </div>
-        <div className="text-xl">⚙️</div>
+        <div
+          className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+          style={{ background: C.base.surfaceSoft, color: C.base.textBody }}
+        >
+          <Settings className="w-5 h-5" />
+        </div>
       </div>
 
       {status && !status.reachable && (
         <div
-          className="rounded-lg px-3 py-2 text-sm mb-4"
-          style={{ background: "#FEE2E2", color: "#B91C1C", border: "1px solid #FECACA" }}
+          className="rounded-xl px-3.5 py-2.5 text-sm mb-4"
+          style={{ background: C.danger.bgLight, color: C.danger.text, border: `1px solid ${C.danger.border}` }}
         >
-          {t("Database tidak terjangkau. Simpan konfigurasi koneksi terlebih dahulu di panel atas.")} {status.error ? `(${status.error})` : ""}
+          {t("Database tidak terjangkau. Simpan konfigurasi koneksi terlebih dahulu di panel atas.")}{" "}
+          {status.error ? `(${status.error})` : ""}
         </div>
       )}
 
       {status && status.reachable && (
         <div
-          className="rounded-lg px-3 py-2 text-sm mb-4"
+          className="rounded-xl px-3.5 py-2.5 text-sm mb-4"
           style={{
-            background: status.installed ? "#DCFCE7" : "#FEF3C7",
-            color: status.installed ? "#166534" : "#92400E",
-            border: `1px solid ${status.installed ? "#86EFAC" : "#FDE68A"}`,
+            background: status.installed ? C.ok.msgBg : C.warn.bg,
+            color: status.installed ? C.ok.msgText : C.warn.dark,
+            border: `1px solid ${status.installed ? C.ok.msgBorder : C.warn.border}`,
           }}
         >
           {status.installed
             ? t("Struktur database lengkap ({n} tabel ada).", { n: status.tables.length })
-            : t("Belum lengkap - {n} tabel belum ada: {tables}. Klik Install Database.", { n: missingTables.length, tables: missingTables.join(", ") || "-" })}
+            : t("Belum lengkap - {n} tabel belum ada: {tables}. Klik Install Database.", {
+                n: missingTables.length,
+                tables: missingTables.join(", ") || "-",
+              })}
           {status.info && (
             <span className="block mt-1 text-xs" style={{ opacity: 0.85 }}>
               {t("Terhubung nyata ke:")} {describeProbe(status.info) || t("server database aktif")}
             </span>
           )}
           {status.installed && (
-            <span className="block mt-1 text-xs" style={{ opacity: 0.85 }}>
+            <span className="block mt-1 text-xs tabular-nums" style={{ opacity: 0.85 }}>
               {t("Jumlah baris saat ini:")} {status.counts.users ?? 0} user -{" "}
               {status.counts.classes ?? 0} kelas - {status.counts.exams ?? 0} ujian -{" "}
               {status.counts.questions ?? 0} soal -{" "}
@@ -333,12 +320,9 @@ function InstallDatabasePanel({
         </div>
       )}
 
-      {/* Live schema report - one card per feature area, straight from
-          SCHEMA_GROUPS on the server. Nothing here is hand-written, so it
-          always matches the tables this build actually ships. */}
       {status && status.reachable && (
         <div className="mb-4">
-          <div className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: "#64748b" }}>
+          <div className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: C.base.textMuted }}>
             {t("Skema database ({n} tabel, {m} migrasi kolom)", {
               n: status.tables.length,
               m: (status.columns ?? []).length,
@@ -352,17 +336,17 @@ function InstallDatabasePanel({
               return (
                 <div
                   key={g.id}
-                  className="rounded-lg p-3"
+                  className="rounded-xl p-3"
                   style={{
-                    background: complete ? "#F0FDF4" : "#FEF3C7",
-                    border: `1px solid ${complete ? "#BBF7D0" : "#FDE68A"}`,
+                    background: complete ? C.ok.bgLight : C.warn.bgLight,
+                    border: `1px solid ${complete ? C.ok.border : C.warn.border}`,
                   }}
                 >
                   <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-xs font-semibold" style={{ color: complete ? "#065F46" : "#92400E" }}>
-                      {g.icon} {t(g.label)}
+                    <span className="text-xs font-semibold" style={{ color: complete ? C.ok.dark : C.warn.dark }}>
+                      {t(g.label)}
                     </span>
-                    <span className="text-[11px] font-mono" style={{ color: complete ? "#059669" : "#D97706" }}>
+                    <span className="text-[11px] font-mono tabular-nums" style={{ color: complete ? C.ok.dark : C.warn.dark }}>
                       {present}/{rows.length}
                     </span>
                   </div>
@@ -373,9 +357,9 @@ function InstallDatabasePanel({
                         title={tb.name}
                         className="text-[10px] px-1.5 py-0.5 rounded font-mono"
                         style={{
-                          background: tb.exists ? "#fff" : "#FEF2F2",
-                          color: tb.exists ? "#059669" : "#DC2626",
-                          border: `1px solid ${tb.exists ? "#BBF7D0" : "#FECACA"}`,
+                          background: tb.exists ? C.base.surface : C.danger.bgLight,
+                          color: tb.exists ? C.ok.dark : C.danger.text,
+                          border: `1px solid ${tb.exists ? C.ok.border : C.danger.border}`,
                         }}
                       >
                         {tb.exists ? "OK" : "!!"} {tb.name}
@@ -389,24 +373,28 @@ function InstallDatabasePanel({
         </div>
       )}
 
-      {/* Seed preview - mirrors runSeeds() in src/lib/server/setup.ts. */}
       {status && status.reachable && status.installed && (status.seed ?? []).length > 0 && (
-        <details className="mb-4 rounded-lg p-3" style={{ background: "#F8FAFC", border: "1px solid #e2e8f0" }}>
-          <summary className="text-xs font-semibold cursor-pointer" style={{ color: "#475569" }}>
+        <details
+          className="mb-4 rounded-xl p-3"
+          style={{ background: C.base.surfaceMuted, border: `1px solid ${C.base.border}` }}
+        >
+          <summary className="text-xs font-semibold cursor-pointer" style={{ color: C.base.textMenu }}>
             {t("Data contoh yang akan disemai ({n} bagian)", { n: (status.seed ?? []).length })}
           </summary>
           <ul className="mt-2 space-y-1">
             {(status.seed ?? []).map((s) => (
               <li key={s.label} className="text-xs flex gap-2">
-                <span className="font-medium shrink-0" style={{ color: "#334155", minWidth: 130 }}>{t(s.label)}</span>
-                <span style={{ color: "#64748b" }}>{s.detail}</span>
+                <span className="font-medium shrink-0" style={{ color: C.base.textBody, minWidth: 130 }}>
+                  {t(s.label)}
+                </span>
+                <span style={{ color: C.base.textMuted }}>{s.detail}</span>
               </li>
             ))}
           </ul>
         </details>
       )}
 
-      <div className="text-xs mb-4" style={{ color: "#64748b" }}>
+      <div className="text-xs mb-4" style={{ color: C.base.textMuted }}>
         {t("Akun demo yang disemai:")}
         <div className="flex flex-wrap gap-2 mt-2">
           {DEMO_ACCOUNTS.map((a) => (
@@ -421,13 +409,13 @@ function InstallDatabasePanel({
         </div>
       </div>
 
-      <div className="flex gap-3">
+      <div className="flex flex-col sm:flex-row gap-3">
         <button
           type="button"
           onClick={() => run(false)}
           disabled={busy}
-          className="flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all disabled:opacity-60"
-          style={{ background: "#1D4ED8", color: "#fff" }}
+          className="flex-1 py-2.5 px-4 rounded-xl text-sm font-semibold transition-all disabled:opacity-60 min-h-[44px]"
+          style={{ background: C.brand.main, color: "#FFFFFF", boxShadow: S.btnPrimary }}
         >
           {busy ? t("Memproses...") : t("Install Database + Seed")}
         </button>
@@ -435,11 +423,11 @@ function InstallDatabasePanel({
           type="button"
           onClick={() => run(true)}
           disabled={busy}
-          className="flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all disabled:opacity-60"
+          className="flex-1 py-2.5 px-4 rounded-xl text-sm font-semibold transition-all disabled:opacity-60 min-h-[44px]"
           style={{
-            background: "#FEE2E2",
-            color: "#B91C1C",
-            border: "1px solid #FECACA",
+            background: C.danger.bgLight,
+            color: C.danger.text,
+            border: `1px solid ${C.danger.border}`,
           }}
         >
           {t("Reset & Reinstall")}
@@ -448,8 +436,8 @@ function InstallDatabasePanel({
 
       {error && !result && (
         <div
-          className="rounded-lg px-3 py-2 text-sm mt-4"
-          style={{ background: "#FEE2E2", color: "#B91C1C", border: "1px solid #FECACA" }}
+          className="rounded-xl px-3.5 py-2.5 text-sm mt-4"
+          style={{ background: C.danger.bgLight, color: C.danger.text, border: `1px solid ${C.danger.border}` }}
         >
           {error}
         </div>
@@ -457,11 +445,11 @@ function InstallDatabasePanel({
 
       {result && (
         <div
-          className="rounded-lg px-3 py-2 mt-4"
+          className="rounded-xl px-3.5 py-2.5 mt-4"
           style={{
-            background: ok ? "#DCFCE7" : "#FEE2E2",
-            color: ok ? "#166534" : "#B91C1C",
-            border: `1px solid ${ok ? "#86EFAC" : "#FECACA"}`,
+            background: ok ? C.ok.msgBg : C.danger.bgLight,
+            color: ok ? C.ok.msgText : C.danger.text,
+            border: `1px solid ${ok ? C.ok.msgBorder : C.danger.border}`,
           }}
         >
           <div className="font-medium text-sm mb-1">
@@ -469,7 +457,7 @@ function InstallDatabasePanel({
           </div>
           <pre
             className="text-xs whitespace-pre-wrap leading-relaxed"
-            style={{ fontFamily: "ui-monospace, monospace", color: "inherit" }}
+            style={{ fontFamily: "var(--font-mono)", color: "inherit" }}
           >
             {result.log.join("\n")}
           </pre>
@@ -479,16 +467,6 @@ function InstallDatabasePanel({
   );
 }
 
-/**
- * UpdateDatabasePanel
- *
- * Memodifikasi database yang SUDAH terpasang agar sesuai dengan kebutuhan
- * endpoint /lib/server terbaru — membuat tabel yang belum ada (settings,
- * learning_modules, dst.), menambah kolom yang belum ada (avatar_url,
- * seb_config_hash, focus_loss_count, dst.), memulihkan trigger/index, dan
- * menyemai kunci settings yang belum ada. TIDAK menghapus data apa pun dan
- * aman dijalankan berulang kali (idempotent).
- */
 function UpdateDatabasePanel({
   status,
   onChanged,
@@ -516,9 +494,6 @@ function UpdateDatabasePanel({
   };
 
   const ok = result?.ok === true;
-
-  // Live pending list, straight from the server's migration registry - so this
-  // list can never drift away from what "Update Database" actually does.
   const missingTables = (status?.tables ?? []).filter((tb) => !tb.exists);
   const missingColumns = (status?.columns ?? []).filter((c) => !c.exists);
   const appliedColumns = (status?.columns ?? []).filter((c) => c.exists);
@@ -527,32 +502,33 @@ function UpdateDatabasePanel({
 
   return (
     <div
-      className="rounded-xl p-6 mt-6"
-      style={{ background: "#fff", border: "1px solid #e2e8f0" }}
+      className="cbt-card rounded-2xl p-5 sm:p-6 mt-6"
+      style={{ background: C.base.surface, border: `1px solid ${C.base.border}`, boxShadow: S.card }}
     >
       <div className="flex items-center justify-between mb-4">
         <div>
-          <div
-            className="text-xs font-semibold uppercase tracking-widest"
-            style={{ color: "#94a3b8" }}
-          >
+          <div className="text-xs font-semibold uppercase tracking-widest" style={{ color: C.base.textFaint }}>
             Update Database (tanpa hapus data)
           </div>
-          <div className="text-sm mt-1" style={{ color: "#64748b" }}>
+          <div className="text-sm mt-1" style={{ color: C.base.textMuted }}>
             {t("Selaraskan database lama dengan endpoint terbaru: buat tabel/kolom yang belum ada, pulihkan trigger & index, dan semai kunci settings yang belum ada. Data yang sudah ada tidak disentuh.")}
           </div>
         </div>
-        <div className="text-xl">&#128260;</div>
+        <div
+          className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+          style={{ background: C.base.surfaceSoft, color: C.base.textBody }}
+        >
+          <RefreshCw className="w-5 h-5" />
+        </div>
       </div>
 
-      {/* Pending vs applied - derived from the live schema report. */}
       {status && status.reachable && (
         <div
-          className="rounded-lg px-3 py-2 text-sm mb-4"
+          className="rounded-xl px-3.5 py-2.5 text-sm mb-4"
           style={{
-            background: upToDate ? "#DCFCE7" : "#FEF3C7",
-            color: upToDate ? "#166534" : "#92400E",
-            border: `1px solid ${upToDate ? "#86EFAC" : "#FDE68A"}`,
+            background: upToDate ? C.ok.msgBg : C.warn.bg,
+            color: upToDate ? C.ok.msgText : C.warn.dark,
+            border: `1px solid ${upToDate ? C.ok.msgBorder : C.warn.border}`,
           }}
         >
           {upToDate
@@ -565,11 +541,11 @@ function UpdateDatabasePanel({
         </div>
       )}
 
-      <ul className="text-xs mb-4 list-disc pl-5 space-y-1.5" style={{ color: "#64748b" }}>
+      <ul className="text-xs mb-4 list-disc pl-5 space-y-1.5" style={{ color: C.base.textMuted }}>
         {missingTables.length > 0 && (
           <li>
             {t("Tabel dibuat:")}{" "}
-            <span className="font-mono" style={{ color: "#D97706" }}>
+            <span className="font-mono" style={{ color: C.warn.dark }}>
               {missingTables.map((tb) => tb.name).join(", ")}
             </span>
           </li>
@@ -577,17 +553,15 @@ function UpdateDatabasePanel({
         {missingColumns.length > 0 && (
           <li>
             {t("Kolom ditambahkan:")}{" "}
-            <span className="font-mono" style={{ color: "#D97706" }}>
+            <span className="font-mono" style={{ color: C.warn.dark }}>
               {missingColumns.map((c) => `${c.table}.${c.column}`).join(", ")}
             </span>
           </li>
         )}
         <li>
           {t("Kolom yang sudah diterapkan ({n}):", { n: appliedColumns.length })}{" "}
-          <span className="font-mono" style={{ color: "#059669" }}>
-            {appliedColumns.length > 0
-              ? appliedColumns.map((c) => c.label).join(", ")
-              : t("belum ada")}
+          <span className="font-mono" style={{ color: C.ok.dark }}>
+            {appliedColumns.length > 0 ? appliedColumns.map((c) => c.label).join(", ") : t("belum ada")}
           </span>
         </li>
         <li>{t("Trigger & index: student_answers.updated_at (PostgreSQL) + idx_student_answers_flagged")}</li>
@@ -600,16 +574,16 @@ function UpdateDatabasePanel({
         type="button"
         onClick={run}
         disabled={busy}
-        className="w-full py-2.5 rounded-lg text-sm font-semibold transition-all disabled:opacity-60"
-        style={{ background: "#15803D", color: "#fff" }}
+        className="w-full py-2.5 px-4 rounded-xl text-sm font-semibold transition-all disabled:opacity-60 min-h-[44px]"
+        style={{ background: C.ok.main, color: "#FFFFFF", boxShadow: S.btnSuccess }}
       >
         {busy ? t("Memproses...") : t("Update Database Sekarang")}
       </button>
 
       {error && !result && (
         <div
-          className="rounded-lg px-3 py-2 text-sm mt-4"
-          style={{ background: "#FEE2E2", color: "#B91C1C", border: "1px solid #FECACA" }}
+          className="rounded-xl px-3.5 py-2.5 text-sm mt-4"
+          style={{ background: C.danger.bgLight, color: C.danger.text, border: `1px solid ${C.danger.border}` }}
         >
           {error}
         </div>
@@ -617,11 +591,11 @@ function UpdateDatabasePanel({
 
       {result && (
         <div
-          className="rounded-lg px-3 py-2 mt-4"
+          className="rounded-xl px-3.5 py-2.5 mt-4"
           style={{
-            background: ok ? "#DCFCE7" : "#FEE2E2",
-            color: ok ? "#166534" : "#B91C1C",
-            border: `1px solid ${ok ? "#86EFAC" : "#FECACA"}`,
+            background: ok ? C.ok.msgBg : C.danger.bgLight,
+            color: ok ? C.ok.msgText : C.danger.text,
+            border: `1px solid ${ok ? C.ok.msgBorder : C.danger.border}`,
           }}
         >
           <div className="font-medium text-sm mb-1">
@@ -629,7 +603,7 @@ function UpdateDatabasePanel({
           </div>
           <pre
             className="text-xs whitespace-pre-wrap leading-relaxed"
-            style={{ fontFamily: "ui-monospace, monospace", color: "inherit" }}
+            style={{ fontFamily: "var(--font-mono)", color: "inherit" }}
           >
             {result.log.join("\n")}
           </pre>
@@ -639,26 +613,14 @@ function UpdateDatabasePanel({
   );
 }
 
-/**
- * DatabaseSetupPage
- *
- * Standalone initial-configuration page exposed at /setup. Lets an
- * administrator configure the database connection (host, port, user,
- * database, password, SSL), test it, persist it server-side, then install
- * + seed all tables directly from the browser.
- */
 export default function DatabaseSetupPage() {
   const navigate = useNavigate();
   const { t } = useI18n();
   const [initialConfig, setInitialConfig] = useState<DatabaseConfig | null>(null);
   const [probe, setProbe] = useState<ProbeResult | null>(null);
   const [loading, setLoading] = useState(true);
-  // Setup gate: whether a password is configured, and whether this tab holds a
-  // valid unlock token. Both are needed before any gated request is issued.
   const [authStatus, setAuthStatus] = useState<SetupAuthStatus | null>(null);
   const [unlocked, setUnlocked] = useState(false);
-  // Live schema report, shared by the Install and Update panels so both always
-  // describe the same database snapshot and refresh together.
   const [status, setStatus] = useState<SetupStatus | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
 
@@ -677,7 +639,7 @@ export default function DatabaseSetupPage() {
   }, [loadStatus]);
 
   const [schoolName, setSchoolName] = useState("SMK TEKNOLOGI");
-      const [aiProvider, setAiProvider] = useState(DEFAULT_AI_PROVIDER_ID);
+  const [aiProvider, setAiProvider] = useState(DEFAULT_AI_PROVIDER_ID);
   const aiProviderInfo = getAiProvider(aiProvider);
   const [aiModel, setAiModel] = useState(() => defaultModelForProvider(DEFAULT_AI_PROVIDER_ID));
   const [aiApiKey, setAiApiKey] = useState("");
@@ -687,16 +649,12 @@ export default function DatabaseSetupPage() {
   const [aiBaseUrl, setAiBaseUrl] = useState("");
 
   const modelOptions = providerModels(aiProviderInfo);
-
-  // What the server will really call, so a leftover stored URL can no longer be
-  // invisible. Cloud providers always resolve to their catalog default.
   const effectiveBaseUrl = describeEffectiveBaseUrl(aiProvider, aiBaseUrl);
   const staleBaseUrl =
     !aiProviderInfo.selfHosted && aiBaseUrl.trim() && aiBaseUrl.trim() !== effectiveBaseUrl.url
       ? aiBaseUrl.trim()
       : "";
 
-  /** Ganti provider: selaraskan pilihan model + base URL dengan katalog provider baru. */
   const handleAiProviderChange = (provider: string) => {
     const next = getAiProvider(provider);
     setAiProvider(provider);
@@ -730,8 +688,6 @@ export default function DatabaseSetupPage() {
     }
   };
 
-  // Gated effect: every call below (`/api/db-config`, `/api/setup/status`) needs
-  // a valid unlock token, so it must wait until the gate is resolved and open.
   useEffect(() => {
     if (!unlocked) return;
     let cancelled = false;
@@ -742,13 +698,12 @@ export default function DatabaseSetupPage() {
         setProbe(live ?? null);
       })
       .catch(() => {
-        /* no reachable config endpoint -> form falls back to defaults */
+        /* ignore */
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
-    // Fetch school name and AI agent credentials from public settings endpoint
-        fetchSettings()
+    fetchSettings()
       .then((s) => {
         if (!cancelled && s.school_name) setSchoolName(s.school_name);
         if (!cancelled) {
@@ -759,30 +714,20 @@ export default function DatabaseSetupPage() {
           setAiBaseUrl(s.ai_base_url || "");
         }
       })
-      .catch(() => { /* keep default */ });
+      .catch(() => {
+        /* ignore */
+      });
     return () => {
       cancelled = true;
     };
   }, [unlocked]);
 
-  // Resolve the gate once on mount: is a password configured, and does this tab
-  // already hold a valid token?
-  //
-  // The page is NEVER auto-unlocked. A missing PIN used to unlock the page
-  // immediately ("bootstrap"), which meant a fresh install showed no prompt at
-  // all and left /setup wide open. Now `configured === false` shows the
-  // "create password" form instead, and the token it returns is what unlocks.
-  //
-  // A stored token is only trusted once the server confirms it, so an expired
-  // token falls back to the unlock form instead of a blank page.
   useEffect(() => {
     let cancelled = false;
     fetchSetupAuthStatus()
       .then(async (s) => {
         if (cancelled) return;
         setAuthStatus(s);
-        // The server cannot store a PIN at all — stay open rather than showing
-        // a form that could never succeed.
         if (s.writable === false) {
           setUnlocked(true);
           return;
@@ -792,13 +737,10 @@ export default function DatabaseSetupPage() {
           await loadStatus();
           if (!cancelled) setUnlocked(true);
         } catch {
-          // Token expired or was invalidated (e.g. the PIN was rotated).
           setSetupToken(null);
         }
       })
       .catch(() => {
-        // Status endpoint unreachable: do not render the setup UI, since the
-        // gated calls underneath would fail anyway.
         setAuthStatus(null);
       });
     return () => {
@@ -806,32 +748,32 @@ export default function DatabaseSetupPage() {
     };
   }, [loadStatus]);
 
-  // Gate not resolved yet, or resolved to "locked" — show only the unlock form.
-  // Nothing below this point is rendered without a confirmed unlock, so the
-  // destructive Install/Reset panels are never mounted for a locked visitor.
   if (authStatus && !unlocked) {
     return (
       <SetupGate
         status={authStatus}
         onUnlocked={() => {
           setUnlocked(true);
-          // Re-read the gate flag so the banner reflects the new state.
           void fetchSetupAuthStatus().then(setAuthStatus).catch(() => undefined);
         }}
       />
     );
   }
 
-  // Could not even reach the gate status endpoint (server down / not started).
   if (!authStatus) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-6" style={{ background: "#F0F4F8" }}>
+      <div className="min-h-screen flex items-center justify-center p-6" style={{ background: C.base.page }}>
         <div className="text-center max-w-sm">
-          <div className="text-3xl mb-3">⚠️</div>
-          <p className="text-sm font-semibold" style={{ color: "#0f172a" }}>
+          <div
+            className="w-12 h-12 rounded-2xl mx-auto mb-3 flex items-center justify-center"
+            style={{ background: C.warn.bg, color: C.warn.dark, border: `1px solid ${C.warn.border}` }}
+          >
+            <AlertTriangle className="w-5 h-5" />
+          </div>
+          <p className="text-sm font-semibold" style={{ color: C.base.text }}>
             {t("Halaman setup belum dapat diakses")}
           </p>
-          <p className="text-xs mt-2" style={{ color: "#64748b" }}>
+          <p className="text-xs mt-2" style={{ color: C.base.textMuted }}>
             {t("Server tidak merespons. Pastikan backend berjalan lalu muat ulang halaman ini.")}
           </p>
         </div>
@@ -841,44 +783,61 @@ export default function DatabaseSetupPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: "#F0F4F8" }}>
+      <div className="min-h-screen flex items-center justify-center" style={{ background: C.base.page }}>
         <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p style={{ color: "#64748b" }}>{t("Loading database configuration…")}</p>
+          <div
+            className="animate-spin rounded-full h-8 w-8 border-2 border-t-transparent mx-auto mb-4"
+            style={{ borderColor: C.brand.main, borderTopColor: "transparent" }}
+          />
+          <p className="text-sm" style={{ color: C.base.textMuted }}>
+            {t("Loading database configuration…")}
+          </p>
         </div>
       </div>
     );
   }
 
+  const aiFieldStyle = {
+    background: C.base.surfaceMuted,
+    border: `1px solid ${C.base.border}`,
+    color: C.base.text,
+    boxShadow: S.inset,
+  };
+
   return (
-    <div className="min-h-screen flex items-center justify-center p-6" style={{ background: "#F0F4F8" }}>
+    <div
+      className="min-h-screen flex items-center justify-center p-4 sm:p-6 safe-area-top safe-area-bottom"
+      style={{ background: C.base.page }}
+    >
       <div className="w-full max-w-2xl">
-        <div className="absolute top-4 right-4">
+        <div className="flex justify-end items-center gap-2 mb-4">
+          <ThemeToggle compact />
           <LanguageSwitcher />
         </div>
+
         <div className="text-center mb-8">
           <div
             className="w-12 h-12 rounded-xl flex items-center justify-center font-bold mx-auto mb-3"
-            style={{ background: "#1D4ED8", color: "#fff" }}
+            style={{ background: C.brand.main, color: "#FFFFFF", boxShadow: S.btnPrimary }}
           >
             SE
           </div>
           <h2
             className="text-2xl font-bold"
-            style={{ color: "#0f172a", fontFamily: "var(--font-serif)" }}
+            style={{ color: C.base.text, fontFamily: "var(--font-serif)" }}
           >
             {t("Database Configuration")}
           </h2>
-          <p className="text-sm mt-2" style={{ color: "#64748b" }}>
+          <p className="text-sm mt-2" style={{ color: C.base.textMuted }}>
             {t("Configure the database connection for SmartCBT - PostgreSQL, Supabase, MySQL, atau MariaDB. Test the connection before saving; the active pool is replaced only when the new settings connect successfully. Setelah terhubung, gunakan panel Install & Seed Database di bawah untuk membuat seluruh tabel + data contoh.")}
           </p>
           {probe && (
             <div
-              className="mt-3 rounded-lg px-3 py-2 text-xs inline-block"
+              className="mt-3 rounded-xl px-3.5 py-2 text-xs inline-block"
               style={
                 probe.reachable
-                  ? { background: "#DCFCE7", color: "#166534", border: "1px solid #86EFAC" }
-                  : { background: "#FEE2E2", color: "#B91C1C", border: "1px solid #FECACA" }
+                  ? { background: C.ok.msgBg, color: C.ok.msgText, border: `1px solid ${C.ok.msgBorder}` }
+                  : { background: C.danger.bgLight, color: C.danger.text, border: `1px solid ${C.danger.border}` }
               }
             >
               {probe.reachable ? (
@@ -889,13 +848,18 @@ export default function DatabaseSetupPage() {
                   </span>
                 </>
               ) : (
-                <>{t("✗ Tidak terhubung:")} {probe.error || "database unreachable"}</>
+                <>
+                  {t("✗ Tidak terhubung:")} {probe.error || "database unreachable"}
+                </>
               )}
             </div>
           )}
           {initialConfig && (
-            <div className="mt-2 text-xs" style={{ color: "#94a3b8" }}>
-              {t("Konfigurasi tersimpan:")} <span style={{ fontWeight: 500 }}>{initialConfig.type} · {initialConfig.user}@{initialConfig.host}:{initialConfig.port}/{initialConfig.database}</span>
+            <div className="mt-2 text-xs" style={{ color: C.base.textFaint }}>
+              {t("Konfigurasi tersimpan:")}{" "}
+              <span style={{ fontWeight: 600 }}>
+                {initialConfig.type} · {initialConfig.user}@{initialConfig.host}:{initialConfig.port}/{initialConfig.database}
+              </span>
             </div>
           )}
         </div>
@@ -906,22 +870,28 @@ export default function DatabaseSetupPage() {
           }}
         />
 
-        <div className="mt-6 rounded-xl p-6" style={{ background: "#fff", border: "1px solid #e2e8f0" }}>
-          <div className="text-xs font-semibold uppercase tracking-widest" style={{ color: "#94a3b8" }}>
-            {t("AI Agent")}
+        <div
+          className="mt-6 cbt-card rounded-2xl p-5 sm:p-6"
+          style={{ background: C.base.surface, border: `1px solid ${C.base.border}`, boxShadow: S.card }}
+        >
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-xs font-semibold uppercase tracking-widest" style={{ color: C.base.textFaint }}>
+              {t("AI Agent")}
+            </div>
+            <Cpu className="w-4 h-4" style={{ color: C.base.textMuted }} />
           </div>
           <div className="grid grid-cols-1 gap-4 mt-4">
             <div>
-              <label className="block text-sm font-medium mb-1.5" style={{ color: "#334155" }}>
+              <label className="block text-sm font-medium mb-1.5" style={{ color: C.base.textBody }}>
                 {t("Provider AI")}
               </label>
               <select
                 value={aiProvider}
                 onChange={(e) => handleAiProviderChange(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                style={{ background: "#fff", border: "1px solid #cbd5e1" }}
+                className="w-full px-3 py-2.5 rounded-xl text-sm outline-none min-h-[44px]"
+                style={aiFieldStyle}
               >
-                                                {AI_PROVIDERS.map((p) => (
+                {AI_PROVIDERS.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.label}
                   </option>
@@ -930,7 +900,7 @@ export default function DatabaseSetupPage() {
             </div>
             {aiProviderInfo.selfHosted ? (
               <div>
-                <label className="block text-sm font-medium mb-1.5" style={{ color: "#334155" }}>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: C.base.textBody }}>
                   {t("Alamat Server AI")}
                 </label>
                 <input
@@ -938,25 +908,28 @@ export default function DatabaseSetupPage() {
                   value={aiBaseUrl}
                   onChange={(e) => setAiBaseUrl(e.target.value)}
                   placeholder={aiProviderInfo.defaultBaseUrl || "http://host:11434"}
-                  className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                  style={{ background: "#fff", border: "1px solid #cbd5e1" }}
+                  className="w-full px-3 py-2.5 rounded-xl text-sm outline-none min-h-[44px]"
+                  style={aiFieldStyle}
                 />
-                <div className="text-xs mt-1.5" style={{ color: "#94a3b8" }}>
-                                    {t("Isi alamat/URL tempat server AI dijalankan, misalnya {url}. Kosongkan untuk memakai {default}.", { url: "http://host:port", default: aiProviderInfo.defaultBaseUrl || "" })}
+                <div className="text-xs mt-1.5" style={{ color: C.base.textFaint }}>
+                  {t("Isi alamat/URL tempat server AI dijalankan, misalnya {url}. Kosongkan untuk memakai {default}.", {
+                    url: "http://host:port",
+                    default: aiProviderInfo.defaultBaseUrl || "",
+                  })}
                 </div>
               </div>
             ) : (
               <>
                 <div>
-                  <label className="block text-sm font-medium mb-1.5" style={{ color: "#334155" }}>
+                  <label className="block text-sm font-medium mb-1.5" style={{ color: C.base.textBody }}>
                     {t("Model AI")}
                   </label>
                   {modelOptions ? (
                     <select
                       value={modelOptions.includes(aiModel) ? aiModel : aiProviderInfo.defaultModel}
                       onChange={(e) => setAiModel(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                      style={{ background: "#fff", border: "1px solid #cbd5e1" }}
+                      className="w-full px-3 py-2.5 rounded-xl text-sm outline-none min-h-[44px]"
+                      style={aiFieldStyle}
                     >
                       {modelOptions.map((model) => (
                         <option key={model} value={model}>
@@ -970,13 +943,13 @@ export default function DatabaseSetupPage() {
                       value={aiModel}
                       onChange={(e) => setAiModel(e.target.value)}
                       placeholder={aiProviderInfo.defaultModel}
-                      className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                      style={{ background: "#fff", border: "1px solid #cbd5e1" }}
+                      className="w-full px-3 py-2.5 rounded-xl text-sm outline-none min-h-[44px]"
+                      style={aiFieldStyle}
                     />
                   )}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1.5" style={{ color: "#334155" }}>
+                  <label className="block text-sm font-medium mb-1.5" style={{ color: C.base.textBody }}>
                     {t("Token API AI")}
                   </label>
                   <input
@@ -988,42 +961,38 @@ export default function DatabaseSetupPage() {
                         ? t("Kosongkan untuk memakai API key bawaan")
                         : t("Masukkan token API AI")
                     }
-                    className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                    style={{ background: "#fff", border: "1px solid #cbd5e1" }}
+                    className="w-full px-3 py-2.5 rounded-xl text-sm outline-none min-h-[44px]"
+                    style={aiFieldStyle}
                   />
                   {aiProviderInfo.hasBuiltInApiKey && (
-                    <div className="text-xs mt-1.5" style={{ color: "#94a3b8" }}>
+                    <div className="text-xs mt-1.5" style={{ color: C.base.textFaint }}>
                       {t("API key bawaan sudah terpasang untuk provider ini — boleh dikosongkan.")}
                     </div>
                   )}
                 </div>
-                {/* Read-only so the address that will really be used is visible.
-                    Cloud providers ignore any stored `ai_base_url`, and hiding
-                    that fact is what let a leftover Ollama address silently break
-                    Gemini requests (build 132). */}
                 <div>
-                  <label className="block text-sm font-medium mb-1.5" style={{ color: "#334155" }}>
+                  <label className="block text-sm font-medium mb-1.5" style={{ color: C.base.textBody }}>
                     {t("Alamat Server AI (otomatis)")}
                   </label>
                   <div
-                    className="w-full px-3 py-2 rounded-lg text-sm font-mono"
+                    className="w-full px-3 py-2.5 rounded-xl text-sm font-mono break-all"
                     style={{
-                      background: "#F8FAFC",
-                      border: "1px solid #e2e8f0",
-                      color: "#475569",
+                      background: C.base.surfaceMuted,
+                      border: `1px solid ${C.base.border}`,
+                      color: C.base.textMenu,
                     }}
                   >
                     {effectiveBaseUrl.url || "-"}
                   </div>
-                  <div className="text-xs mt-1.5" style={{ color: "#94a3b8" }}>
+                  <div className="text-xs mt-1.5" style={{ color: C.base.textFaint }}>
                     {effectiveBaseUrl.fromSetting
                       ? t("Meng memakai alamat yang tersimpan di pengaturan.")
                       : t("Alamat provider cloud ditetapkan otomatis dan tidak bisa diubah.")}
                   </div>
                   {staleBaseUrl && (
                     <div
-                      className="text-xs mt-1.5 rounded-lg px-2.5 py-2"
-                      style={{ background: "#FEF3C7", color: "#92400E", border: "1px solid #FDE68A" }}
+                      className="text-xs mt-1.5 rounded-xl px-3 py-2"
+                      style={{ background: C.warn.bg, color: C.warn.dark, border: `1px solid ${C.warn.border}` }}
                     >
                       {t("Ada alamat lama tersimpan ({url}) dari provider lain. Nilai ini diabaikan untuk {label}.", {
                         url: staleBaseUrl,
@@ -1034,15 +1003,29 @@ export default function DatabaseSetupPage() {
                 </div>
               </>
             )}
-            {aiError && <div className="rounded-lg px-3 py-2 text-sm" style={{ background: "#FEE2E2", color: "#B91C1C", border: "1px solid #FECACA" }}>{aiError}</div>}
-            {aiSuccess && <div className="rounded-lg px-3 py-2 text-sm" style={{ background: "#DCFCE7", color: "#166534", border: "1px solid #86EFAC" }}>{aiSuccess}</div>}
+            {aiError && (
+              <div
+                className="rounded-xl px-3.5 py-2.5 text-sm"
+                style={{ background: C.danger.bgLight, color: C.danger.text, border: `1px solid ${C.danger.border}` }}
+              >
+                {aiError}
+              </div>
+            )}
+            {aiSuccess && (
+              <div
+                className="rounded-xl px-3.5 py-2.5 text-sm"
+                style={{ background: C.ok.msgBg, color: C.ok.msgText, border: `1px solid ${C.ok.msgBorder}` }}
+              >
+                {aiSuccess}
+              </div>
+            )}
             <div className="flex justify-end">
               <button
                 type="button"
                 onClick={saveAiAgentConfig}
                 disabled={aiSaving}
-                className="px-4 py-2 rounded-lg text-sm font-semibold transition-all disabled:opacity-60"
-                style={{ background: "#1D4ED8", color: "#fff" }}
+                className="px-4 py-2.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-60 min-h-[42px]"
+                style={{ background: C.brand.main, color: "#FFFFFF", boxShadow: S.btnPrimary }}
               >
                 {aiSaving ? t("Menyimpan…") : t("Simpan AI Agent")}
               </button>
@@ -1052,20 +1035,18 @@ export default function DatabaseSetupPage() {
 
         {authStatus.writable === false && (
           <div
-            className="rounded-lg px-4 py-3 text-sm mt-6"
-            style={{ background: "#FEF3C7", color: "#92400E", border: "1px solid #FDE68A" }}
+            className="rounded-xl px-4 py-3 text-sm mt-6"
+            style={{ background: C.warn.bg, color: C.warn.dark, border: `1px solid ${C.warn.border}` }}
           >
-            <div className="font-semibold mb-1">
-              {t("Halaman setup TIDAK dapat dikunci dengan password.")}
-            </div>
+            <div className="font-semibold mb-1">{t("Halaman setup TIDAK dapat dikunci dengan password.")}</div>
             {t("Server tidak bisa menulis berkas setup-auth.json (folder aplikasi mungkin read-only), sehingga halaman ini tetap terbuka untuk anonim. Perbaiki izin folder, atau set variabel lingkungan SETUP_AUTH_FILE ke folder yang bisa ditulis.")}
           </div>
         )}
 
         {statusError && (
           <div
-            className="rounded-lg px-3 py-2 text-sm mt-6"
-            style={{ background: "#FEE2E2", color: "#B91C1C", border: "1px solid #FECACA" }}
+            className="rounded-xl px-3.5 py-2.5 text-sm mt-6"
+            style={{ background: C.danger.bgLight, color: C.danger.text, border: `1px solid ${C.danger.border}` }}
           >
             {t("Tidak dapat membaca status database")}: {statusError}
           </div>
@@ -1077,7 +1058,7 @@ export default function DatabaseSetupPage() {
 
         <UpdateDatabasePanel status={status} onChanged={loadStatus} />
 
-        <div className="text-center text-xs mt-6" style={{ color: "#94a3b8" }}>
+        <div className="text-center text-xs mt-6" style={{ color: C.base.textFaint }}>
           {schoolName} - SmartCBT v2.4.2 - 2026
         </div>
       </div>

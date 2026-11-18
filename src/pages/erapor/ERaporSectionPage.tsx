@@ -12,8 +12,9 @@
  * penggantian tidak menyentuh navigasi maupun sidebar.
  */
 import { Link, useParams } from "react-router";
+import { ChevronRight, Construction } from "lucide-react";
 import { useI18n } from "../../i18n";
-import { C } from "../../styles/tokens";
+import { C, S } from "../../styles/tokens";
 import { PageHeader, SectionCard, Chip } from "../../components/ui";
 import {
   ERAPOR_SECTIONS,
@@ -27,11 +28,11 @@ function UnderDevelopmentBanner() {
   const { t } = useI18n();
   return (
     <div
-      className="rounded-xl px-5 py-4 flex items-start gap-3"
-      style={{ background: C.warn.bg, border: `1px solid ${C.warn.border}` }}
+      className="rounded-2xl px-5 py-4 flex items-start gap-3"
+      style={{ background: C.warn.bg, border: `1px solid ${C.warn.border}`, boxShadow: S.card }}
       role="status"
     >
-      <span className="text-lg leading-none mt-0.5">🚧</span>
+      <Construction className="w-5 h-5 shrink-0 mt-0.5" style={{ color: C.warn.deep }} />
       <div>
         <div className="font-semibold text-sm" style={{ color: C.warn.deep }}>
           {t("Fitur sedang dalam pengembangan")}
@@ -106,13 +107,13 @@ export default function ERaporSectionPage() {
               <li key={s.id} style={{ borderColor: C.base.borderLight }}>
                 <Link
                   to={eraporPath(s.id)}
-                  className="flex items-center gap-3 px-5 py-3 hover:bg-slate-50 transition-colors"
+                  className="flex items-center gap-3 px-5 py-3.5 cbt-row-hover transition-colors min-h-[48px]"
                 >
                   <span className="text-base">{s.icon}</span>
                   <span className="flex-1 text-sm font-medium" style={{ color: C.base.text }}>
                     {s.label}
                   </span>
-                  <span style={{ color: C.base.textFaint }}>›</span>
+                  <ChevronRight className="w-4 h-4 shrink-0" style={{ color: C.base.textFaint }} />
                 </Link>
               </li>
             ))}
@@ -144,14 +145,16 @@ export default function ERaporSectionPage() {
             <Link
               key={s.id}
               to={eraporPath(s.id)}
-              className="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
+              className="px-3.5 py-2 rounded-xl text-xs font-medium transition-colors inline-flex items-center gap-1.5 min-h-[38px]"
               style={{
                 background: active ? C.brand.main : C.base.surface,
-                color: active ? "#fff" : C.base.textBody,
+                color: active ? "#FFFFFF" : C.base.textBody,
                 border: `1px solid ${active ? C.brand.main : C.base.border}`,
+                boxShadow: active ? S.btnPrimary : S.control,
               }}
             >
-              {s.icon} {s.label}
+              <span>{s.icon}</span>
+              <span>{s.label}</span>
             </Link>
           );
         })}

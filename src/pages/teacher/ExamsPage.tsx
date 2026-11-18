@@ -1,5 +1,17 @@
 import { useState, useEffect, useMemo } from "react";
 import {
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  Lock,
+  Plus,
+  Radio,
+  RefreshCw,
+  Shuffle,
+  Trash2,
+  X,
+} from "lucide-react";
+import {
   fetchExams,
   fetchExam,
   fetchQuestionBanks,
@@ -15,6 +27,7 @@ import { useAuth } from "../../app/AuthContext";
 import { useI18n } from "../../i18n";
 import { ResultCount, SearchInput, TablePagination } from "../../components/DataTable";
 import { matchesSearch, useDataTable, type Accessors } from "../../hooks/useDataTable";
+import { C, S, alpha } from "../../styles/tokens";
 
 type ExamStatus = "draft" | "scheduled" | "active" | "completed";
 
@@ -72,11 +85,11 @@ function mapDbExam(row: ExamRow): Exam {
   };
 }
 
-const statusConfig: Record<ExamStatus, { label: string; bg: string; text: string; dot: string }> = {
-  draft: { label: "Draft", bg: "#F1F5F9", text: "#475569", dot: "#94a3b8" },
-  scheduled: { label: "Scheduled", bg: "#EFF6FF", text: "#1E40AF", dot: "#1D4ED8" },
-  active: { label: "Active", bg: "#D1FAE5", text: "#065F46", dot: "#059669" },
-  completed: { label: "Completed", bg: "#F3F4F6", text: "#374151", dot: "#6b7280" },
+const statusConfig: Record<ExamStatus, { label: string; bg: string; text: string }> = {
+  draft: { label: "Draft", bg: C.base.surfaceSoft, text: C.base.textMuted },
+  scheduled: { label: "Scheduled", bg: C.brand.bg, text: C.brand.dark },
+  active: { label: "Active", bg: C.ok.bg, text: C.ok.dark },
+  completed: { label: "Completed", bg: C.base.surfaceSoft, text: C.base.textBody },
 };
 
 /** Sortable fields for the exam grid. */
@@ -320,61 +333,59 @@ export default function ExamsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold" style={{ color: "#0f172a", fontFamily: "var(--font-serif)" }}>
+          <h1 className="text-2xl font-bold" style={{ color: C.base.text, fontFamily: "var(--font-serif)" }}>
             {t("Exam Management")}
           </h1>
-          <p className="text-sm mt-0.5" style={{ color: "#64748b" }}>
+          <p className="text-sm mt-0.5 tabular-nums" style={{ color: C.base.textMuted }}>
             {t("{a} active · {b} scheduled · {c} completed", { a: counts.active, b: counts.scheduled, c: counts.completed })}
           </p>
         </div>
         <button
           onClick={openCreateWizard}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium hover:opacity-90 transition-all"
-          style={{ background: "#1D4ED8", color: "#fff" }}
+          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold hover:opacity-90 transition-all min-h-[44px] whitespace-nowrap"
+          style={{ background: C.brand.main, color: "#FFFFFF", boxShadow: S.btnPrimary }}
         >
-          {t("+ Create Exam")}
+          <Plus className="w-4 h-4" />
+          {t("Create Exam")}
         </button>
       </div>
 
       {/* Status tabs + search */}
       <div className="flex gap-2 flex-wrap items-center">
-        {(["all", "active", "scheduled", "draft", "completed"] as const).map((s) => (
-          <button
-            key={s}
-            onClick={() => {
-              setStatusFilter(s);
-              table.reset();
-            }}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all"
-            style={{
-              background: statusFilter === s ? "#0f172a" : "#fff",
-              color: statusFilter === s ? "#fff" : "#64748b",
-              border: "1px solid",
-              borderColor: statusFilter === s ? "#0f172a" : "#e2e8f0",
-            }}
-          >
-            {s !== "all" && (
-              <span
-                className="w-1.5 h-1.5 rounded-full shrink-0"
-                style={{ background: s === statusFilter ? "#fff" : statusConfig[s].dot }}
-              />
-            )}
-            {s === "all" ? t("All Exams") : t(statusConfig[s].label)}
-            <span
-              className="px-1.5 py-0.5 rounded text-xs font-medium"
+        {(["all", "active", "scheduled", "draft", "completed"] as const).map((s) => {
+          const active = statusFilter === s;
+          return (
+            <button
+              key={s}
+              onClick={() => {
+                setStatusFilter(s);
+                table.reset();
+              }}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-medium transition-all min-h-[40px] whitespace-nowrap"
               style={{
-                background: statusFilter === s ? "rgba(255,255,255,0.2)" : "#f1f5f9",
-                color: statusFilter === s ? "#fff" : "#64748b",
+                background: active ? C.base.dark : C.base.surface,
+                color: active ? "#FFFFFF" : C.base.textMuted,
+                border: `1px solid ${active ? C.base.dark : C.base.border}`,
+                boxShadow: active ? S.control : undefined,
               }}
             >
-              {counts[s]}
-            </span>
-          </button>
-        ))}
+              {s === "all" ? t("All Exams") : t(statusConfig[s].label)}
+              <span
+                className="px-1.5 py-0.5 rounded text-xs font-medium tabular-nums"
+                style={{
+                  background: active ? "rgba(255,255,255,0.2)" : C.base.surfaceSoft,
+                  color: active ? "#FFFFFF" : C.base.textMuted,
+                }}
+              >
+                {counts[s]}
+              </span>
+            </button>
+          );
+        })}
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="w-full sm:w-auto sm:ml-auto flex flex-wrap items-center gap-2">
           <ResultCount count={filtered.length} />
           <select
             value={table.sort ? `${table.sort.key}:${table.sort.dir}` : ""}
@@ -383,8 +394,8 @@ export default function ExamsPage() {
               if (!key) return;
               table.setSort({ key: key as ExamSortKey, dir: dir as "asc" | "desc" });
             }}
-            className="px-3 py-2 rounded-lg text-sm outline-none"
-            style={{ background: "#fff", border: "1px solid #e2e8f0", color: "#475569" }}
+            className="px-3 py-2 rounded-xl text-sm outline-none min-h-[40px]"
+            style={{ background: C.base.surface, border: `1px solid ${C.base.border}`, color: C.base.textBody, boxShadow: S.inset }}
             title={t("Klik untuk mengurutkan")}
           >
             <option value="start:desc">{t("Terbaru")}</option>
@@ -400,7 +411,7 @@ export default function ExamsPage() {
               table.reset();
             }}
             placeholder={t("Cari ujian…")}
-            width={240}
+            width={220}
           />
         </div>
       </div>
@@ -408,93 +419,91 @@ export default function ExamsPage() {
       {/* Exam cards */}
       <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
         {loading && (
-          <div className="col-span-full py-16 text-center text-sm" style={{ color: "#94a3b8" }}>
+          <div className="col-span-full py-16 text-center text-sm" style={{ color: C.base.textFaint }}>
             {t("Loading exams from database…")}
           </div>
         )}
         {!loading && loadError && (
-          <div className="col-span-full py-16 text-center text-sm" style={{ color: "#DC2626" }}>
+          <div className="col-span-full py-16 text-center text-sm" style={{ color: C.danger.text }}>
             {t("Failed to load exams")}: {loadError}
           </div>
         )}
         {!loading && !loadError && table.total === 0 && (
-          <div className="col-span-full py-16 text-center text-sm" style={{ color: "#94a3b8" }}>
+          <div className="col-span-full py-16 text-center text-sm" style={{ color: C.base.textFaint }}>
             {search ? t("Tidak ada ujian yang cocok dengan pencarian.") : t("No exams match your filters.")}
           </div>
         )}
         {table.rows.map((exam) => (
           <div
             key={exam.id}
-            className="rounded-xl p-5 flex flex-col gap-4 hover:shadow-md transition-all"
-            style={{ background: "#fff", border: "1px solid #e2e8f0" }}
+            className="cbt-card cbt-card-hover rounded-2xl p-5 flex flex-col gap-4 transition-all"
+            style={{ background: C.base.surface, border: `1px solid ${C.base.border}`, boxShadow: S.card }}
           >
             {/* Card header */}
             <div className="flex items-start justify-between">
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1.5">
+                <div className="flex flex-wrap items-center gap-2 mb-1.5 text-xs">
                   <span
-                    className="text-xs px-2 py-0.5 rounded-full font-medium flex items-center gap-1"
+                    className="px-2.5 py-0.5 rounded-full font-semibold"
                     style={{ background: statusConfig[exam.status].bg, color: statusConfig[exam.status].text }}
                   >
-                    <span
-                      className="w-1.5 h-1.5 rounded-full"
-                      style={{ background: statusConfig[exam.status].dot }}
-                    />
                     {t(statusConfig[exam.status].label)}
                   </span>
                   {exam.sebRequired && (
-                    <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: "#1D4ED8" + "15", color: "#1D4ED8" }}>
-                      🔒 SEB
+                    <span className="inline-flex items-center gap-1 font-medium" style={{ color: C.brand.dark }}>
+                      <Lock className="w-3 h-3" />
+                      SEB
                     </span>
                   )}
                   {exam.randomize && (
-                    <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: "#7C3AED" + "15", color: "#7C3AED" }}>
-                      🎲 {t("Random")}
+                    <span className="inline-flex items-center gap-1 font-medium" style={{ color: C.purple.dark }}>
+                      <Shuffle className="w-3 h-3" />
+                      {t("Random")}
                     </span>
                   )}
                 </div>
-                <h3 className="font-semibold text-base" style={{ color: "#0f172a" }}>
+                <h3 className="font-semibold text-base" style={{ color: C.base.text }}>
                   {exam.title}
                 </h3>
-                <div className="text-sm mt-0.5" style={{ color: "#64748b" }}>
+                <div className="text-sm mt-0.5" style={{ color: C.base.textMuted }}>
                   {exam.subject} · {exam.class}
                 </div>
               </div>
             </div>
 
             {/* Meta info */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-lg px-3 py-2.5" style={{ background: "#F8FAFC" }}>
-                <div className="text-xs mb-0.5" style={{ color: "#94a3b8" }}>{t("Duration")}</div>
-                <div className="text-sm font-semibold" style={{ color: "#0f172a" }}>{exam.duration} {t("min")}</div>
+            <div className="grid grid-cols-2 gap-2.5">
+              <div className="rounded-xl px-3 py-2.5" style={{ background: C.base.surfaceMuted, border: `1px solid ${C.base.borderLight}` }}>
+                <div className="text-xs mb-0.5" style={{ color: C.base.textFaint }}>{t("Duration")}</div>
+                <div className="text-sm font-semibold tabular-nums" style={{ color: C.base.text }}>{exam.duration} {t("min")}</div>
               </div>
-              <div className="rounded-lg px-3 py-2.5" style={{ background: "#F8FAFC" }}>
-                <div className="text-xs mb-0.5" style={{ color: "#94a3b8" }}>{t("Questions")}</div>
-                <div className="text-sm font-semibold" style={{ color: "#0f172a" }}>{exam.questionCount}</div>
+              <div className="rounded-xl px-3 py-2.5" style={{ background: C.base.surfaceMuted, border: `1px solid ${C.base.borderLight}` }}>
+                <div className="text-xs mb-0.5" style={{ color: C.base.textFaint }}>{t("Questions")}</div>
+                <div className="text-sm font-semibold tabular-nums" style={{ color: C.base.text }}>{exam.questionCount}</div>
               </div>
-              <div className="rounded-lg px-3 py-2.5" style={{ background: "#F8FAFC" }}>
-                <div className="text-xs mb-0.5" style={{ color: "#94a3b8" }}>{t("Start Time")}</div>
-                <div className="text-xs font-semibold" style={{ color: "#0f172a", fontFamily: "var(--font-mono)" }}>{exam.startTime}</div>
+              <div className="rounded-xl px-3 py-2.5" style={{ background: C.base.surfaceMuted, border: `1px solid ${C.base.borderLight}` }}>
+                <div className="text-xs mb-0.5" style={{ color: C.base.textFaint }}>{t("Start Time")}</div>
+                <div className="text-xs font-semibold tabular-nums" style={{ color: C.base.text, fontFamily: "var(--font-mono)" }}>{exam.startTime}</div>
               </div>
-              <div className="rounded-lg px-3 py-2.5" style={{ background: "#F8FAFC" }}>
-                <div className="text-xs mb-0.5" style={{ color: "#94a3b8" }}>{t("End Time")}</div>
-                <div className="text-xs font-semibold" style={{ color: "#0f172a", fontFamily: "var(--font-mono)" }}>{exam.endTime}</div>
+              <div className="rounded-xl px-3 py-2.5" style={{ background: C.base.surfaceMuted, border: `1px solid ${C.base.borderLight}` }}>
+                <div className="text-xs mb-0.5" style={{ color: C.base.textFaint }}>{t("End Time")}</div>
+                <div className="text-xs font-semibold tabular-nums" style={{ color: C.base.text, fontFamily: "var(--font-mono)" }}>{exam.endTime}</div>
               </div>
             </div>
 
             {/* Progress */}
             {exam.status !== "draft" && exam.totalStudents > 0 && (
               <div>
-                <div className="flex justify-between text-xs mb-1.5" style={{ color: "#64748b" }}>
+                <div className="flex justify-between text-xs mb-1.5 tabular-nums" style={{ color: C.base.textMuted }}>
                   <span>{t("Student Progress")}</span>
                   <span>{t("{a}/{b} completed", { a: exam.completedStudents, b: exam.totalStudents })}</span>
                 </div>
-                <div className="h-2 rounded-full" style={{ background: "#e2e8f0" }}>
+                <div className="h-2 rounded-full overflow-hidden" style={{ background: C.base.surfaceSoft }}>
                   <div
                     className="h-full rounded-full transition-all"
                     style={{
                       width: `${(exam.completedStudents / exam.totalStudents) * 100}%`,
-                      background: exam.status === "completed" ? "#059669" : "#1D4ED8",
+                      background: exam.status === "completed" ? C.ok.main : C.brand.main,
                     }}
                   />
                 </div>
@@ -504,19 +513,22 @@ export default function ExamsPage() {
             {/* Token */}
             {exam.token && (
               <div
-                className="rounded-lg px-3 py-2 flex items-center justify-between"
-                style={{ background: "#EFF6FF", border: "1px solid #BFDBFE" }}
+                className="rounded-xl px-3.5 py-2.5 flex items-center justify-between"
+                style={{ background: C.brand.bg, border: `1px solid ${C.brand.border}` }}
               >
                 <div>
-                  <div className="text-xs mb-0.5" style={{ color: "#3B82F6" }}>{t("Entry Token")}</div>
+                  <div className="text-xs mb-0.5" style={{ color: C.brand.dark }}>{t("Entry Token")}</div>
                   <div
                     className="text-base font-bold tracking-[0.2em]"
-                    style={{ color: "#1D4ED8", fontFamily: "var(--font-mono)" }}
+                    style={{ color: C.brand.dark, fontFamily: "var(--font-mono)" }}
                   >
                     {exam.token}
                   </div>
                 </div>
-                <button className="text-xs" style={{ color: "#3B82F6" }}>{t("Regenerate")}</button>
+                <button className="inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-lg cbt-row-hover" style={{ color: C.brand.dark }}>
+                  <RefreshCw className="w-3 h-3" />
+                  {t("Regenerate")}
+                </button>
               </div>
             )}
 
@@ -524,115 +536,129 @@ export default function ExamsPage() {
             <div className="flex gap-2 mt-auto">
               {exam.status === "draft" && (
                 <>
-                  <button onClick={() => openEditWizard(exam)} className="flex-1 py-2 rounded-lg text-xs font-medium border transition-all hover:bg-slate-50" style={{ borderColor: "#e2e8f0", color: "#374151" }}>
+                  <button onClick={() => openEditWizard(exam)} className="flex-1 py-2.5 rounded-xl text-xs font-medium border transition-all cbt-row-hover min-h-[40px]" style={{ borderColor: C.base.border, color: C.base.textBody, background: C.base.surface }}>
                     {t("Edit")}
                   </button>
-                  <button onClick={() => handlePublish(exam)} className="flex-1 py-2 rounded-lg text-xs font-medium transition-all hover:opacity-90" style={{ background: "#1D4ED8", color: "#fff" }}>
+                  <button onClick={() => handlePublish(exam)} className="flex-1 py-2.5 rounded-xl text-xs font-semibold transition-all hover:opacity-90 min-h-[40px]" style={{ background: C.brand.main, color: "#FFFFFF", boxShadow: S.btnPrimary }}>
                     {t("Publish")}
                   </button>
                 </>
               )}
               {exam.status === "scheduled" && (
                 <>
-                  <button onClick={() => openEditWizard(exam)} className="flex-1 py-2 rounded-lg text-xs font-medium border transition-all hover:bg-slate-50" style={{ borderColor: "#e2e8f0", color: "#374151" }}>
+                  <button onClick={() => openEditWizard(exam)} className="flex-1 py-2.5 rounded-xl text-xs font-medium border transition-all cbt-row-hover min-h-[40px]" style={{ borderColor: C.base.border, color: C.base.textBody, background: C.base.surface }}>
                     {t("Edit Schedule")}
                   </button>
-                  <button onClick={() => handlePublish(exam)} className="flex-1 py-2 rounded-lg text-xs font-medium transition-all hover:opacity-90" style={{ background: "#059669", color: "#fff" }}>
+                  <button onClick={() => handlePublish(exam)} className="flex-1 py-2.5 rounded-xl text-xs font-semibold transition-all hover:opacity-90 min-h-[40px]" style={{ background: C.ok.main, color: "#FFFFFF", boxShadow: S.btnSuccess }}>
                     {t("Publish Now")}
                   </button>
                 </>
               )}
               {exam.status === "active" && (
                 <>
-                  <button className="flex-1 py-2 rounded-lg text-xs font-medium transition-all hover:opacity-90" style={{ background: "#1D4ED8", color: "#fff" }}>
-                    {t("📡 Monitor")}
+                  <button className="flex-1 inline-flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-semibold transition-all hover:opacity-90 min-h-[40px]" style={{ background: C.brand.main, color: "#FFFFFF", boxShadow: S.btnPrimary }}>
+                    <Radio className="w-3.5 h-3.5" />
+                    {t("Monitor")}
                   </button>
-                  <button className="flex-1 py-2 rounded-lg text-xs font-medium border transition-all hover:bg-red-50" style={{ borderColor: "#FEE2E2", color: "#DC2626" }}>
+                  <button className="flex-1 py-2.5 rounded-xl text-xs font-medium border transition-all cbt-row-hover min-h-[40px]" style={{ borderColor: C.danger.border, color: C.danger.text, background: C.danger.bgLight }}>
                     {t("Force End")}
                   </button>
                 </>
               )}
               {exam.status === "completed" && (
                 <>
-                  <button className="flex-1 py-2 rounded-lg text-xs font-medium border transition-all hover:bg-slate-50" style={{ borderColor: "#e2e8f0", color: "#374151" }}>
+                  <button className="flex-1 py-2.5 rounded-xl text-xs font-medium border transition-all cbt-row-hover min-h-[40px]" style={{ borderColor: C.base.border, color: C.base.textBody, background: C.base.surface }}>
                     {t("View Results")}
                   </button>
-                  <button className="flex-1 py-2 rounded-lg text-xs font-medium transition-all hover:opacity-90" style={{ background: "#059669", color: "#fff" }}>
-                    {t("↓ Export")}
+                  <button className="flex-1 inline-flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-semibold transition-all hover:opacity-90 min-h-[40px]" style={{ background: C.ok.main, color: "#FFFFFF", boxShadow: S.btnSuccess }}>
+                    <Download className="w-3.5 h-3.5" />
+                    {t("Export")}
                   </button>
                 </>
               )}
             </div>
             <button
               onClick={() => handleDelete(exam)}
-              className="w-full py-1.5 rounded-lg text-xs font-medium border transition-all hover:bg-red-50"
-              style={{ borderColor: "#FEE2E2", color: "#DC2626" }}
+              className="w-full inline-flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-medium border transition-all cbt-row-hover min-h-[38px]"
+              style={{ borderColor: C.danger.border, color: C.danger.text, background: C.base.surface }}
             >
-              {t("🗑 Delete")}
+              <Trash2 className="w-3.5 h-3.5" />
+              {t("Delete")}
             </button>
           </div>
         ))}
       </div>
 
       {/* Pagination */}
-      <div className="rounded-xl overflow-hidden" style={{ background: "#fff", border: "1px solid #e2e8f0" }}>
+      <div className="cbt-card rounded-2xl overflow-hidden" style={{ background: C.base.surface, border: `1px solid ${C.base.border}`, boxShadow: S.card }}>
         <TablePagination {...table.paginationProps} style={{ borderTop: "none" }} />
       </div>
 
       {/* Create Exam Modal */}
       {showCreate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.5)" }}>
-          <div className="w-full max-w-xl rounded-xl overflow-hidden" style={{ background: "#fff" }}>
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4" style={{ background: S.overlay }}>
+          <div
+            className="w-full sm:max-w-xl rounded-t-3xl sm:rounded-2xl overflow-hidden max-h-[92dvh] flex flex-col safe-area-bottom"
+            style={{ background: C.base.surface, border: `1px solid ${C.base.border}`, boxShadow: S.elevated }}
+          >
             {/* Steps header */}
-            <div className="px-6 py-4 border-b" style={{ borderColor: "#f1f5f9", background: "#F8FAFC" }}>
+            <div className="px-5 sm:px-6 py-4 border-b shrink-0" style={{ borderColor: C.base.borderLight, background: C.base.surfaceMuted }}>
+              <div className="sm:hidden w-10 h-1 rounded-full mx-auto mb-3" style={{ background: C.base.border }} />
               <div className="flex items-center justify-between mb-3">
-                <h3 className="font-bold text-base" style={{ color: "#0f172a", fontFamily: "var(--font-serif)" }}>
+                <h3 className="font-bold text-base" style={{ color: C.base.text, fontFamily: "var(--font-serif)" }}>
                   {editingId ? t("Edit Exam") : t("Create New Exam")}
                 </h3>
-                <button onClick={() => setShowCreate(false)} style={{ color: "#94a3b8" }}>✕</button>
+                <button
+                  onClick={() => setShowCreate(false)}
+                  className="w-8 h-8 rounded-lg flex items-center justify-center cbt-row-hover"
+                  style={{ color: C.base.textMuted }}
+                  aria-label={t("Close")}
+                >
+                  <X className="w-4 h-4" />
+                </button>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 {[1, 2, 3].map((step) => (
-                  <div key={step} className="flex items-center gap-2">
+                  <div key={step} className="flex items-center gap-1.5">
                     <div
-                      className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold"
+                      className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold tabular-nums"
                       style={{
-                        background: createStep >= step ? "#1D4ED8" : "#e2e8f0",
-                        color: createStep >= step ? "#fff" : "#94a3b8",
+                        background: createStep >= step ? C.brand.main : C.base.surfaceSoft,
+                        color: createStep >= step ? "#FFFFFF" : C.base.textFaint,
                       }}
                     >
                       {step}
                     </div>
-                    <span className="text-xs" style={{ color: createStep >= step ? "#0f172a" : "#94a3b8" }}>
+                    <span className="text-xs font-medium" style={{ color: createStep >= step ? C.base.text : C.base.textFaint }}>
                       {step === 1 ? t("Basic Info") : step === 2 ? t("Questions & Schedule") : t("Security")}
                     </span>
-                    {step < 3 && <span style={{ color: "#e2e8f0" }}>›</span>}
+                    {step < 3 && <ChevronRight className="w-3.5 h-3.5" style={{ color: C.base.border }} />}
                   </div>
                 ))}
               </div>
             </div>
 
-            <div className="p-6">
+            <div className="p-5 sm:p-6 overflow-y-auto flex-1">
               {createStep === 1 && (
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium mb-1.5" style={{ color: "#374151" }}>{t("Exam Title")}</label>
+                    <label className="block text-sm font-medium mb-1.5" style={{ color: C.base.textBody }}>{t("Exam Title")}</label>
                     <input
                       type="text"
                       value={form.title}
                       onChange={(e) => setField("title", e.target.value)}
                       placeholder={t("e.g. UTS Matematika Kelas XII")}
-                      className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                      style={{ border: "1px solid #e2e8f0", color: "#0f172a" }}
+                      className="w-full px-3.5 py-2.5 rounded-xl text-base sm:text-sm outline-none"
+                      style={{ border: `1px solid ${C.base.border}`, background: C.base.surfaceAlt, color: C.base.text, boxShadow: S.inset }}
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-1.5" style={{ color: "#374151" }}>{t("Question Bank")}</label>
+                    <label className="block text-sm font-medium mb-1.5" style={{ color: C.base.textBody }}>{t("Question Bank")}</label>
                     <select
                       value={form.bankId}
                       onChange={(e) => setField("bankId", e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                      style={{ border: "1px solid #e2e8f0", color: "#0f172a" }}
+                      className="w-full px-3.5 py-2.5 rounded-xl text-base sm:text-sm outline-none"
+                      style={{ border: `1px solid ${C.base.border}`, background: C.base.surfaceAlt, color: C.base.text, boxShadow: S.inset }}
                     >
                       <option value="">{t("— Select a question bank —")}</option>
                       {banks.map((b) => (
@@ -642,15 +668,15 @@ export default function ExamsPage() {
                       ))}
                     </select>
                     {banks.length === 0 && (
-                      <p className="text-xs mt-1" style={{ color: "#DC2626" }}>
+                      <p className="text-xs mt-1" style={{ color: C.danger.text }}>
                         {t("No question banks yet — create one on the Question Bank page first.")}
                       </p>
                     )}
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-1.5" style={{ color: "#374151" }}>{t("Assigned Classes")}</label>
+                    <label className="block text-sm font-medium mb-1.5" style={{ color: C.base.textBody }}>{t("Assigned Classes")}</label>
                     {classes.length === 0 ? (
-                      <p className="text-xs" style={{ color: "#94a3b8" }}>{t("No classes available.")}</p>
+                      <p className="text-xs" style={{ color: C.base.textFaint }}>{t("No classes available.")}</p>
                     ) : (
                       <div className="flex flex-wrap gap-2">
                         {classes.map((c) => {
@@ -665,10 +691,11 @@ export default function ExamsPage() {
                                   active ? form.classIds.filter((id) => id !== c.id) : [...form.classIds, c.id]
                                 )
                               }
-                              className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+                              className="px-3 py-2 rounded-xl text-xs font-medium transition-all min-h-[38px]"
                               style={{
-                                background: active ? "#1D4ED8" : "#f1f5f9",
-                                color: active ? "#fff" : "#475569",
+                                background: active ? C.brand.main : C.base.surfaceSoft,
+                                color: active ? "#FFFFFF" : C.base.textBody,
+                                border: `1px solid ${active ? C.brand.main : C.base.border}`,
                               }}
                             >
                               {c.class_name}
@@ -679,14 +706,14 @@ export default function ExamsPage() {
                     )}
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-1.5" style={{ color: "#374151" }}>{t("Duration (minutes)")}</label>
+                    <label className="block text-sm font-medium mb-1.5" style={{ color: C.base.textBody }}>{t("Duration (minutes)")}</label>
                     <input
                       type="number"
                       min={1}
                       value={form.duration}
                       onChange={(e) => setField("duration", Number(e.target.value))}
-                      className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                      style={{ border: "1px solid #e2e8f0", color: "#0f172a" }}
+                      className="w-full px-3.5 py-2.5 rounded-xl text-base sm:text-sm outline-none"
+                      style={{ border: `1px solid ${C.base.border}`, background: C.base.surfaceAlt, color: C.base.text, boxShadow: S.inset }}
                     />
                   </div>
                 </div>
@@ -694,67 +721,67 @@ export default function ExamsPage() {
 
               {createStep === 2 && (
                 <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-sm font-medium mb-1.5" style={{ color: "#374151" }}>{t("Start Date & Time")}</label>
+                      <label className="block text-sm font-medium mb-1.5" style={{ color: C.base.textBody }}>{t("Start Date & Time")}</label>
                       <input
                         type="datetime-local"
                         value={form.startTime}
                         onChange={(e) => setField("startTime", e.target.value)}
-                        className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                        style={{ border: "1px solid #e2e8f0", color: "#0f172a" }}
+                        className="w-full px-3 py-2.5 rounded-xl text-base sm:text-sm outline-none"
+                        style={{ border: `1px solid ${C.base.border}`, background: C.base.surfaceAlt, color: C.base.text, boxShadow: S.inset }}
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium mb-1.5" style={{ color: "#374151" }}>{t("End Date & Time")}</label>
+                      <label className="block text-sm font-medium mb-1.5" style={{ color: C.base.textBody }}>{t("End Date & Time")}</label>
                       <input
                         type="datetime-local"
                         value={form.endTime}
                         onChange={(e) => setField("endTime", e.target.value)}
-                        className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                        style={{ border: "1px solid #e2e8f0", color: "#0f172a" }}
+                        className="w-full px-3 py-2.5 rounded-xl text-base sm:text-sm outline-none"
+                        style={{ border: `1px solid ${C.base.border}`, background: C.base.surfaceAlt, color: C.base.text, boxShadow: S.inset }}
                       />
                     </div>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-1.5" style={{ color: "#374151" }}>{t("Questions")}</label>
-                    <div className="rounded-lg p-3" style={{ background: "#F8FAFC", border: "1px solid #e2e8f0" }}>
+                    <label className="block text-sm font-medium mb-1.5" style={{ color: C.base.textBody }}>{t("Questions")}</label>
+                    <div className="rounded-xl p-3.5" style={{ background: C.base.surfaceMuted, border: `1px solid ${C.base.border}` }}>
                       {form.bankId ? (
                         <>
-                          <div className="text-sm font-medium" style={{ color: "#0f172a" }}>
+                          <div className="text-sm font-medium" style={{ color: C.base.text }}>
                             {banks.find((b) => b.id === form.bankId)?.title ?? t("Selected bank")}
                           </div>
-                          <div className="text-xs mt-0.5" style={{ color: "#64748b" }}>
+                          <div className="text-xs mt-0.5 tabular-nums" style={{ color: C.base.textMuted }}>
                             {t("{n} question(s) will be served from this bank", { n: banks.find((b) => b.id === form.bankId)?.actual_questions ?? 0 })}
                           </div>
                         </>
                       ) : (
-                        <div className="text-sm" style={{ color: "#94a3b8" }}>
+                        <div className="text-sm" style={{ color: C.base.textFaint }}>
                           {t("Select a question bank in step 1")}
                         </div>
                       )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 p-3 rounded-lg" style={{ background: "#F5F3FF", border: "1px solid #DDD6FE" }}>
+                  <div className="flex items-center gap-2.5 p-3.5 rounded-xl" style={{ background: C.purple.bg, border: `1px solid ${C.purple.border}` }}>
                     <input
                       type="checkbox"
                       checked={form.randomizeQuestions}
                       onChange={(e) => setField("randomizeQuestions", e.target.checked)}
                       id="randomizeQuestions"
                     />
-                    <label htmlFor="randomizeQuestions" className="text-sm" style={{ color: "#374151" }}>
-                      <span className="font-medium">{t("Randomize question order")}</span> — {t("— each student gets a unique order seeded by their Student ID")}
+                    <label htmlFor="randomizeQuestions" className="text-sm" style={{ color: C.base.textBody }}>
+                      <span className="font-medium">{t("Randomize question order")}</span> {t("— each student gets a unique order seeded by their Student ID")}
                     </label>
                   </div>
-                  <div className="flex items-center gap-2 p-3 rounded-lg" style={{ background: "#F5F3FF", border: "1px solid #DDD6FE" }}>
+                  <div className="flex items-center gap-2.5 p-3.5 rounded-xl" style={{ background: C.purple.bg, border: `1px solid ${C.purple.border}` }}>
                     <input
                       type="checkbox"
                       checked={form.randomizeOptions}
                       onChange={(e) => setField("randomizeOptions", e.target.checked)}
                       id="randomizeOptions"
                     />
-                    <label htmlFor="randomizeOptions" className="text-sm" style={{ color: "#374151" }}>
-                      <span className="font-medium">{t("Randomize answer options")}</span> — {t("— shuffle choices within each question")}
+                    <label htmlFor="randomizeOptions" className="text-sm" style={{ color: C.base.textBody }}>
+                      <span className="font-medium">{t("Randomize answer options")}</span> {t("— shuffle choices within each question")}
                     </label>
                   </div>
                 </div>
@@ -762,52 +789,55 @@ export default function ExamsPage() {
 
               {createStep === 3 && (
                 <div className="space-y-4">
-                  <div className="flex items-center gap-2 p-4 rounded-lg" style={{ background: "#EFF6FF", border: "1px solid #BFDBFE" }}>
+                  <div className="flex items-start gap-2.5 p-4 rounded-xl" style={{ background: C.brand.bg, border: `1px solid ${C.brand.border}` }}>
                     <input
                       type="checkbox"
                       checked={form.sebRequired}
                       onChange={(e) => setField("sebRequired", e.target.checked)}
                       id="seb"
+                      className="mt-1"
                     />
                     <div>
-                      <label htmlFor="seb" className="text-sm font-medium" style={{ color: "#1E40AF" }}>
+                      <label htmlFor="seb" className="text-sm font-medium" style={{ color: C.brand.dark }}>
                         {t("Require Safe Exam Browser (SEB)")}
                       </label>
-                      <p className="text-xs mt-0.5" style={{ color: "#3B82F6" }}>
+                      <p className="text-xs mt-0.5" style={{ color: C.base.textMuted }}>
                         {t("Students must use SEB client. Requests validated via X-SafeExamBrowser-RequestHash header.")}
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 p-4 rounded-lg" style={{ background: "#F0FDF4", border: "1px solid #BBF7D0" }}>
+                  <div className="flex items-start gap-2.5 p-4 rounded-xl" style={{ background: C.ok.bgLight, border: `1px solid ${C.ok.border}` }}>
                     <input
                       type="checkbox"
                       checked={form.generateToken}
                       onChange={(e) => setField("generateToken", e.target.checked)}
                       id="token"
                       disabled={!!editingId}
+                      className="mt-1"
                     />
                     <div>
-                      <label htmlFor="token" className="text-sm font-medium" style={{ color: "#065F46" }}>
+                      <label htmlFor="token" className="text-sm font-medium" style={{ color: C.ok.dark }}>
                         {t("Generate Entry Token")}
                       </label>
-                      <p className="text-xs mt-0.5" style={{ color: "#059669" }}>
+                      <p className="text-xs mt-0.5" style={{ color: C.base.textMuted }}>
                         {t("6-character dynamic token required before exam start. Regeneratable per session.")}
                         {editingId ? t(" (Regenerate via the token card on the exam.)") : ""}
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 p-4 rounded-lg" style={{ background: "#FEF9C3", border: "1px solid #FDE68A" }}>
+                  <div className="flex items-start gap-2.5 p-4 rounded-xl" style={{ background: C.warn.bgLight, border: `1px solid ${C.warn.border}` }}>
                     <input
                       type="checkbox"
                       checked={form.publishNow}
                       onChange={(e) => setField("publishNow", e.target.checked)}
                       id="publishNow"
+                      className="mt-1"
                     />
                     <div>
-                      <label htmlFor="publishNow" className="text-sm font-medium" style={{ color: "#854D0E" }}>
+                      <label htmlFor="publishNow" className="text-sm font-medium" style={{ color: C.warn.dark }}>
                         {t("Publish immediately")}
                       </label>
-                      <p className="text-xs mt-0.5" style={{ color: "#A16207" }}>
+                      <p className="text-xs mt-0.5" style={{ color: C.base.textMuted }}>
                         {editingId
                           ? t("Update the exam status to published.")
                           : t("Save as published instead of draft. Students see it once the schedule starts.")}
@@ -815,7 +845,7 @@ export default function ExamsPage() {
                     </div>
                   </div>
                   {formError && (
-                    <div className="p-3 rounded-lg text-sm" style={{ background: "#FEF2F2", border: "1px solid #FECACA", color: "#DC2626" }}>
+                    <div className="p-3 rounded-xl text-sm" style={{ background: C.danger.bgLight, border: `1px solid ${C.danger.border}`, color: C.danger.text }}>
                       {formError}
                     </div>
                   )}
@@ -826,19 +856,21 @@ export default function ExamsPage() {
                 {createStep > 1 && (
                   <button
                     onClick={() => setCreateStep((s) => s - 1)}
-                    className="px-4 py-2 rounded-lg text-sm font-medium border"
-                    style={{ borderColor: "#e2e8f0", color: "#374151" }}
+                    className="inline-flex items-center gap-1 px-4 py-2.5 rounded-xl text-sm font-medium border cbt-row-hover min-h-[44px]"
+                    style={{ borderColor: C.base.border, color: C.base.textBody, background: C.base.surface }}
                   >
-                    {t("← Back")}
+                    <ChevronLeft className="w-4 h-4" />
+                    {t("Back")}
                   </button>
                 )}
                 <button
                   onClick={() => (createStep < 3 ? setCreateStep((s) => s + 1) : submitWizard())}
                   disabled={saving}
-                  className="flex-1 py-2 rounded-lg text-sm font-medium hover:opacity-90 transition-all disabled:opacity-60"
-                  style={{ background: "#1D4ED8", color: "#fff" }}
+                  className="flex-1 inline-flex items-center justify-center gap-1 py-2.5 rounded-xl text-sm font-semibold hover:opacity-90 transition-all disabled:opacity-60 min-h-[44px]"
+                  style={{ background: C.brand.main, color: "#FFFFFF", boxShadow: S.btnPrimary }}
                 >
-                  {saving ? t("Saving…") : createStep < 3 ? t("Continue →") : editingId ? t("Save Changes") : t("Create Exam")}
+                  {saving ? t("Saving…") : createStep < 3 ? t("Continue") : editingId ? t("Save Changes") : t("Create Exam")}
+                  {!saving && createStep < 3 && <ChevronRight className="w-4 h-4" />}
                 </button>
               </div>
             </div>

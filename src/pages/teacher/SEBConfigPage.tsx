@@ -9,7 +9,8 @@ import {
   type TokenRow,
   type ExamRow,
 } from "../../lib/api";
-import { C } from "../../styles/tokens";
+import { Lock } from "lucide-react";
+import { C, S } from "../../styles/tokens";
 import { SectionCard, Btn, Field, Notice, controlStyle, Badge } from "../../components/ui";
 
 function generateRequestHash(url: string, configKey: string): string {
@@ -142,7 +143,15 @@ export default function SEBConfigPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* SEB Config Generator */}
         <div className="space-y-4">
-          <SectionCard title={t("🔒 SEB Configuration Generator")} subtitle={t("Generate a .seb file to distribute to students")}>
+          <SectionCard
+            title={
+              <span className="inline-flex items-center gap-2">
+                <Lock className="w-4 h-4" style={{ color: C.brand.dark }} />
+                {t("SEB Configuration Generator")}
+              </span>
+            }
+            subtitle={t("Generate a .seb file to distribute to students")}
+          >
             <Field label={t("Exam Start URL")}>
               <input
                 type="text"
@@ -165,7 +174,7 @@ export default function SEBConfigPage() {
 
             <div>
               <div className="text-xs font-medium mb-2" style={{ color: C.base.textBody }}>{t("Security Options")}</div>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 {[
                   { key: "allowBrowser" as const, label: t("Allow Back/Forward") },
                   { key: "allowClipboard" as const, label: t("Allow Clipboard") },
@@ -281,7 +290,7 @@ export default function SEBConfigPage() {
             title={t("Dynamic Entry Tokens")}
             subtitle={t("6-character alphanumeric tokens · Time-bound · One per exam session")}
           >
-            <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row gap-2">
               <select
                 value={newTokenExam}
                 onChange={(e) => setNewTokenExam(e.target.value)}
@@ -297,11 +306,11 @@ export default function SEBConfigPage() {
 
             {showNewToken && (
               <div
-                className="rounded-lg p-4 text-center"
-                style={{ background: C.brand.bg, border: `2px solid ${C.brand.main}` }}
+                className="rounded-xl p-4 text-center"
+                style={{ background: C.brand.bg, border: `2px solid ${C.brand.main}`, boxShadow: S.card }}
               >
-                <div className="text-xs mb-1" style={{ color: C.brand.light }}>{t("New Token Generated")}</div>
-                <div className="text-4xl font-bold tracking-[0.3em] mb-2" style={{ color: C.brand.main, fontFamily: "var(--font-mono)" }}>
+                <div className="text-xs mb-1" style={{ color: C.brand.dark }}>{t("New Token Generated")}</div>
+                <div className="text-3xl sm:text-4xl font-bold tracking-[0.3em] mb-2" style={{ color: C.brand.dark, fontFamily: "var(--font-mono)" }}>
                   {showNewToken}
                 </div>
                 <div className="text-xs" style={{ color: C.base.textMuted }}>
@@ -324,11 +333,11 @@ export default function SEBConfigPage() {
               {tokens.map((tok) => (
                 <div
                   key={tok.exam_id}
-                  className="rounded-lg p-3.5 flex items-start justify-between"
+                  className="rounded-xl p-3.5 flex flex-wrap items-start justify-between gap-2"
                   style={{
-                    background: tok.is_token_active ? "#FAFFFE" : C.base.surfaceMuted,
+                    background: tok.is_token_active ? C.ok.bgLight : C.base.surfaceMuted,
                     border: `1px solid ${tok.is_token_active ? C.ok.border : C.base.border}`,
-                    opacity: tok.is_token_active ? 1 : 0.7,
+                    opacity: tok.is_token_active ? 1 : 0.72,
                   }}
                 >
                   <div>

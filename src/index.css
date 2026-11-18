@@ -1,14 +1,148 @@
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,300..700;1,14..32,300..700&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400..700;1,9..40,400..700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
 @import 'katex/dist/katex.min.css';
 @import 'tailwindcss';
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @layer base {
   :root {
-    --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+    --font-sans: 'DM Sans', 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+    --font-display: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
     --font-serif: 'Fraunces', Georgia, serif;
     --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+    /* Light Surface Hierarchy (Tactile Warm Alabaster + Crisp Paper) */
+    --c-page: #EEF2F6;
+    --c-surface: #FFFFFF;
+    --c-surface-elevated: #FFFFFF;
+    --c-surface-muted: #F6F8FB;
+    --c-surface-alt: #F9FBFD;
+    --c-surface-soft: #E9EEF4;
+    --c-border: #D9E2EC;
+    --c-border-light: #E8EEF5;
+    --c-dashed: #B8C6D6;
+
+    /* Typography Hierarchy */
+    --c-text: #0F172A;
+    --c-text-body: #334155;
+    --c-text-muted: #5B6B7F;
+    --c-text-faint: #7E8E9F;
+    --c-text-menu: #475569;
+    --c-text-menu-soft: #334155;
+
+    /* Brand & Semantic Tints (Light) */
+    --c-brand-bg: #EFF6FF;
+    --c-brand-border: #BFDBFE;
+    --c-brand-border-soft: #DBEAFE;
+    --c-brand-chroma-bg: #E5EFFF;
+    --c-brand-text: #1E40AF;
+
+    --c-ok-bg: #D1FAE5;
+    --c-ok-bg-light: #F0FDF4;
+    --c-ok-border: #A7F3D0;
+    --c-ok-border-light: #BBF7D0;
+    --c-ok-msg-bg: #DCFCE7;
+    --c-ok-msg-text: #166534;
+    --c-ok-msg-border: #86EFAC;
+    --c-ok-text: #065F46;
+
+    --c-warn-bg: #FEF3C7;
+    --c-warn-bg-light: #FFFBEB;
+    --c-warn-border: #FDE68A;
+    --c-warn-text: #92400E;
+
+    --c-danger-bg: #FEE2E2;
+    --c-danger-bg-light: #FEF2F2;
+    --c-danger-bg-alt: #FFF5F5;
+    --c-danger-border: #FECACA;
+    --c-danger-import-bg: #FEF3F2;
+    --c-danger-text: #B91C1C;
+    --c-danger-deep: #991B1B;
+
+    --c-purple-bg: #F5F3FF;
+    --c-purple-border: #DDD6FE;
+    --c-purple-text: #6D28D9;
+
+    /* Tactile Elevation & Shadows */
+    --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.05), 0 4px 12px -2px rgba(15, 23, 42, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    --shadow-card-hover: 0 4px 10px rgba(15, 23, 42, 0.07), 0 12px 24px -6px rgba(15, 23, 42, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.95);
+    --shadow-elevated: 0 16px 40px -8px rgba(15, 23, 42, 0.18), 0 4px 12px rgba(15, 23, 42, 0.08);
+    --shadow-control: 0 1px 2px rgba(15, 23, 42, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+    --shadow-inset: inset 0 1px 2px rgba(15, 23, 42, 0.05);
+    --shadow-btn-primary: 0 1px 2px rgba(15, 23, 42, 0.2), 0 4px 10px -2px rgba(29, 78, 216, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+    --shadow-btn-success: 0 1px 2px rgba(15, 23, 42, 0.18), 0 4px 10px -2px rgba(5, 150, 105, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+
+    --c-overlay: rgba(15, 23, 42, 0.48);
+    --c-hover-row: rgba(15, 23, 42, 0.03);
+  }
+
+  .dark {
+    /* Dark Surface Hierarchy (Layered Slate Ink — Never Pitch-Black Flat) */
+    --c-page: #0B111A;
+    --c-surface: #121B28;
+    --c-surface-elevated: #172233;
+    --c-surface-muted: #0F1723;
+    --c-surface-alt: #0D141F;
+    --c-surface-soft: #1B2738;
+    --c-border: #233246;
+    --c-border-light: #1B283A;
+    --c-dashed: #324660;
+
+    /* Dark Typography Hierarchy */
+    --c-text: #F1F5F9;
+    --c-text-body: #CBD5E1;
+    --c-text-muted: #94A3B8;
+    --c-text-faint: #64748B;
+    --c-text-menu: #CBD5E1;
+    --c-text-menu-soft: #94A3B8;
+
+    /* Brand & Semantic Tints (Dark-Calibrated) */
+    --c-brand-bg: rgba(37, 99, 235, 0.16);
+    --c-brand-border: rgba(59, 130, 246, 0.36);
+    --c-brand-border-soft: rgba(59, 130, 246, 0.24);
+    --c-brand-chroma-bg: rgba(37, 99, 235, 0.22);
+    --c-brand-text: #93C5FD;
+
+    --c-ok-bg: rgba(16, 185, 129, 0.16);
+    --c-ok-bg-light: rgba(16, 185, 129, 0.1);
+    --c-ok-border: rgba(52, 211, 153, 0.32);
+    --c-ok-border-light: rgba(52, 211, 153, 0.22);
+    --c-ok-msg-bg: rgba(16, 185, 129, 0.16);
+    --c-ok-msg-text: #6EE7B7;
+    --c-ok-msg-border: rgba(52, 211, 153, 0.35);
+    --c-ok-text: #6EE7B7;
+
+    --c-warn-bg: rgba(245, 158, 11, 0.16);
+    --c-warn-bg-light: rgba(245, 158, 11, 0.1);
+    --c-warn-border: rgba(251, 191, 36, 0.34);
+    --c-warn-text: #FCD34D;
+
+    --c-danger-bg: rgba(239, 68, 68, 0.17);
+    --c-danger-bg-light: rgba(239, 68, 68, 0.11);
+    --c-danger-bg-alt: rgba(239, 68, 68, 0.12);
+    --c-danger-border: rgba(248, 113, 113, 0.35);
+    --c-danger-import-bg: rgba(239, 68, 68, 0.12);
+    --c-danger-text: #FCA5A5;
+    --c-danger-deep: #FCA5A5;
+
+    --c-purple-bg: rgba(139, 92, 246, 0.16);
+    --c-purple-border: rgba(167, 139, 250, 0.34);
+    --c-purple-text: #C4B5FD;
+
+    /* Dark Tactile Elevation (Top Hairline + Deep Ambient Shadow) */
+    --shadow-card: 0 2px 4px rgba(0, 0, 0, 0.32), 0 8px 20px -4px rgba(0, 0, 0, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    --shadow-card-hover: 0 6px 14px rgba(0, 0, 0, 0.42), 0 14px 28px -6px rgba(0, 0, 0, 0.48), inset 0 1px 0 rgba(255, 255, 255, 0.09);
+    --shadow-elevated: 0 20px 50px -8px rgba(0, 0, 0, 0.7), 0 4px 14px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.07);
+    --shadow-control: 0 1px 2px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    --shadow-inset: inset 0 1px 3px rgba(0, 0, 0, 0.35);
+    --shadow-btn-primary: 0 2px 4px rgba(0, 0, 0, 0.45), 0 6px 14px -3px rgba(37, 99, 235, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+    --shadow-btn-success: 0 2px 4px rgba(0, 0, 0, 0.42), 0 6px 14px -3px rgba(5, 150, 105, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+
+    --c-overlay: rgba(2, 6, 23, 0.72);
+    --c-hover-row: rgba(255, 255, 255, 0.035);
   }
 }
 
@@ -17,6 +151,8 @@ body,
 #root {
   height: 100%;
   font-family: var(--font-sans);
+  background-color: var(--c-page);
+  color: var(--c-text);
 }
 
 /* Mobile / PWA ergonomics: dynamic viewport height so browser chrome
@@ -27,6 +163,8 @@ html {
 }
 body {
   overscroll-behavior-y: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 #root {
   height: 100dvh;
@@ -40,13 +178,80 @@ a {
   touch-action: manipulation;
 }
 
+/* Prevent iOS Safari from auto-zooming inputs smaller than 16px */
+@media (max-width: 639px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* Focus ring ergonomics */
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid #2563EB;
+  outline-offset: 2px;
+}
+
+/* Dark-mode readable accent links/chips inside legacy components */
+.dark select option {
+  background-color: #121B28;
+  color: #F1F5F9;
+}
+
 /* Respect notches / home indicator inside fixed bars and drawers. */
 .safe-area-top { padding-top: env(safe-area-inset-top); }
 .safe-area-bottom { padding-bottom: env(safe-area-inset-bottom); }
+.safe-area-x {
+  padding-left: max(0.75rem, env(safe-area-inset-left));
+  padding-right: max(0.75rem, env(safe-area-inset-right));
+}
+
+/* Tactile Surface Helpers */
+.cbt-card {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  box-shadow: var(--shadow-card);
+  transition: box-shadow 0.18s ease, transform 0.18s ease, border-color 0.18s ease, background-color 0.18s ease;
+}
+
+.cbt-card-hover:hover {
+  box-shadow: var(--shadow-card-hover);
+  transform: translateY(-1px);
+}
+
+.cbt-well {
+  background: var(--c-surface-muted);
+  border: 1px solid var(--c-border);
+  box-shadow: var(--shadow-inset);
+}
+
+.cbt-row-hover:hover {
+  background: var(--c-hover-row);
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Subtle architectural grid background for auth & hero panels */
+.cbt-arch-grid {
+  background-image:
+    linear-gradient(to right, rgba(148, 163, 184, 0.08) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(148, 163, 184, 0.08) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
 
 * {
   scrollbar-width: thin;
   scrollbar-color: #94a3b8 transparent;
+}
+.dark * {
+  scrollbar-color: #334155 transparent;
 }
 
 *::-webkit-scrollbar {
@@ -58,16 +263,15 @@ a {
   background: #94a3b8;
   border-radius: 4px;
 }
+.dark *::-webkit-scrollbar-thumb {
+  background: #334155;
+}
 
 *::-webkit-scrollbar-track {
   background: transparent;
 }
 
-/* ── AI generation progress indicators ──────────────────────────────────────
-   `.ai-spinner` is a border-only rotating ring (colors are supplied inline so
-   it stays in sync with the design tokens). `.ai-bar-pulse` adds a soft glow
-   pulse to the bar while the request is in its final stretch (≥ 97%), which
-   signals "still working, waiting for the server" without ever reaching 100%. */
+/* ── AI generation progress indicators ────────────────────────────────────── */
 .ai-spinner {
   display: inline-block;
   width: 22px;
@@ -107,5 +311,9 @@ a {
   .ai-bar-pulse {
     animation: none;
   }
+  .cbt-card,
+  .cbt-card-hover {
+    transition: none;
+    transform: none;
+  }
 }
-

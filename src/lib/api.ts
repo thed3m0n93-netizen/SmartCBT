@@ -2102,7 +2102,58 @@ export function fetchSettings(): Promise<SchoolSettings> {
 export function updateSettings(
   payload: Partial<SchoolSettings>,
 ): Promise<{ success: boolean }> {
-  return apiPut("/api/settings", payload);
+  return apiPut<{ success: boolean }>("/api/settings", payload).then((res) => {
+    emitAiConfigChanged();
+    return res;
+  });
+}
+
+// ── AI Provider quick switcher (teachers + admins) ────────────────────
+
+export interface AiConfigSnapshot {
+  provider: string;
+  model: string;
+  baseUrl: string;
+  hasCustomApiKey: boolean;
+  hasBuiltInApiKey: boolean;
+  isReady: boolean;
+}
+
+const AI_CONFIG_EVENT = "smartcbt:ai-config-changed";
+
+export function emitAiConfigChanged(snapshot?: AiConfigSnapshot): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(AI_CONFIG_EVENT, { detail: snapshot ?? null }));
+}
+
+export function subscribeAiConfigChanged(
+  listener: (snapshot: AiConfigSnapshot | null) => void,
+): () => void {
+  if (typeof window === "undefined") return () => {};
+  const handler = (ev: Event) => {
+    const custom = ev as CustomEvent<AiConfigSnapshot | null>;
+    listener(custom.detail ?? null);
+  };
+  window.addEventListener(AI_CONFIG_EVENT, handler);
+  return () => window.removeEventListener(AI_CONFIG_EVENT, handler);
+}
+
+/** Read safe active AI provider configuration (never exposes secrets). */
+export function fetchAiConfig(): Promise<AiConfigSnapshot> {
+  return apiFetch<AiConfigSnapshot>("/api/ai/config");
+}
+
+/** Switch active AI provider/model/key immediately (accessible to teachers & admins). */
+export async function updateAiConfig(payload: {
+  provider: string;
+  model?: string;
+  baseUrl?: string;
+  apiKey?: string;
+  clearApiKey?: boolean;
+}): Promise<{ success: boolean; config: AiConfigSnapshot }> {
+  const res = await apiPut<{ success: boolean; config: AiConfigSnapshot }>("/api/ai/config", payload);
+  emitAiConfigChanged(res.config);
+  return res;
 }
 
 // ── School branding (logo / background / favicon) ─────────────────────

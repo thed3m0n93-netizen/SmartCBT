@@ -16,6 +16,8 @@
 
 /** Built-in API keys keyed by `AiProviderInfo.id`. */
 const BUILT_IN_AI_API_KEYS: Record<string, string> = {
+  "nvidia-mistral-large":
+    "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",
   nvidia:
     "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",
   "nvidia-gpt-oss":

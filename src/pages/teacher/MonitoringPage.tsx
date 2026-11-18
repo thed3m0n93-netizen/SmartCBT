@@ -1,4 +1,18 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import {
+  AlertTriangle,
+  Check,
+  ChevronRight,
+  Flag,
+  LogOut,
+  Plus,
+  Radio,
+  RefreshCw,
+  RotateCcw,
+  Search,
+  WifiOff,
+  X,
+} from "lucide-react";
 import { useI18n } from "../../i18n";
 import {
   fetchMonitoringAll,
@@ -8,7 +22,7 @@ import {
   flagSession,
   getAuthToken,
 } from "../../lib/api";
-import { C, alpha } from "../../styles/tokens";
+import { C, S, alpha } from "../../styles/tokens";
 import { Btn, Notice, Modal, controlStyle } from "../../components/ui";
 
 type StudentStatus = "not_started" | "in_progress" | "completed" | "disconnected" | "flagged";
@@ -472,12 +486,20 @@ export default function MonitoringPage() {
           <h1 className="text-2xl font-bold" style={{ color: C.base.text, fontFamily: "var(--font-serif)" }}>
             {t("Live Monitor")}
           </h1>
-          <div className="flex items-center gap-2.5 mt-0.5">
+          <div className="flex flex-wrap items-center gap-2 mt-1">
             <span
-              className="w-2 h-2 rounded-full animate-pulse"
-              style={{ background: sseState === "live" ? C.ok.main : sseState === "reconnecting" ? C.warn.main : C.danger.main }}
-            />
-            <span className="text-sm" style={{ color: C.base.textMuted }}>
+              className="inline-flex items-center gap-1.5 text-sm font-medium"
+              style={{
+                color: sseState === "live" ? C.ok.dark : sseState === "reconnecting" ? C.warn.dark : C.danger.main,
+              }}
+            >
+              {sseState === "live" ? (
+                <Radio className="w-3.5 h-3.5" />
+              ) : sseState === "reconnecting" ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <WifiOff className="w-3.5 h-3.5" />
+              )}
               {sseState === "live"
                 ? t("Real-time terhubung")
                 : sseState === "reconnecting"
@@ -485,8 +507,8 @@ export default function MonitoringPage() {
                   : t("Koneksi realtime terputus")}
             </span>
             {sseState === "live" && lastUpdated && (
-              <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: C.base.surfaceSoft, color: C.base.textFaint }}>
-                {t("Update terakhir {n}s lalu", { n: Math.max(0, Math.round((Date.now() - lastUpdated) / 1000)) })}
+              <span className="text-xs tabular-nums" style={{ color: C.base.textFaint }}>
+                · {t("Update terakhir {n}s lalu", { n: Math.max(0, Math.round((Date.now() - lastUpdated) / 1000)) })}
               </span>
             )}
           </div>
@@ -504,15 +526,15 @@ export default function MonitoringPage() {
             ))}
           </select>
           {/* Toggle Kartu / Tabel — membantu menangani jumlah peserta yang banyak */}
-          <div className="flex rounded-lg overflow-hidden" style={{ border: `1px solid ${C.base.border}` }}>
+          <div className="flex rounded-xl overflow-hidden" style={{ border: `1px solid ${C.base.border}`, boxShadow: S.control }}>
             {(["grid", "table"] as const).map((m) => (
               <button
                 key={m}
                 onClick={() => setViewMode(m)}
-                className="px-3 py-2 text-sm font-medium transition-all"
+                className="px-3.5 py-2 text-sm font-medium transition-all min-h-[42px]"
                 style={{
                   background: viewMode === m ? C.base.dark : C.base.surface,
-                  color: viewMode === m ? C.base.surface : C.base.textMuted,
+                  color: viewMode === m ? "#FFFFFF" : C.base.textMuted,
                 }}
               >
                 {m === "grid" ? t("Kartu") : t("Tabel")}
@@ -526,29 +548,29 @@ export default function MonitoringPage() {
       {actionError && <Notice type="error">{actionError}</Notice>}
 
       {/* Stats bar — klik kartu untuk memfilter status */}
-      <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         {statCards.map((stat) => (
           <button
             key={stat.key}
             onClick={() => setStatusFilter(stat.key === "all" ? "all" : (stat.key as StudentStatus))}
-            className="rounded-xl p-4 text-center transition-all hover:shadow-md"
+            className="cbt-card cbt-card-hover rounded-2xl p-4 text-center transition-all"
             style={{
               background: C.base.surface,
               border: `1px solid ${statusFilter === stat.key ? stat.color : C.base.border}`,
-              boxShadow: statusFilter === stat.key ? `0 0 0 2px ${alpha(stat.color, 20)}` : "none",
+              boxShadow: statusFilter === stat.key ? `0 0 0 2px ${alpha(stat.color, 20)}, ${S.card}` : S.card,
             }}
           >
-            <div className="text-2xl font-bold" style={{ color: stat.color, fontFamily: "var(--font-serif)" }}>{stat.value}</div>
+            <div className="text-2xl font-bold tabular-nums" style={{ color: stat.color, fontFamily: "var(--font-serif)" }}>{stat.value}</div>
             <div className="text-xs mt-0.5" style={{ color: C.base.textFaint }}>{stat.label}</div>
           </button>
         ))}
       </div>
 
       {/* Overall progress bar */}
-      <div className="rounded-xl p-4" style={{ background: C.base.surface, border: `1px solid ${C.base.border}` }}>
-        <div className="flex justify-between text-xs mb-2" style={{ color: C.base.textMuted }}>
-          <span>{t("Overall Class Progress — {exam}", { exam: selectedExamTitle })}</span>
-          <span>{t("{n}% average", { n: avgProgress })}</span>
+      <div className="cbt-card rounded-2xl p-4" style={{ background: C.base.surface, border: `1px solid ${C.base.border}`, boxShadow: S.card }}>
+        <div className="flex justify-between gap-2 text-xs mb-2" style={{ color: C.base.textMuted }}>
+          <span className="truncate">{t("Overall Class Progress — {exam}", { exam: selectedExamTitle })}</span>
+          <span className="shrink-0 tabular-nums font-medium">{t("{n}% average", { n: avgProgress })}</span>
         </div>
         <div className="h-3 rounded-full overflow-hidden flex" style={{ background: C.base.border }}>
           <div style={{ width: `${(counts.completed / counts.total) * (counts.total ? 100 : 0)}%`, background: C.ok.main }} />
@@ -556,7 +578,7 @@ export default function MonitoringPage() {
           <div style={{ width: `${(counts.flagged / counts.total) * (counts.total ? 100 : 0)}%`, background: C.danger.main }} />
           <div style={{ width: `${(counts.disconnected / counts.total) * (counts.total ? 100 : 0)}%`, background: C.warn.main }} />
         </div>
-        <div className="flex gap-4 mt-2">
+        <div className="flex flex-wrap gap-x-4 gap-y-1.5 mt-2.5">
           {[
             { label: t("Completed"), color: C.ok.main },
             { label: t("In Progress"), color: C.brand.main },
@@ -565,7 +587,7 @@ export default function MonitoringPage() {
             { label: t("Not Started"), color: C.base.textFaint },
           ].map((l) => (
             <div key={l.label} className="flex items-center gap-1.5 text-xs" style={{ color: C.base.textMuted }}>
-              <span className="w-2 h-2 rounded-full" style={{ background: l.color }} />
+              <span className="w-2.5 h-1 rounded-full shrink-0" style={{ background: l.color }} />
               {l.label}
             </div>
           ))}
@@ -578,14 +600,14 @@ export default function MonitoringPage() {
           <button
             key={s}
             onClick={() => setStatusFilter(s)}
-            className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5"
+            className="px-3.5 py-2 rounded-xl text-xs font-medium transition-all flex items-center gap-1.5 min-h-[38px]"
             style={{
               background: statusFilter === s ? C.base.dark : C.base.surface,
-              color: statusFilter === s ? C.base.surface : C.base.textMuted,
+              color: statusFilter === s ? "#FFFFFF" : C.base.textMuted,
               border: `1px solid ${statusFilter === s ? C.base.dark : C.base.border}`,
+              boxShadow: S.control,
             }}
           >
-            {s !== "all" && <span className="w-1.5 h-1.5 rounded-full" style={{ background: s === statusFilter ? C.base.surface : statusConfig[s].dot }} />}
             {s === "all" ? t("All Students") : t(statusConfig[s].label)}
           </button>
         ))}
@@ -605,93 +627,103 @@ export default function MonitoringPage() {
         {/* Student list */}
         <div className="flex-1 min-w-0">
           {filtered.length === 0 ? (
-            <div className="rounded-xl p-10 text-center" style={{ background: C.base.surface, border: `1px solid ${C.base.border}` }}>
-              <div className="text-3xl mb-2">🔍</div>
+            <div className="cbt-card rounded-2xl p-10 text-center" style={{ background: C.base.surface, border: `1px solid ${C.base.border}`, boxShadow: S.card }}>
+              <Search className="w-8 h-8 mx-auto mb-2.5" style={{ color: C.base.textFaint }} />
               <div className="text-sm" style={{ color: C.base.textMuted }}>{t("Tidak ada sesi yang cocok dengan filter.")}</div>
             </div>
           ) : viewMode === "table" ? (
             /* ── Mode Tabel (padat, cocok untuk peserta banyak) ── */
-            <div className="rounded-xl overflow-hidden" style={{ background: C.base.surface, border: `1px solid ${C.base.border}` }}>
-              <table className="w-full text-sm" style={{ borderCollapse: "collapse" }}>
-                <thead>
-                  <tr style={{ background: C.base.surfaceSoft }}>
-                    {[t("Siswa"), t("Kelas"), t("Status"), t("Progres"), t("Sisa Waktu"), t("Tab"), ""].map((h) => (
-                      <th key={h} className="text-left px-3 py-2.5 text-xs font-semibold whitespace-nowrap" style={{ color: C.base.textMuted }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {visible.map((student) => (
-                    <tr
-                      key={student.id}
-                      onClick={() => setSelectedStudent(student)}
-                      className="cursor-pointer transition-colors"
-                      style={{
-                        borderTop: `1px solid ${C.base.borderLight}`,
-                        background: selectedStudent?.id === student.id ? statusConfig[student.status].bg : C.base.surface,
-                      }}
-                    >
-                      <td className="px-3 py-2.5">
-                        <div className="flex items-center gap-2">
-                          <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0" style={{ background: statusConfig[student.status].dot, color: C.base.surface }}>
-                            {student.name.charAt(0)}
-                          </div>
-                          <div className="min-w-0">
-                            <div className="font-medium leading-tight truncate" style={{ color: C.base.text }}>{student.name}</div>
-                            <div className="text-xs" style={{ color: C.base.textFaint, fontFamily: "var(--font-mono)" }}>{student.nis}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-3 py-2.5 text-xs whitespace-nowrap" style={{ color: C.base.textMuted }}>{student.className}</td>
-                      <td className="px-3 py-2.5">
-                        <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: statusConfig[student.status].bg, color: statusConfig[student.status].text }}>
-                          {t(statusConfig[student.status].label)}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: C.base.text }}>
-                        {student.status === "in_progress"
-                          ? `${student.progress}% · Q${student.currentQuestion}/${student.totalQuestions}`
-                          : student.status === "completed"
-                            ? `${student.score}/100`
-                            : "—"}
-                      </td>
-                      <td className="px-3 py-2.5 text-xs whitespace-nowrap" style={{ fontFamily: "var(--font-mono)", color: student.status === "in_progress" ? (student.tabSwitches > 0 ? C.danger.main : C.base.text) : C.base.textMuted }}>
-                        {student.status === "in_progress" ? formatTime(student.timeLeft) : "—"}
-                      </td>
-                      <td className="px-3 py-2.5" style={{ color: student.tabSwitches > 0 ? C.danger.main : C.base.textFaint, fontWeight: student.tabSwitches > 0 ? 600 : 400 }}>
-                        {student.tabSwitches > 0 ? `⚑ ${student.tabSwitches}` : "—"}
-                      </td>
-                      <td className="px-3 py-2.5 text-right text-xs" style={{ color: C.base.textFaint }}>›</td>
+            <div className="cbt-card rounded-2xl overflow-hidden" style={{ background: C.base.surface, border: `1px solid ${C.base.border}`, boxShadow: S.card }}>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[640px] text-sm" style={{ borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr style={{ background: C.base.surfaceSoft }}>
+                      {[t("Siswa"), t("Kelas"), t("Status"), t("Progres"), t("Sisa Waktu"), t("Tab"), ""].map((h) => (
+                        <th key={h} className="text-left px-3 py-2.5 text-xs font-semibold whitespace-nowrap" style={{ color: C.base.textMuted }}>{h}</th>
+                      ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {visible.map((student) => (
+                      <tr
+                        key={student.id}
+                        onClick={() => setSelectedStudent(student)}
+                        className="cursor-pointer cbt-row-hover transition-colors"
+                        style={{
+                          borderTop: `1px solid ${C.base.borderLight}`,
+                          background: selectedStudent?.id === student.id ? statusConfig[student.status].bg : C.base.surface,
+                        }}
+                      >
+                        <td className="px-3 py-2.5">
+                          <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0" style={{ background: statusConfig[student.status].dot, color: "#FFFFFF" }}>
+                              {student.name.charAt(0)}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="font-medium leading-tight truncate" style={{ color: C.base.text }}>{student.name}</div>
+                              <div className="text-xs" style={{ color: C.base.textFaint, fontFamily: "var(--font-mono)" }}>{student.nis}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-3 py-2.5 text-xs whitespace-nowrap" style={{ color: C.base.textMuted }}>{student.className}</td>
+                        <td className="px-3 py-2.5">
+                          <span className="text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap" style={{ background: statusConfig[student.status].bg, color: statusConfig[student.status].text }}>
+                            {t(statusConfig[student.status].label)}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2.5 whitespace-nowrap tabular-nums" style={{ color: C.base.text }}>
+                          {student.status === "in_progress"
+                            ? `${student.progress}% · Q${student.currentQuestion}/${student.totalQuestions}`
+                            : student.status === "completed"
+                              ? `${student.score}/100`
+                              : "—"}
+                        </td>
+                        <td className="px-3 py-2.5 text-xs whitespace-nowrap tabular-nums" style={{ fontFamily: "var(--font-mono)", color: student.status === "in_progress" ? (student.tabSwitches > 0 ? C.danger.main : C.base.text) : C.base.textMuted }}>
+                          {student.status === "in_progress" ? formatTime(student.timeLeft) : "—"}
+                        </td>
+                        <td className="px-3 py-2.5 tabular-nums" style={{ color: student.tabSwitches > 0 ? C.danger.main : C.base.textFaint, fontWeight: student.tabSwitches > 0 ? 600 : 400 }}>
+                          {student.tabSwitches > 0 ? (
+                            <span className="inline-flex items-center gap-1">
+                              <Flag className="w-3 h-3" />
+                              {student.tabSwitches}
+                            </span>
+                          ) : "—"}
+                        </td>
+                        <td className="px-3 py-2.5 text-right text-xs" style={{ color: C.base.textFaint }}>
+                          <ChevronRight className="w-4 h-4 inline" />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           ) : (
               /* ── Mode Kartu ── */
-            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
               {visible.map((student) => (
                 <button
                   key={student.id}
                   onClick={() => setSelectedStudent(student)}
-                  className="text-left rounded-xl p-3.5 transition-all hover:shadow-md"
+                  className="cbt-card cbt-card-hover text-left rounded-2xl p-3.5 transition-all"
                   style={{
                     background: statusConfig[student.status].bg,
                     border: `1.5px solid ${selectedStudent?.id === student.id ? statusConfig[student.status].dot : statusConfig[student.status].border}`,
-                    boxShadow: selectedStudent?.id === student.id ? `0 0 0 2px ${alpha(statusConfig[student.status].dot, 25)}` : "none",
+                    boxShadow: selectedStudent?.id === student.id ? `0 0 0 2px ${alpha(statusConfig[student.status].dot, 25)}, ${S.card}` : S.card,
                   }}
                 >
                   <div className="flex items-center justify-between mb-2">
-                    <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold" style={{ background: statusConfig[student.status].dot, color: C.base.surface }}>
+                    <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold" style={{ background: statusConfig[student.status].dot, color: "#FFFFFF" }}>
                       {student.name.charAt(0)}
                     </div>
                     {student.status === "flagged" && student.tabSwitches > 0 && (
-                      <span className="text-xs px-1.5 py-0.5 rounded font-medium" style={{ background: C.danger.bg, color: C.danger.main }}>
-                        ⚑ {student.tabSwitches}
+                      <span className="text-xs px-1.5 py-0.5 rounded font-medium inline-flex items-center gap-1 tabular-nums" style={{ background: C.danger.bg, color: C.danger.main }}>
+                        <Flag className="w-3 h-3" />
+                        {student.tabSwitches}
                       </span>
                     )}
                     {student.status === "disconnected" && (
-                      <span className="text-xs" style={{ color: C.warn.main }}>⚡</span>
+                      <WifiOff className="w-3.5 h-3.5" style={{ color: C.warn.main }} />
                     )}
                   </div>
 
@@ -752,16 +784,23 @@ export default function MonitoringPage() {
         {/* Detail panel */}
         {selectedStudent && (
           <div
-            className="w-full lg:w-72 shrink-0 rounded-xl p-5 space-y-4 self-start lg:sticky lg:top-0"
-            style={{ background: C.base.surface, border: `1px solid ${C.base.border}` }}
+            className="cbt-card w-full lg:w-72 shrink-0 rounded-2xl p-5 space-y-4 self-start lg:sticky lg:top-0"
+            style={{ background: C.base.surface, border: `1px solid ${C.base.border}`, boxShadow: S.card }}
           >
             <div className="flex items-center justify-between">
               <h3 className="font-semibold text-sm" style={{ color: C.base.text }}>{t("Student Detail")}</h3>
-              <button onClick={() => setSelectedStudent(null)} style={{ color: C.base.textFaint }}>✕</button>
+              <button
+                onClick={() => setSelectedStudent(null)}
+                aria-label={t("Tutup")}
+                className="w-8 h-8 rounded-lg flex items-center justify-center cbt-row-hover"
+                style={{ color: C.base.textFaint }}
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
 
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold" style={{ background: statusConfig[selectedStudent.status].dot, color: C.base.surface }}>
+              <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold" style={{ background: statusConfig[selectedStudent.status].dot, color: "#FFFFFF" }}>
                 {selectedStudent.name.charAt(0)}
               </div>
               <div>
@@ -771,7 +810,7 @@ export default function MonitoringPage() {
             </div>
 
             <span
-              className="text-xs px-2 py-1 rounded-full font-medium"
+              className="text-xs px-2.5 py-1 rounded-full font-medium inline-block"
               style={{ background: statusConfig[selectedStudent.status].bg, color: statusConfig[selectedStudent.status].text }}
             >
               {t(statusConfig[selectedStudent.status].label)}
@@ -788,17 +827,17 @@ export default function MonitoringPage() {
                 { label: t("IP Address"), value: selectedStudent.ip, mono: true },
                 { label: t("Device / SEB"), value: selectedStudent.device },
               ].map((row) => (
-                <div key={row.label} className="flex justify-between">
+                <div key={row.label} className="flex justify-between gap-2">
                   <span style={{ color: C.base.textFaint }}>{row.label}</span>
-                  <span style={{ color: row.warn ? C.danger.main : C.base.text, fontWeight: row.warn ? 600 : 400, fontFamily: row.mono ? "var(--font-mono)" : "inherit" }}>{row.value}</span>
+                  <span className="tabular-nums text-right" style={{ color: row.warn ? C.danger.main : C.base.text, fontWeight: row.warn ? 600 : 400, fontFamily: row.mono ? "var(--font-mono)" : "inherit" }}>{row.value}</span>
                 </div>
               ))}
             </div>
 
-                        {selectedStudent.status === "completed" && selectedStudent.score && (
-              <div className="rounded-lg p-3 text-center" style={{ background: C.ok.bgLight, border: `1px solid ${C.ok.border}` }}>
+            {selectedStudent.status === "completed" && selectedStudent.score && (
+              <div className="rounded-xl p-3 text-center" style={{ background: C.ok.bgLight, border: `1px solid ${C.ok.border}` }}>
                 <div className="text-xs mb-0.5" style={{ color: C.ok.main }}>{t("Final Score")}</div>
-                <div className="text-3xl font-bold" style={{ color: C.ok.main, fontFamily: "var(--font-serif)" }}>{selectedStudent.score}</div>
+                <div className="text-3xl font-bold tabular-nums" style={{ color: C.ok.main, fontFamily: "var(--font-serif)" }}>{selectedStudent.score}</div>
                 <div className="text-xs" style={{ color: C.ok.main }}>/ 100</div>
               </div>
             )}
@@ -810,7 +849,7 @@ export default function MonitoringPage() {
               </div>
 
               {selectedStudent.flagReason && (
-                <div className="text-xs px-2 py-1.5 rounded-md" style={{ background: C.danger.bg, color: C.danger.deep }}>
+                <div className="text-xs px-2.5 py-2 rounded-lg" style={{ background: C.danger.bg, color: C.danger.deep }}>
                   {t("Alasan tanda")}: {selectedStudent.flagReason}
                 </div>
               )}
@@ -823,7 +862,8 @@ export default function MonitoringPage() {
                     className="w-full"
                     variant="danger"
                   >
-                    {busyId === selectedStudent.id ? t("Memproses…") : t("🚩 Tandai Mencurigakan")}
+                    <Flag className="w-3.5 h-3.5" />
+                    <span>{busyId === selectedStudent.id ? t("Memproses…") : t("Tandai Mencurigakan")}</span>
                   </Btn>
                   <Btn
                     onClick={() => openFlagDialog(selectedStudent, "disrupted")}
@@ -831,7 +871,8 @@ export default function MonitoringPage() {
                     className="w-full"
                     variant="amber"
                   >
-                    {busyId === selectedStudent.id ? t("Memproses…") : t("⚠ Tandai Terputus")}
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    <span>{busyId === selectedStudent.id ? t("Memproses…") : t("Tandai Terputus")}</span>
                   </Btn>
                   {(selectedStudent.status === "flagged" || selectedStudent.status === "disconnected") && (
                     <Btn
@@ -839,20 +880,22 @@ export default function MonitoringPage() {
                       disabled={busyId === selectedStudent.id}
                       className="w-full"
                     >
-                      {busyId === selectedStudent.id ? t("Memproses…") : t("✓ Bersihkan Tanda")}
+                      <Check className="w-3.5 h-3.5" />
+                      <span>{busyId === selectedStudent.id ? t("Memproses…") : t("Bersihkan Tanda")}</span>
                     </Btn>
                   )}
                 </>
               )}
 
-                            {selectedStudent.status === "disconnected" && (
+              {selectedStudent.status === "disconnected" && (
                 <Btn
                   onClick={() => openConfirmDialog(selectedStudent, "reset")}
                   disabled={busyId === selectedStudent.id}
-                  style={{ background: C.ok.main, color: C.base.surface }}
+                  style={{ background: C.ok.main, color: "#FFFFFF" }}
                   className="w-full"
                 >
-                  {busyId === selectedStudent.id ? t("Memproses…") : t("↺ Reset Session")}
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>{busyId === selectedStudent.id ? t("Memproses…") : t("Reset Session")}</span>
                 </Btn>
               )}
 
@@ -862,7 +905,8 @@ export default function MonitoringPage() {
                 style={{ color: C.warn.deep, borderColor: C.warn.border }}
                 variant="amber"
               >
-                {t("+ Add Extra Time")}
+                <Plus className="w-3.5 h-3.5" />
+                <span>{t("Add Extra Time")}</span>
               </Btn>
 
               {selectedStudent.status !== "completed" && (
@@ -873,7 +917,8 @@ export default function MonitoringPage() {
                   style={{ color: C.danger.main, borderColor: C.danger.border }}
                   variant="danger"
                 >
-                  {busyId === selectedStudent.id ? t("Memproses…") : t("⏏ Force Submit")}
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>{busyId === selectedStudent.id ? t("Memproses…") : t("Force Submit")}</span>
                 </Btn>
               )}
             </div>
@@ -905,7 +950,7 @@ export default function MonitoringPage() {
           <div className="flex gap-2">
             <button
               onClick={() => setExtraTimeStudent(null)}
-              className="flex-1 py-2 rounded-lg text-sm font-medium"
+              className="flex-1 py-2.5 rounded-xl text-sm font-medium min-h-[44px]"
               style={{ border: `1px solid ${C.base.border}`, color: C.base.textMuted }}
             >
               {t("Cancel")}
@@ -913,8 +958,8 @@ export default function MonitoringPage() {
             <button
               onClick={handleApplyExtraTime}
               disabled={busyId === extraTimeStudent}
-              className="flex-1 py-2 rounded-lg text-sm font-medium disabled:opacity-60"
-              style={{ background: C.warn.main, color: C.base.surface }}
+              className="flex-1 py-2.5 rounded-xl text-sm font-medium disabled:opacity-60 min-h-[44px]"
+              style={{ background: C.warn.main, color: "#FFFFFF" }}
             >
               {busyId === extraTimeStudent ? t("Menyimpan…") : t("Apply")}
             </button>
@@ -951,7 +996,7 @@ export default function MonitoringPage() {
               rows={3}
               maxLength={500}
               placeholder={t("Alasan (opsional)…")}
-              className="w-full px-3 py-2 rounded-lg text-sm outline-none mb-4 resize-none"
+              className="w-full px-3 py-2 rounded-xl text-sm outline-none mb-4 resize-none"
               style={controlStyle}
             />
           )}
@@ -964,7 +1009,7 @@ export default function MonitoringPage() {
             <button
               onClick={closeFlagDialog}
               disabled={!!busyId}
-              className="flex-1 py-2 rounded-lg text-sm font-medium disabled:opacity-60"
+              className="flex-1 py-2.5 rounded-xl text-sm font-medium disabled:opacity-60 min-h-[44px]"
               style={{ border: `1px solid ${C.base.border}`, color: C.base.textMuted }}
             >
               {t("Cancel")}
@@ -972,13 +1017,13 @@ export default function MonitoringPage() {
             <button
               onClick={confirmFlag}
               disabled={busyId === flagDialog.student.id}
-              className="flex-1 py-2 rounded-lg text-sm font-medium disabled:opacity-60"
+              className="flex-1 py-2.5 rounded-xl text-sm font-medium disabled:opacity-60 min-h-[44px]"
               style={{
                 background:
                   flagDialog.next === "flagged" ? C.danger.main
                   : flagDialog.next === "disrupted" ? C.warn.main
                   : C.brand.main,
-                color: C.base.surface,
+                color: "#FFFFFF",
               }}
             >
               {busyId === flagDialog.student.id ? t("Memproses…") : t("Konfirmasi")}
@@ -1008,7 +1053,7 @@ export default function MonitoringPage() {
             <button
               onClick={closeConfirmDialog}
               disabled={!!busyId}
-              className="flex-1 py-2 rounded-lg text-sm font-medium disabled:opacity-60"
+              className="flex-1 py-2.5 rounded-xl text-sm font-medium disabled:opacity-60 min-h-[44px]"
               style={{ border: `1px solid ${C.base.border}`, color: C.base.textMuted }}
             >
               {t("Cancel")}
@@ -1016,10 +1061,10 @@ export default function MonitoringPage() {
             <button
               onClick={runConfirmAction}
               disabled={busyId === confirmDialog.student.id}
-              className="flex-1 py-2 rounded-lg text-sm font-medium disabled:opacity-60"
+              className="flex-1 py-2.5 rounded-xl text-sm font-medium disabled:opacity-60 min-h-[44px]"
               style={{
                 background: confirmDialog.action === "reset" ? C.ok.main : C.danger.main,
-                color: C.base.surface,
+                color: "#FFFFFF",
               }}
             >
               {busyId === confirmDialog.student.id ? t("Memproses…") : t("Konfirmasi")}

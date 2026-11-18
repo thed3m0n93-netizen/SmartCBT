@@ -165,7 +165,7 @@ async function checkAi() {
   const result: Record<string, unknown> = {
     ok: false,
     checked: false,
-    provider: "ollama",
+    provider: "nvidia-mistral-large",
     model: DEFAULT_AI_MODEL,
     baseUrl: DEFAULT_AI_BASE_URL,
     latencyMs: 0,
@@ -173,13 +173,13 @@ async function checkAi() {
     modelAvailable: false,
   };
 
-  let provider = "ollama";
+  let provider = "nvidia-mistral-large";
   let model = DEFAULT_AI_MODEL;
   let baseUrl = DEFAULT_AI_BASE_URL;
 
   try {
     const config = await loadAiConfig();
-    provider = config.provider || "ollama";
+    provider = config.provider || "nvidia-mistral-large";
     model = config.model || DEFAULT_AI_MODEL;
     baseUrl = config.baseUrl || DEFAULT_AI_BASE_URL;
   } catch (err: any) {

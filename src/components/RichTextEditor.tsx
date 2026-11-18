@@ -9,7 +9,20 @@
  * again on render, so stored markup is never trusted as-is.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { C } from "../styles/tokens";
+import {
+  AlignCenter,
+  AlignLeft,
+  AlignRight,
+  Eraser,
+  Film,
+  ImagePlus,
+  Link2,
+  List,
+  ListOrdered,
+  Loader2,
+  Quote,
+} from "lucide-react";
+import { C, S } from "../styles/tokens";
 
 export interface RichTextEditorProps {
   value: string;
@@ -74,12 +87,12 @@ export const MODULE_CONTENT_CSS = `
   /* Markdown (README) additions — see src/lib/markdown.ts */
   .rich-editor-surface table { width: 100%; border-collapse: collapse; margin: 0.9em 0; font-size: 0.95em; }
   .rich-editor-surface th, .rich-editor-surface td { border: 1px solid ${C.base.border}; padding: 0.45em 0.7em; text-align: left; }
-  .rich-editor-surface th { background: #f8fafc; font-weight: 600; }
-  .rich-editor-surface tbody tr:nth-child(even) { background: #fcfdfe; }
-  .rich-editor-surface pre { background: #0f172a; color: #e2e8f0; padding: 0.9em 1.1em; border-radius: 8px; overflow-x: auto; margin: 0.9em 0; font-size: 0.9em; line-height: 1.6; }
+  .rich-editor-surface th { background: ${C.base.surfaceMuted}; font-weight: 600; color: ${C.base.text}; }
+  .rich-editor-surface tbody tr:nth-child(even) { background: ${C.base.surfaceAlt}; }
+  .rich-editor-surface pre { background: ${C.code.bg}; color: #e2e8f0; border: 1px solid ${C.code.border}; padding: 0.9em 1.1em; border-radius: 8px; overflow-x: auto; margin: 0.9em 0; font-size: 0.9em; line-height: 1.6; }
   .rich-editor-surface pre code { background: none; padding: 0; color: inherit; }
-  .rich-editor-surface code { background: #f1f5f9; color: #0f172a; padding: 0.15em 0.4em; border-radius: 4px; font-size: 0.9em; }
-  .rich-editor-surface a { color: #1d4ed8; text-decoration: underline; }
+  .rich-editor-surface code { background: ${C.base.surfaceSoft}; color: ${C.base.text}; padding: 0.15em 0.4em; border-radius: 4px; font-size: 0.9em; }
+  .rich-editor-surface a { color: ${C.brand.dark}; text-decoration: underline; }
   .rich-editor-surface hr { border: 0; border-top: 1px solid ${C.base.border}; margin: 1.6em 0; }
   .rich-editor-surface li input[type="checkbox"] { margin-right: 0.45em; }
   .rich-editor-surface li { margin: 0.25em 0; }
@@ -267,22 +280,27 @@ export default function RichTextEditor({
   };
 
   const toolBtn = (active?: boolean) => ({
-    padding: "4px 8px",
+    padding: "5px 8px",
     fontSize: 13,
-    borderRadius: 6,
+    borderRadius: 8,
     border: `1px solid ${active ? C.brand.main : C.base.border}`,
     background: active ? C.brand.main : C.base.surface,
-    color: active ? "#fff" : C.base.textBody,
-    minWidth: 30,
+    color: active ? "#FFFFFF" : C.base.textBody,
+    minWidth: 34,
+    minHeight: 34,
+    display: "inline-flex" as const,
+    alignItems: "center" as const,
+    justifyContent: "center" as const,
+    boxShadow: S.control,
   });
 
   const divider = <span style={{ width: 1, height: 20, background: C.base.border }} />;
 
   return (
-    <div style={{ border: `1px solid ${C.base.border}`, borderRadius: 10, overflow: "hidden" }}>
+    <div style={{ border: `1px solid ${C.base.border}`, borderRadius: 12, overflow: "hidden", boxShadow: S.inset }}>
       {/* Toolbar - onMouseDown preventDefault keeps the caret from being lost */}
       <div
-        className="flex flex-wrap items-center gap-1.5 px-2 py-1.5"
+        className="flex flex-wrap items-center gap-1.5 px-2.5 py-2"
         style={{ background: C.base.surfaceMuted, borderBottom: `1px solid ${C.base.border}` }}
         onMouseDown={(e) => {
           e.preventDefault();
@@ -290,8 +308,8 @@ export default function RichTextEditor({
         }}
       >
         <select
-          className="rounded border px-1 py-1 text-xs"
-          style={{ borderColor: C.base.border, background: C.base.surface }}
+          className="rounded-lg border px-2 py-1 text-xs min-h-[34px]"
+          style={{ borderColor: C.base.border, background: C.base.surface, color: C.base.text }}
           defaultValue="p"
           onChange={(e) => exec("formatBlock", e.target.value === "p" ? "<p>" : `<${e.target.value}>`)}
           title="Gaya paragraf"
@@ -304,8 +322,8 @@ export default function RichTextEditor({
         </select>
 
         <select
-          className="rounded border px-1 py-1 text-xs"
-          style={{ borderColor: C.base.border, background: C.base.surface }}
+          className="rounded-lg border px-2 py-1 text-xs min-h-[34px]"
+          style={{ borderColor: C.base.border, background: C.base.surface, color: C.base.text }}
           defaultValue=""
           onChange={(e) => exec("fontName", e.target.value)}
           title="Jenis font"
@@ -316,8 +334,8 @@ export default function RichTextEditor({
         </select>
 
         <select
-          className="rounded border px-1 py-1 text-xs"
-          style={{ borderColor: C.base.border, background: C.base.surface }}
+          className="rounded-lg border px-2 py-1 text-xs min-h-[34px]"
+          style={{ borderColor: C.base.border, background: C.base.surface, color: C.base.text }}
           defaultValue="3"
           onChange={(e) => exec("fontSize", e.target.value)}
           title="Ukuran font"
@@ -334,21 +352,21 @@ export default function RichTextEditor({
         <button type="button" onClick={() => exec("underline")} style={toolBtn()} title="Garis bawah (Ctrl+U)"><u>U</u></button>
         <button type="button" onClick={() => exec("strikeThrough")} style={toolBtn()} title="Coret"><s>S</s></button>
 
-        <label className="flex items-center gap-1 text-xs" title="Warna teks">
+        <label className="flex items-center gap-1 text-xs px-1" title="Warna teks">
           <span style={{ color: C.base.textMuted }}>A</span>
           <input
             type="color"
             defaultValue="#0f172a"
             onChange={(e) => exec("foreColor", e.target.value)}
-            style={{ width: 28, height: 24, border: `1px solid ${C.base.border}`, borderRadius: 4, padding: 0, background: "none", cursor: "pointer" }}
+            style={{ width: 28, height: 26, border: `1px solid ${C.base.border}`, borderRadius: 6, padding: 0, background: "none", cursor: "pointer" }}
           />
         </label>
 
         <label className="flex items-center gap-1 text-xs" title="Warna sorot">
-          <span style={{ background: "#fef08a", padding: "1px 3px", borderRadius: 3, border: `1px solid ${C.base.border}` }}>A</span>
+          <span style={{ background: "#fef08a", color: "#0f172a", padding: "1px 4px", borderRadius: 4, border: `1px solid ${C.base.border}` }}>A</span>
           <select
-            className="rounded border px-1 py-1 text-xs"
-            style={{ borderColor: C.base.border, background: C.base.surface }}
+            className="rounded-lg border px-1.5 py-1 text-xs min-h-[34px]"
+            style={{ borderColor: C.base.border, background: C.base.surface, color: C.base.text }}
             defaultValue=""
             onChange={(e) => exec("hiliteColor", e.target.value)}
           >
@@ -360,13 +378,13 @@ export default function RichTextEditor({
 
         {divider}
 
-        <button type="button" onClick={() => exec("justifyLeft")} style={toolBtn()} title="Rata kiri">≡</button>
-        <button type="button" onClick={() => exec("justifyCenter")} style={toolBtn()} title="Rata tengah">≡</button>
-        <button type="button" onClick={() => exec("justifyRight")} style={toolBtn()} title="Rata kanan">≡</button>
+        <button type="button" onClick={() => exec("justifyLeft")} style={toolBtn()} title="Rata kiri"><AlignLeft className="w-3.5 h-3.5" /></button>
+        <button type="button" onClick={() => exec("justifyCenter")} style={toolBtn()} title="Rata tengah"><AlignCenter className="w-3.5 h-3.5" /></button>
+        <button type="button" onClick={() => exec("justifyRight")} style={toolBtn()} title="Rata kanan"><AlignRight className="w-3.5 h-3.5" /></button>
 
-        <button type="button" onClick={() => exec("insertUnorderedList")} style={toolBtn()} title="Daftar poin">•</button>
-        <button type="button" onClick={() => exec("insertOrderedList")} style={toolBtn()} title="Daftar angka">1.</button>
-        <button type="button" onClick={() => exec("formatBlock", "<blockquote>")} style={toolBtn()} title="Kutipan">❝</button>
+        <button type="button" onClick={() => exec("insertUnorderedList")} style={toolBtn()} title="Daftar poin"><List className="w-3.5 h-3.5" /></button>
+        <button type="button" onClick={() => exec("insertOrderedList")} style={toolBtn()} title="Daftar angka"><ListOrdered className="w-3.5 h-3.5" /></button>
+        <button type="button" onClick={() => exec("formatBlock", "<blockquote>")} style={toolBtn()} title="Kutipan"><Quote className="w-3.5 h-3.5" /></button>
 
         <button
           type="button"
@@ -375,7 +393,7 @@ export default function RichTextEditor({
           title="Sisipkan gambar"
           disabled={uploading}
         >
-          {uploading ? "⏳" : "🖼"}
+          {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ImagePlus className="w-3.5 h-3.5" />}
         </button>
         <input
           ref={imageInputRef}
@@ -394,7 +412,7 @@ export default function RichTextEditor({
               title="Sisipkan video"
               disabled={uploading}
             >
-              {uploading ? "⏳" : "🎬"}
+              {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Film className="w-3.5 h-3.5" />}
             </button>
             <input
               ref={videoInputRef}
@@ -417,9 +435,9 @@ export default function RichTextEditor({
             if (url) exec("createLink", url);
           }}
         >
-          🔗
+          <Link2 className="w-3.5 h-3.5" />
         </button>
-        <button type="button" onClick={() => exec("removeFormat")} style={toolBtn()} title="Hapus formatasi">✕</button>
+        <button type="button" onClick={() => exec("removeFormat")} style={toolBtn()} title="Hapus formatasi"><Eraser className="w-3.5 h-3.5" /></button>
       </div>
 
       {/* Editable surface */}

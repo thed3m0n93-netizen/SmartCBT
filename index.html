@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title><!-- figma:title --></title>
     <!-- figma:head-end -->
-    <meta name="theme-color" content="#0D1B2A" />
+    <meta name="theme-color" content="#EEF2F6" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -14,6 +14,20 @@
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <link rel="apple-touch-icon" href="/icon.svg" />
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem("smartcbt:theme");
+          var dark = t === "dark" || (!t && window.matchMedia("(prefers-color-scheme: dark)").matches);
+          if (dark) {
+            document.documentElement.classList.add("dark");
+            document.documentElement.style.colorScheme = "dark";
+            var m = document.querySelector('meta[name="theme-color"]');
+            if (m) m.setAttribute("content", "#0B111A");
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <!-- figma:body-start -->

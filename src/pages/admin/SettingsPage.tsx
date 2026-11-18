@@ -30,10 +30,10 @@ const DEFAULTS: SchoolSettings = {
   school_logo: "",
   school_background: "",
   school_favicon: "",
-  ai_provider: "ollama",
-  ai_model: "gemma3:4b",
+  ai_provider: "nvidia-mistral-large",
+  ai_model: "mistralai/mistral-large-4-1t-a52b",
   ai_api_key: "",
-  ai_base_url: "http://192.168.22.23:11434",
+  ai_base_url: "https://integrate.api.nvidia.com/v1",
 };
 
 const FIELDS: { key: keyof SchoolSettings; label: string; type: string; placeholder: string }[] = [
@@ -211,6 +211,11 @@ export default function SettingsPage() {
     const next = getAiProvider(provider);
     setAiProvider(provider);
     setAiModel(next.defaultModel);
+    // Clear leftover key from the previous provider so it never overrides
+    // built-in NVIDIA NIM keys or triggers a mismatch on another provider.
+    if (provider !== aiProvider) {
+      setAiApiKey("");
+    }
     // Base URL hanya bermakna untuk provider self-hosted; provider cloud
     // selalu memakai base URL katalognya.
     setAiBaseUrl(next.selfHosted ? next.defaultBaseUrl : "");

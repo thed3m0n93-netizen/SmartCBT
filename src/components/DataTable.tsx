@@ -1,13 +1,12 @@
 /**
  * SmartCBT — DataTable primitives
  *
- * Presentation-only companions to `useDataTable`: a pagination bar, a
- * clickable/sortable table header cell and a search box. They are deliberately
- * dumb (no data fetching, no hooks beyond the i18n lookup) so any page can
- * compose them with its own columns and row markup.
+ * Tactile, dark-mode-safe, mobile-friendly sortable headers, search input,
+ * pagination controls, and table shell.
  */
 import type { CSSProperties, ReactNode } from "react";
-import { C, R, alpha } from "../styles/tokens";
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Search, X } from "lucide-react";
+import { C, R, S, alpha } from "../styles/tokens";
 import { buildPageWindow, type SortDir } from "../hooks/useDataTable";
 import { useI18n } from "../i18n";
 
@@ -15,7 +14,6 @@ import { useI18n } from "../i18n";
 
 export interface SortableThProps {
   label: ReactNode;
-  /** Column key this header sorts by. Omit to render a plain (static) header. */
   sortKey?: string;
   activeKey?: string | null;
   dir?: SortDir;
@@ -26,11 +24,6 @@ export interface SortableThProps {
   title?: string;
 }
 
-/**
- * Table header cell. When `sortKey` + `onSort` are provided it becomes a
- * button that toggles asc/desc and shows the ▲/▼ indicator, and it exposes
- * `aria-sort` for assistive tech.
- */
 export function SortableTh({
   label,
   sortKey,
@@ -61,13 +54,13 @@ export function SortableTh({
           type="button"
           onClick={() => onSort!(sortKey!)}
           title={tooltip}
-          className="inline-flex items-center gap-1 transition-colors"
+          className="inline-flex items-center gap-1.5 transition-colors whitespace-nowrap"
           style={{
             background: "transparent",
             border: "none",
             padding: 0,
             cursor: "pointer",
-            color: active ? C.brand.main : "inherit",
+            color: active ? C.brand.dark : "inherit",
             fontWeight: active ? 700 : "inherit",
             fontSize: "inherit",
             letterSpacing: "inherit",
@@ -76,16 +69,12 @@ export function SortableTh({
           }}
         >
           <span>{label}</span>
-          <span
-            aria-hidden="true"
-            style={{
-              fontSize: 9,
-              lineHeight: 1,
-              opacity: active ? 1 : 0.35,
-              display: "inline-block",
-            }}
-          >
-            {active ? (dir === "desc" ? "▼" : "▲") : "⇅"}
+          <span aria-hidden="true" style={{ opacity: active ? 1 : 0.45 }}>
+            {active ? (
+              dir === "desc" ? <ArrowDown className="w-3 h-3" /> : <ArrowUp className="w-3 h-3" />
+            ) : (
+              <ArrowUpDown className="w-3 h-3" />
+            )}
           </span>
         </button>
       ) : (
@@ -118,25 +107,24 @@ export function SearchInput({
 }: SearchInputProps) {
   const { t } = useI18n();
   return (
-    <div className={`relative ${className ?? ""}`} style={{ width, ...style }}>
-      <span
+    <div className={`relative max-w-full ${className ?? ""}`} style={{ width, ...style }}>
+      <Search
         aria-hidden="true"
-        className="absolute left-3 top-1/2 -translate-y-1/2 text-sm pointer-events-none"
+        className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
         style={{ color: C.base.textFaint }}
-      >
-        ⌕
-      </span>
+      />
       <input
         type="search"
         value={value}
         aria-label={ariaLabel}
         placeholder={placeholder ?? t("Cari…")}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full pl-8 pr-8 py-2 rounded-lg text-sm outline-none transition-all"
+        className="w-full pl-9 pr-9 py-2 rounded-xl text-sm outline-none transition-all min-h-[42px]"
         style={{
           background: C.base.surfaceMuted,
           border: `1px solid ${C.base.border}`,
           color: C.base.text,
+          boxShadow: S.inset,
         }}
       />
       {value && (
@@ -144,10 +132,10 @@ export function SearchInput({
           type="button"
           onClick={() => onChange("")}
           aria-label={t("Bersihkan pencarian")}
-          className="absolute right-2 top-1/2 -translate-y-1/2 text-xs rounded-full w-5 h-5 flex items-center justify-center"
+          className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full w-6 h-6 flex items-center justify-center"
           style={{ color: C.base.textMuted, background: C.base.surfaceSoft, border: "none", cursor: "pointer" }}
         >
-          ✕
+          <X className="w-3.5 h-3.5" />
         </button>
       )}
     </div>
@@ -166,16 +154,10 @@ export interface TablePaginationProps {
   onPageChange: (page: number) => void;
   onPageSizeChange: (size: number) => void;
   pageSizeOptions?: number[];
-  /** Hide the whole bar when everything fits on one page (default `false`). */
   hideOnSinglePage?: boolean;
   style?: CSSProperties;
 }
 
-/**
- * Footer bar: "Menampilkan 1–10 dari 214" on the left, page-size selector and
- * first/prev/numbers/next/last controls on the right. Spread
- * `table.paginationProps` straight into it.
- */
 export function TablePagination({
   page,
   totalPages,
@@ -198,7 +180,7 @@ export function TablePagination({
   const atLast = page >= totalPages;
 
   const navBtn = (
-    label: string,
+    icon: ReactNode,
     target: number,
     disabled: boolean,
     titleText: string,
@@ -210,16 +192,16 @@ export function TablePagination({
       aria-label={aria}
       disabled={disabled}
       onClick={() => onPageChange(target)}
-      className="rounded-md text-xs px-2 py-1.5 font-medium transition-all disabled:opacity-40"
+      className="rounded-lg text-xs px-2 py-1.5 font-medium transition-all disabled:opacity-40 flex items-center justify-center min-w-[34px] min-h-[34px] sm:min-w-[30px] sm:min-h-[30px]"
       style={{
-        background: C.base.surfaceMuted,
+        background: C.base.surface,
         border: `1px solid ${C.base.border}`,
         color: C.base.textBody,
         cursor: disabled ? "not-allowed" : "pointer",
-        minWidth: 28,
+        boxShadow: S.control,
       }}
     >
-      {label}
+      {icon}
     </button>
   );
 
@@ -228,7 +210,7 @@ export function TablePagination({
       className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
       style={{ borderTop: `1px solid ${C.base.borderLight}`, background: C.base.surfaceMuted, ...style }}
     >
-      <div className="text-xs" style={{ color: C.base.textMuted }}>
+      <div className="text-xs tabular-nums" style={{ color: C.base.textMuted }}>
         {total === 0
           ? t("Tidak ada data")
           : t("Menampilkan {from}–{to} dari {total}", { from, to, total })}
@@ -241,7 +223,7 @@ export function TablePagination({
             value={pageSize}
             onChange={(e) => onPageSizeChange(Number(e.target.value))}
             aria-label={t("Baris per halaman")}
-            className="rounded-md px-2 py-1 text-xs outline-none"
+            className="rounded-lg px-2 py-1 text-xs outline-none min-h-[34px]"
             style={{
               background: C.base.surface,
               border: `1px solid ${C.base.border}`,
@@ -256,8 +238,8 @@ export function TablePagination({
         </label>
 
         <div className="flex items-center gap-1">
-          {navBtn("«", 1, atFirst, t("Halaman pertama"), t("Halaman pertama"))}
-          {navBtn("‹", page - 1, atFirst, t("Halaman sebelumnya"), t("Halaman sebelumnya"))}
+          {navBtn(<ChevronsLeft className="w-3.5 h-3.5" />, 1, atFirst, t("Halaman pertama"), t("Halaman pertama"))}
+          {navBtn(<ChevronLeft className="w-3.5 h-3.5" />, page - 1, atFirst, t("Halaman sebelumnya"), t("Halaman sebelumnya"))}
 
           {windowPages.map((p, index) =>
             p === "…" ? (
@@ -271,13 +253,13 @@ export function TablePagination({
                 onClick={() => onPageChange(p)}
                 aria-current={p === page ? "page" : undefined}
                 aria-label={t("Halaman {n}", { n: p })}
-                className="rounded-md text-xs px-2 py-1.5 font-medium transition-all"
+                className="rounded-lg text-xs px-2.5 py-1.5 font-semibold tabular-nums transition-all min-w-[34px] min-h-[34px] sm:min-w-[30px] sm:min-h-[30px]"
                 style={{
                   background: p === page ? C.brand.main : C.base.surface,
                   border: `1px solid ${p === page ? C.brand.main : C.base.border}`,
-                  color: p === page ? C.base.surface : C.base.textBody,
-                  minWidth: 28,
+                  color: p === page ? "#FFFFFF" : C.base.textBody,
                   cursor: "pointer",
+                  boxShadow: p === page ? S.btnPrimary : S.control,
                 }}
               >
                 {p}
@@ -285,18 +267,14 @@ export function TablePagination({
             ),
           )}
 
-          {navBtn("›", page + 1, atLast, t("Halaman berikutnya"), t("Halaman berikutnya"))}
-          {navBtn("»", totalPages, atLast, t("Halaman terakhir"), t("Halaman terakhir"))}
+          {navBtn(<ChevronRight className="w-3.5 h-3.5" />, page + 1, atLast, t("Halaman berikutnya"), t("Halaman berikutnya"))}
+          {navBtn(<ChevronsRight className="w-3.5 h-3.5" />, totalPages, atLast, t("Halaman terakhir"), t("Halaman terakhir"))}
         </div>
       </div>
     </div>
   );
 }
 
-/**
- * Thin wrapper that renders a table inside a bordered card and appends the
- * pagination footer underneath — the combination every list page repeats.
- */
 export interface DataTableShellProps {
   children: ReactNode;
   pagination?: ReactNode;
@@ -306,8 +284,13 @@ export interface DataTableShellProps {
 export function DataTableShell({ children, pagination, style }: DataTableShellProps) {
   return (
     <div
-      className="rounded-xl overflow-hidden"
-      style={{ background: C.base.surface, border: `1px solid ${C.base.border}`, ...style }}
+      className="cbt-card rounded-2xl overflow-hidden"
+      style={{
+        background: C.base.surface,
+        border: `1px solid ${C.base.border}`,
+        boxShadow: S.card,
+        ...style,
+      }}
     >
       <div className="overflow-x-auto">{children}</div>
       {pagination}
@@ -315,13 +298,13 @@ export function DataTableShell({ children, pagination, style }: DataTableShellPr
   );
 }
 
-/** Soft count badge used next to filters, e.g. "214 hasil". */
+/** Soft count chip used next to filters, e.g. "214 hasil". */
 export function ResultCount({ count, label }: { count: number; label?: string }) {
   const { t } = useI18n();
   return (
     <span
-      className="text-xs px-2 py-1 rounded-full font-medium whitespace-nowrap"
-      style={{ background: alpha(C.brand.main, 10), color: C.brand.main }}
+      className="text-xs px-2.5 py-1 rounded-full font-semibold whitespace-nowrap tabular-nums"
+      style={{ background: alpha(C.brand.main, 12), color: C.brand.dark }}
     >
       {label ?? t("{n} hasil", { n: count })}
     </span>

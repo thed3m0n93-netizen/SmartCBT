@@ -1429,8 +1429,8 @@ export const SETTINGS_SEED_KEYS: { key: string; value: string }[] = [
   { key: "school_website", value: "" },
   { key: "school_logo", value: "" },
   { key: "school_background", value: "" },
-  { key: "ai_provider", value: "ollama" },
-  { key: "ai_model", value: "gemma3:4b" },
+  { key: "ai_provider", value: "nvidia-mistral-large" },
+  { key: "ai_model", value: "mistralai/mistral-large-4-1t-a52b" },
   { key: "ai_api_key", value: "" },
-  { key: "ai_base_url", value: "http://192.168.22.23:11434" },
+  { key: "ai_base_url", value: "https://integrate.api.nvidia.com/v1" },
 ];

@@ -1,4 +1,5 @@
 import { useI18n, type Lang } from "../i18n";
+import { C, S } from "../styles/tokens";
 
 const OPTIONS: { value: Lang; label: string; title: string }[] = [
   { value: "id", label: "ID", title: "Bahasa Indonesia" },
@@ -6,19 +7,27 @@ const OPTIONS: { value: Lang; label: string; title: string }[] = [
 ];
 
 /**
- * Compact ID/EN toggle. `variant="dark"` is used on dark surfaces
- * (login page / setup page); the default variant suits light headers.
+ * Compact ID/EN segmented switch. Automatically follows Light/Dark tokens unless
+ * `dark` is explicitly true (for always-dark hero surfaces).
  */
 export default function LanguageSwitcher({ dark = false }: { dark?: boolean }) {
   const { lang, setLang } = useI18n();
 
   return (
     <div
-      className="inline-flex items-center rounded-lg p-0.5 text-xs font-semibold"
-      style={{
-        background: dark ? "rgba(255,255,255,0.08)" : "#F1F5F9",
-        border: `1px solid ${dark ? "rgba(255,255,255,0.15)" : "#e2e8f0"}`,
-      }}
+      className="inline-flex items-center rounded-xl p-1 text-xs font-semibold shrink-0"
+      style={
+        dark
+          ? {
+              background: "rgba(255,255,255,0.08)",
+              border: "1px solid rgba(255,255,255,0.16)",
+            }
+          : {
+              background: C.base.surfaceSoft,
+              border: `1px solid ${C.base.border}`,
+              boxShadow: S.inset,
+            }
+      }
       role="group"
       aria-label="Language / Bahasa"
     >
@@ -30,11 +39,21 @@ export default function LanguageSwitcher({ dark = false }: { dark?: boolean }) {
             type="button"
             onClick={() => setLang(opt.value)}
             title={opt.title}
-            className="px-2.5 py-1 rounded-md transition-all"
+            className="px-2.5 py-1.5 rounded-lg transition-all min-h-[30px]"
             style={{
-              background: active ? (dark ? "#1D4ED8" : "#fff") : "transparent",
-              color: active ? "#fff" : dark ? "#94a3b8" : "#64748b",
-              boxShadow: active && !dark ? "0 1px 3px rgba(0,0,0,0.12)" : "none",
+              background: active
+                ? dark
+                  ? "#2563EB"
+                  : C.base.surface
+                : "transparent",
+              color: active
+                ? dark
+                  ? "#FFFFFF"
+                  : C.base.text
+                : dark
+                  ? "#94A3B8"
+                  : C.base.textMuted,
+              boxShadow: active && !dark ? S.control : "none",
             }}
           >
             {opt.label}

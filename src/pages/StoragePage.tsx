@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useMemo } from "react";
+import { Copy, FolderOpen, Trash2, Upload } from "lucide-react";
 import { useAuth } from "../app/AuthContext";
 import { useI18n } from "../i18n";
+import { C, S } from "../styles/tokens";
 import {
   fetchStorage,
   uploadFile,
@@ -28,13 +30,6 @@ const FILE_ACCESSORS: Accessors<UploadRow, "name" | "owner" | "size" | "date"> =
   date: (f) => f.created_at,
 };
 
-/**
- * StoragePage
- *
- * File/document storage shared by siswa, guru, dan admin. Berkas disimpan ke
- * folder `public/uploads` (dilayani sebagai aset statis `/uploads/...`) dan
- * metadata-nya dicatat pada tabel `uploads`.
- */
 export default function StoragePage() {
   const { user } = useAuth();
   const { t } = useI18n();
@@ -43,7 +38,6 @@ export default function StoragePage() {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<{ type: "ok" | "error"; message: string } | null>(null);
   const [search, setSearch] = useState("");
-  // Tampilan daftar file: list (tabel) / details / grid / preview.
   const [view, setView] = useState<FileViewMode>(() => readStoredFileView());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -108,68 +102,70 @@ export default function StoragePage() {
     const url = `${window.location.origin}${path}`;
     navigator.clipboard?.writeText(url).then(
       () => setStatus({ type: "ok", message: `Link disalin: ${url}` }),
-      () => setStatus({ type: "error", message: "Gagal menyalin link" })
+      () => setStatus({ type: "error", message: "Gagal menyalin link" }),
     );
   };
 
-  /** Ganti tampilan daftar file dan simpan preferensinya. */
   const changeView = (mode: FileViewMode) => {
     setView(mode);
     storeFileView(mode);
   };
 
-  /** Aksi hapus yang dipakai oleh semua tampilan (bukan hanya tabel). */
   const handleDeleteFile = (file: UploadRow) => handleDelete(file.id);
 
   return (
-    <div className="p-6" style={{ background: "#F0F4F8", minHeight: "100%" }}>
+    <div className="space-y-5">
       <div
-        className="rounded-xl p-6 mb-5"
-        style={{ background: "#fff", border: "1px solid #e2e8f0" }}
+        className="cbt-card rounded-2xl p-4 sm:p-6"
+        style={{ background: C.base.surface, border: `1px solid ${C.base.border}`, boxShadow: S.card }}
       >
-        <div className="flex items-center justify-between">
-          <div>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="min-w-0">
             <div
               className="text-xs font-semibold uppercase tracking-widest"
-              style={{ color: "#94a3b8" }}
+              style={{ color: C.base.textFaint, fontFamily: "var(--font-display)" }}
             >
               {t("File Storage")}
             </div>
             <h1
-              className="text-xl font-bold mt-1"
-              style={{ color: "#0f172a", fontFamily: "var(--font-serif)" }}
+              className="text-xl sm:text-2xl font-bold mt-1 tracking-tight"
+              style={{ color: C.base.text, fontFamily: "var(--font-serif)" }}
             >
               {t("Penyimpanan Berkas")}
             </h1>
-            <p className="text-sm mt-1" style={{ color: "#64748b" }}>
+            <p className="text-xs sm:text-sm mt-1" style={{ color: C.base.textMuted }}>
               {t("Berkas yang diunggah siswa/guru/admin disimpan di folder")}{" "}
-              <code style={{ background: "#f1f5f9", padding: "1px 6px", borderRadius: 4 }}>
+              <code
+                className="text-xs px-1.5 py-0.5 rounded"
+                style={{ background: C.base.surfaceSoft, color: C.base.textBody, fontFamily: "var(--font-mono)" }}
+              >
                 public/uploads
               </code>{" "}
               {t("dan dapat diakses lewat URL publik.")}
             </p>
           </div>
-          <div>
+          <div className="shrink-0">
             <input ref={fileInputRef} type="file" className="hidden" onChange={handlePick} />
             <button
               type="button"
               disabled={busy}
               onClick={() => fileInputRef.current?.click()}
-              className="px-4 py-2.5 rounded-lg text-sm font-semibold transition-all disabled:opacity-60"
-              style={{ background: "#1D4ED8", color: "#fff" }}
+              className="w-full sm:w-auto px-4 py-2.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-60 inline-flex items-center justify-center gap-2 min-h-[44px] active:scale-[0.98]"
+              style={{ background: C.brand.main, color: "#FFFFFF", boxShadow: S.btnPrimary }}
             >
-              {busy ? t("Mengunggah...") : t("⬆ Upload File")}
+              <Upload className="w-4 h-4" />
+              {busy ? t("Mengunggah...") : t("Upload File")}
             </button>
           </div>
         </div>
 
         {status && (
           <div
-            className="rounded-lg px-3 py-2 text-sm mt-4"
+            className="rounded-xl px-3.5 py-2.5 text-sm mt-4"
             style={{
-              background: status.type === "ok" ? "#DCFCE7" : "#FEE2E2",
-              color: status.type === "ok" ? "#166534" : "#B91C1C",
-              border: `1px solid ${status.type === "ok" ? "#86EFAC" : "#FECACA"}`,
+              background: status.type === "ok" ? C.ok.msgBg : C.danger.bgLight,
+              color: status.type === "ok" ? C.ok.msgText : C.danger.text,
+              border: `1px solid ${status.type === "ok" ? C.ok.msgBorder : C.danger.border}`,
             }}
           >
             {status.message}
@@ -179,7 +175,7 @@ export default function StoragePage() {
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <ResultCount count={filteredFiles.length} />
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
           <FileViewSwitcher value={view} onChange={changeView} />
           <SearchInput
             value={search}
@@ -188,6 +184,7 @@ export default function StoragePage() {
               table.reset();
             }}
             placeholder={t("Cari file atau pengunggah…")}
+            className="flex-1 sm:flex-none"
             width={280}
           />
         </div>
@@ -195,13 +192,18 @@ export default function StoragePage() {
 
       <DataTableShell pagination={<TablePagination {...table.paginationProps} />}>
         {loading ? (
-          <div className="p-10 text-center text-sm" style={{ color: "#64748b" }}>
+          <div className="p-10 text-center text-sm" style={{ color: C.base.textMuted }}>
             {t("Memuat daftar file…")}
           </div>
         ) : table.total === 0 ? (
           <div className="p-10 text-center">
-            <div className="text-4xl mb-3">📁</div>
-            <p className="text-sm" style={{ color: "#64748b" }}>
+            <div
+              className="w-12 h-12 rounded-2xl mx-auto mb-3 flex items-center justify-center"
+              style={{ background: C.base.surfaceMuted, border: `1px solid ${C.base.border}`, color: C.base.textMuted }}
+            >
+              <FolderOpen className="w-5 h-5" />
+            </div>
+            <p className="text-sm" style={{ color: C.base.textMuted }}>
               {search
                 ? t("Tidak ada file yang cocok dengan pencarian.")
                 : t("Belum ada file. Upload dokumen, gambar, atau materi melalui tombol di atas.")}
@@ -210,14 +212,14 @@ export default function StoragePage() {
         ) : view === "list" ? (
           <table className="w-full text-sm">
             <thead>
-              <tr style={{ background: "#F8FAFC", color: "#64748b" }}>
+              <tr style={{ background: C.base.surfaceMuted, color: C.base.textMuted }}>
                 <SortableTh
                   label={t("File")}
                   sortKey="name"
                   activeKey={table.sort?.key ?? null}
                   dir={table.sort?.dir}
                   onSort={(key) => table.sortBy(key as keyof typeof FILE_ACCESSORS)}
-                  className="px-4 py-3 font-medium"
+                  className="px-4 py-3 font-semibold"
                 />
                 <SortableTh
                   label={t("Diunggah oleh")}
@@ -225,7 +227,7 @@ export default function StoragePage() {
                   activeKey={table.sort?.key ?? null}
                   dir={table.sort?.dir}
                   onSort={(key) => table.sortBy(key as keyof typeof FILE_ACCESSORS)}
-                  className="px-4 py-3 font-medium"
+                  className="px-4 py-3 font-semibold"
                 />
                 <SortableTh
                   label={t("Ukuran")}
@@ -233,7 +235,7 @@ export default function StoragePage() {
                   activeKey={table.sort?.key ?? null}
                   dir={table.sort?.dir}
                   onSort={(key) => table.sortBy(key as keyof typeof FILE_ACCESSORS)}
-                  className="px-4 py-3 font-medium"
+                  className="px-4 py-3 font-semibold"
                 />
                 <SortableTh
                   label={t("Tanggal")}
@@ -241,53 +243,55 @@ export default function StoragePage() {
                   activeKey={table.sort?.key ?? null}
                   dir={table.sort?.dir}
                   onSort={(key) => table.sortBy(key as keyof typeof FILE_ACCESSORS)}
-                  className="px-4 py-3 font-medium"
+                  className="px-4 py-3 font-semibold"
                 />
-                <th className="text-right px-4 py-3 font-medium">{t("Aksi")}</th>
+                <th className="text-right px-4 py-3 font-semibold">{t("Aksi")}</th>
               </tr>
             </thead>
             <tbody>
               {table.rows.map((f) => (
-                <tr key={f.id} style={{ borderTop: "1px solid #f1f5f9" }}>
+                <tr key={f.id} className="cbt-row-hover transition-colors" style={{ borderTop: `1px solid ${C.base.borderLight}` }}>
                   <td className="px-4 py-3">
                     <a
                       href={f.path}
                       target="_blank"
                       rel="noreferrer"
-                      className="font-medium"
-                      style={{ color: "#1D4ED8", wordBreak: "break-all" }}
+                      className="font-medium hover:underline"
+                      style={{ color: C.brand.dark, wordBreak: "break-all" }}
                     >
                       {f.file_name}
                     </a>
                   </td>
-                  <td className="px-4 py-3" style={{ color: "#334155" }}>
+                  <td className="px-4 py-3" style={{ color: C.base.textBody }}>
                     {f.owner_name || t("Sistem")}
                   </td>
-                  <td className="px-4 py-3" style={{ color: "#475569" }}>
+                  <td className="px-4 py-3 tabular-nums" style={{ color: C.base.textMuted }}>
                     {formatFileSize(Number(f.size_bytes || 0))}
                   </td>
-                  <td className="px-4 py-3" style={{ color: "#475569" }}>
+                  <td className="px-4 py-3 tabular-nums" style={{ color: C.base.textMuted }}>
                     {formatFileDate(f.created_at)}
                   </td>
                   <td className="px-4 py-3 text-right whitespace-nowrap">
                     <button
                       type="button"
                       onClick={() => copyLink(f.path)}
-                      className="text-xs font-semibold px-3 py-1.5 rounded-lg mr-2"
+                      className="text-xs font-semibold px-3 py-1.5 rounded-lg mr-2 inline-flex items-center gap-1.5 min-h-[34px]"
                       style={{
-                        background: "#F1F5F9",
-                        color: "#0f172a",
-                        border: "1px solid #cbd5e1",
+                        background: C.base.surfaceSoft,
+                        color: C.base.text,
+                        border: `1px solid ${C.base.border}`,
                       }}
                     >
+                      <Copy className="w-3.5 h-3.5" />
                       {t("Salin Link")}
                     </button>
                     <button
                       type="button"
                       onClick={() => handleDelete(f.id)}
-                      className="text-xs font-semibold px-3 py-1.5 rounded-lg"
-                      style={{ background: "#FEE2E2", color: "#B91C1C" }}
+                      className="text-xs font-semibold px-3 py-1.5 rounded-lg inline-flex items-center gap-1.5 min-h-[34px]"
+                      style={{ background: C.danger.bg, color: C.danger.text, border: `1px solid ${C.danger.border}` }}
                     >
+                      <Trash2 className="w-3.5 h-3.5" />
                       {t("Hapus")}
                     </button>
                   </td>

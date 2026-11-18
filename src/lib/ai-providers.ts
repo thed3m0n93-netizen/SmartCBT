@@ -52,112 +52,66 @@ export interface AiProviderInfo {
    * provider's `apiKeyEnv` variable) before a real deployment.
    */
   hasBuiltInApiKey?: boolean;
+  /** Categorizes instant built-in providers vs user-configured placeholder slots. */
+  category?: "instant" | "placeholder";
+  /** TRUE when the catalog entry acts as a placeholder awaiting an API key or self-hosted endpoint. */
+  isPlaceholder?: boolean;
+  /** Short human label rendered alongside the provider name in pickers. */
+  badge?: string;
+  /** Optional model inference parameters applied on OpenAI-compatible requests. */
+  defaultParams?: {
+    temperature?: number;
+    topP?: number;
+    frequencyPenalty?: number;
+    presencePenalty?: number;
+    reasoningEffort?: string;
+    maxTokens?: number;
+  };
 }
 
 /** Fallback provider id used when the stored setting is empty/unknown. */
-export const DEFAULT_AI_PROVIDER_ID = "ollama";
+export const DEFAULT_AI_PROVIDER_ID = "nvidia-mistral-large";
 
 /**
- * Provider catalog. Order matters: it is the render order of the picker and the
- * first entry (`ollama`) stays the out-of-the-box default for build 106+.
+ * Provider catalog. Order matters: instant NVIDIA NIM providers appear first so
+ * admins & teachers can use AI immediately without setup, followed by
+ * placeholder entries for other external/self-hosted AI providers.
  */
 export const AI_PROVIDERS: AiProviderInfo[] = [
   {
-    id: "ollama",
-    label: "Ollama (self-hosted)",
-    protocol: "ollama",
-    defaultBaseUrl: "http://192.168.22.21:11434",
-    requiresApiKey: false,
-    defaultModel: "gemma3:4b",
-    models: ["gemma3:4b", "gemma3:12b", "llama3.1:8b", "qwen2.5:7b", "mistral:7b", "phi4:14b", "deepseek-r1:8b"],
-    note: "Gratis & offline. Jalankan `ollama serve` lalu `ollama pull <model>`; tanpa API key.",
-    selfHosted: true,
-  },
-  {
-    id: "openai",
-    label: "OpenAI",
-    protocol: "openai",
-    defaultBaseUrl: "https://api.openai.com/v1",
-    requiresApiKey: true,
-    defaultModel: "gpt-4o-mini",
-    models: ["gpt-4o-mini", "gpt-4o", "gpt-4.1", "gpt-4.1-mini", "o4-mini"],
-    note: "API key dari platform.openai.com → API keys.",
-  },
-  {
-    id: "anthropic",
-    label: "Anthropic (Claude)",
-    protocol: "anthropic",
-    defaultBaseUrl: "https://api.anthropic.com/v1",
-    requiresApiKey: true,
-    defaultModel: "claude-sonnet-4-5",
-    models: ["claude-sonnet-4-5", "claude-opus-4-1", "claude-haiku-4-5", "claude-3-5-haiku-latest"],
-    note: "API key dari console.anthropic.com (header x-api-key + anthropic-version).",
-  },
-  {
-    id: "deepseek",
-    label: "DeepSeek",
-    protocol: "openai",
-    defaultBaseUrl: "https://api.deepseek.com/v1",
-    requiresApiKey: true,
-    defaultModel: "deepseek-chat",
-    models: ["deepseek-chat", "deepseek-reasoner"],
-    note: "OpenAI-compatible. API key dari platform.deepseek.com — hemat untuk volume besar.",
-  },
-  {
-    id: "glm",
-    label: "GLM (Zhipu AI)",
-    protocol: "openai",
-    defaultBaseUrl: "https://open.bigmodel.cn/api/paas/v4",
-    requiresApiKey: true,
-    defaultModel: "glm-4-flash",
-    models: ["glm-4-flash", "glm-4-air", "glm-4-plus", "glm-4.5"],
-    note: "OpenAI-compatible. API key dari open.bigmodel.cn (.cn) atau z.ai (global).",
-  },
-  {
-    id: "gemini",
-    label: "Google Gemini",
-    protocol: "gemini",
-    defaultBaseUrl: "https://generativelanguage.googleapis.com/v1beta",
-    requiresApiKey: true,
-    defaultModel: "gemini-3.8-flash",
-    models: [
-      "gemini-3.8-flash",
-      "gemini-3.7-flash",
-      "gemini-3.6-flash",
-      "gemini-3.5-flash",
-      "gemini-3.5-flash-lite",
-      "gemini-3.1-pro-preview",
-    ],
-    note: "API key dari aistudio.google.com → Get API key. Semua model Gemini 2.5 ke bawah sudah dimatikan Google — pilih seri 3.x.",
-  },
-  {
-    id: "mistral",
-    label: "Mistral AI",
-    protocol: "openai",
-    defaultBaseUrl: "https://api.mistral.ai/v1",
-    requiresApiKey: true,
-    defaultModel: "mistral-large-latest",
-    models: ["mistral-large-latest", "mistral-medium-latest", "mistral-small-latest", "open-mistral-nemo"],
-    note: "OpenAI-compatible. API key dari console.mistral.ai.",
-  },
-  {
-    id: "groq",
-    label: "Groq (LPU, sangat cepat)",
-    protocol: "openai",
-    defaultBaseUrl: "https://api.groq.com/openai/v1",
-    requiresApiKey: true,
-    defaultModel: "llama-3.3-70b-versatile",
-    models: ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "qwen/qwen3-32b", "gemma2-9b-it"],
-    note: "OpenAI-compatible. API key dari console.groq.com — latensi paling rendah untuk generate soal.",
-  },
-  {
-    id: "nvidia",
-    label: "NVIDIA NIM",
+    id: "nvidia-mistral-large",
+    label: "NVIDIA NIM · Mistral Large 4 (1T)",
     protocol: "openai",
     defaultBaseUrl: "https://integrate.api.nvidia.com/v1",
     requiresApiKey: true,
     apiKeyEnv: "NVIDIA_API_KEY",
     hasBuiltInApiKey: true,
+    category: "instant",
+    isPlaceholder: false,
+    badge: "Instan · Siap Pakai",
+    defaultModel: "mistralai/mistral-large-4-1t-a52b",
+    models: ["mistralai/mistral-large-4-1t-a52b"],
+    defaultParams: {
+      temperature: 0.5,
+      topP: 1,
+      frequencyPenalty: 0,
+      presencePenalty: 0,
+      reasoningEffort: "high",
+      maxTokens: 4096,
+    },
+    note: "Akses instan NVIDIA NIM (Mistral Large 4 1T) dengan API key bawaan — siap pakai langsung untuk Generate Soal & AI Grading.",
+  },
+  {
+    id: "nvidia",
+    label: "NVIDIA NIM · Multi-Model",
+    protocol: "openai",
+    defaultBaseUrl: "https://integrate.api.nvidia.com/v1",
+    requiresApiKey: true,
+    apiKeyEnv: "NVIDIA_API_KEY",
+    hasBuiltInApiKey: true,
+    category: "instant",
+    isPlaceholder: false,
+    badge: "Instan · Siap Pakai",
     defaultModel: "z-ai/glm-5.3-flash",
     models: [
       "z-ai/glm-5.3-flash",
@@ -168,42 +122,149 @@ export const AI_PROVIDERS: AiProviderInfo[] = [
       "nvidia/nemotron-3.5-lightning-30b-a3b",
       "stepfun-ai/step-5-preview",
     ],
-    note: "OpenAI-compatible. API key bawaan sudah terpasang — tidak perlu mengisi Token API AI. Bisa juga diganti dengan key sendiri di Pengaturan.",
+    note: "OpenAI-compatible via NVIDIA NIM. API key bawaan sudah terpasang — siap pakai langsung.",
   },
   {
     id: "nvidia-gpt-oss",
-    label: "OpenAI gpt-oss-20b (via NVIDIA NIM)",
+    label: "OpenAI gpt-oss-20b (NVIDIA NIM)",
     protocol: "openai",
     defaultBaseUrl: "https://integrate.api.nvidia.com/v1",
     requiresApiKey: true,
     apiKeyEnv: "NVIDIA_API_KEY",
     hasBuiltInApiKey: true,
+    category: "instant",
+    isPlaceholder: false,
+    badge: "Instan · Siap Pakai",
     defaultModel: "openai/gpt-oss-20b",
     models: ["openai/gpt-oss-20b"],
-    note: "OpenAI-compatible. API key bawaan sudah terpasang — tidak perlu mengisi Token API AI. Bisa juga diganti dengan key sendiri di Pengaturan.",
+    note: "OpenAI gpt-oss-20b via NVIDIA NIM. API key bawaan sudah terpasang.",
   },
   {
     id: "nvidia-gemma",
-    label: "Google Gemma (via NVIDIA NIM)",
+    label: "Google Gemma (NVIDIA NIM)",
     protocol: "openai",
     defaultBaseUrl: "https://integrate.api.nvidia.com/v1",
     requiresApiKey: true,
     apiKeyEnv: "NVIDIA_API_KEY",
     hasBuiltInApiKey: true,
+    category: "instant",
+    isPlaceholder: false,
+    badge: "Instan · Siap Pakai",
     defaultModel: "google/diffusiongemma-26b-a4b-it",
     models: [
       "google/diffusiongemma-26b-a4b-it",
       "nvidia/nemotron-3.5-lightning-30b-a3b",
       "openai/gpt-oss-20b",
     ],
-    note: "Google Gemma via NVIDIA NIM. API key bawaan sudah terpasang — tidak perlu mengisi Token API AI.",
+    note: "Google Gemma via NVIDIA NIM. API key bawaan sudah terpasang.",
+  },
+  {
+    id: "openai",
+    label: "OpenAI (GPT-4o / 4.1)",
+    protocol: "openai",
+    defaultBaseUrl: "https://api.openai.com/v1",
+    requiresApiKey: true,
+    category: "placeholder",
+    isPlaceholder: true,
+    badge: "Placeholder · API Key",
+    defaultModel: "gpt-4o-mini",
+    models: ["gpt-4o-mini", "gpt-4o", "gpt-4.1", "gpt-4.1-mini", "o4-mini"],
+    note: "Placeholder — masukkan API key dari platform.openai.com untuk mengaktifkan.",
+  },
+  {
+    id: "gemini",
+    label: "Google Gemini",
+    protocol: "gemini",
+    defaultBaseUrl: "https://generativelanguage.googleapis.com/v1beta",
+    requiresApiKey: true,
+    category: "placeholder",
+    isPlaceholder: true,
+    badge: "Placeholder · API Key",
+    defaultModel: "gemini-3.8-flash",
+    models: [
+      "gemini-3.8-flash",
+      "gemini-3.7-flash",
+      "gemini-3.6-flash",
+      "gemini-3.5-flash",
+      "gemini-3.5-flash-lite",
+      "gemini-3.1-pro-preview",
+    ],
+    note: "Placeholder — masukkan API key dari aistudio.google.com untuk mengaktifkan.",
+  },
+  {
+    id: "anthropic",
+    label: "Anthropic (Claude)",
+    protocol: "anthropic",
+    defaultBaseUrl: "https://api.anthropic.com/v1",
+    requiresApiKey: true,
+    category: "placeholder",
+    isPlaceholder: true,
+    badge: "Placeholder · API Key",
+    defaultModel: "claude-sonnet-4-5",
+    models: ["claude-sonnet-4-5", "claude-opus-4-1", "claude-haiku-4-5", "claude-3-5-haiku-latest"],
+    note: "Placeholder — masukkan API key dari console.anthropic.com untuk mengaktifkan.",
+  },
+  {
+    id: "deepseek",
+    label: "DeepSeek",
+    protocol: "openai",
+    defaultBaseUrl: "https://api.deepseek.com/v1",
+    requiresApiKey: true,
+    category: "placeholder",
+    isPlaceholder: true,
+    badge: "Placeholder · API Key",
+    defaultModel: "deepseek-chat",
+    models: ["deepseek-chat", "deepseek-reasoner"],
+    note: "Placeholder — OpenAI-compatible. API key dari platform.deepseek.com.",
+  },
+  {
+    id: "groq",
+    label: "Groq (LPU)",
+    protocol: "openai",
+    defaultBaseUrl: "https://api.groq.com/openai/v1",
+    requiresApiKey: true,
+    category: "placeholder",
+    isPlaceholder: true,
+    badge: "Placeholder · API Key",
+    defaultModel: "llama-3.3-70b-versatile",
+    models: ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "qwen/qwen3-32b", "gemma2-9b-it"],
+    note: "Placeholder — OpenAI-compatible. API key dari console.groq.com.",
+  },
+  {
+    id: "mistral",
+    label: "Mistral AI",
+    protocol: "openai",
+    defaultBaseUrl: "https://api.mistral.ai/v1",
+    requiresApiKey: true,
+    category: "placeholder",
+    isPlaceholder: true,
+    badge: "Placeholder · API Key",
+    defaultModel: "mistral-large-latest",
+    models: ["mistral-large-latest", "mistral-medium-latest", "mistral-small-latest", "open-mistral-nemo"],
+    note: "Placeholder — OpenAI-compatible. API key dari console.mistral.ai.",
+  },
+  {
+    id: "glm",
+    label: "GLM (Zhipu AI)",
+    protocol: "openai",
+    defaultBaseUrl: "https://open.bigmodel.cn/api/paas/v4",
+    requiresApiKey: true,
+    category: "placeholder",
+    isPlaceholder: true,
+    badge: "Placeholder · API Key",
+    defaultModel: "glm-4-flash",
+    models: ["glm-4-flash", "glm-4-air", "glm-4-plus", "glm-4.5"],
+    note: "Placeholder — OpenAI-compatible. API key dari open.bigmodel.cn (.cn) atau z.ai.",
   },
   {
     id: "openrouter",
-    label: "OpenRouter (multi-model gateway)",
+    label: "OpenRouter",
     protocol: "openai",
     defaultBaseUrl: "https://openrouter.ai/api/v1",
     requiresApiKey: true,
+    category: "placeholder",
+    isPlaceholder: true,
+    badge: "Placeholder · API Key",
     defaultModel: "openai/gpt-4o-mini",
     models: [
       "openai/gpt-4o-mini",
@@ -213,7 +274,21 @@ export const AI_PROVIDERS: AiProviderInfo[] = [
       "qwen/qwen-2.5-72b-instruct",
       "meta-llama/llama-3.3-70b-instruct",
     ],
-    note: "Satu API key untuk ratusan model (OpenAI, Anthropic, Google, DeepSeek, Qwen, dll).",
+    note: "Placeholder — satu API key untuk ratusan model lewat openrouter.ai.",
+  },
+  {
+    id: "ollama",
+    label: "Ollama (Self-hosted)",
+    protocol: "ollama",
+    defaultBaseUrl: "http://192.168.22.21:11434",
+    requiresApiKey: false,
+    category: "placeholder",
+    isPlaceholder: true,
+    badge: "Placeholder · Lokal",
+    defaultModel: "gemma3:4b",
+    models: ["gemma3:4b", "gemma3:12b", "llama3.1:8b", "qwen2.5:7b", "mistral:7b", "phi4:14b", "deepseek-r1:8b"],
+    note: "Placeholder self-hosted — jalankan `ollama serve` pada server lokal sekolah.",
+    selfHosted: true,
   },
   {
     id: "custom",
@@ -221,13 +296,26 @@ export const AI_PROVIDERS: AiProviderInfo[] = [
     protocol: "openai",
     defaultBaseUrl: "http://localhost:8000/v1",
     requiresApiKey: false,
+    category: "placeholder",
+    isPlaceholder: true,
+    badge: "Placeholder · Custom",
     defaultModel: "local-model",
     models: [],
-    note: "Endpoint OpenAI-compatible milik sendiri (vLLM, LM Studio, LocalAI, Ollama /v1, gateway sekolah).",
+    note: "Placeholder custom endpoint (vLLM, LM Studio, LocalAI, gateway sekolah).",
     supportsJsonMode: false,
     selfHosted: true,
   },
 ];
+
+/** Instant providers that work out-of-the-box via built-in keys. */
+export function getInstantAiProviders(): AiProviderInfo[] {
+  return AI_PROVIDERS.filter((p) => p.category === "instant" || p.hasBuiltInApiKey);
+}
+
+/** Placeholder providers awaiting an API key or self-hosted server configuration. */
+export function getPlaceholderAiProviders(): AiProviderInfo[] {
+  return AI_PROVIDERS.filter((p) => p.category === "placeholder" || p.isPlaceholder);
+}
 
 /** Lookup a provider descriptor; unknown ids fall back to the default entry. */
 export function getAiProvider(id: string | null | undefined): AiProviderInfo {

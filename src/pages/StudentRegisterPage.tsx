@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo } from "react";
+import { CheckCircle2 } from "lucide-react";
 import { Link } from "react-router";
 import { useI18n } from "../i18n";
+import { C, S } from "../styles/tokens";
 import {
   fetchClasses,
   fetchSettings,
@@ -9,8 +11,8 @@ import {
   type SchoolSettings,
 } from "../lib/api";
 import LanguageSwitcher from "../components/LanguageSwitcher";
+import ThemeToggle from "../components/ThemeToggle";
 
-/** Empty form state — one place so the reset stays in sync with the fields. */
 const EMPTY = {
   fullName: "",
   username: "",
@@ -23,15 +25,6 @@ const EMPTY = {
   confirmPassword: "",
 };
 
-/**
- * Public student self-registration (`/register`).
- *
- * The page is intentionally outside `AppLayout` — it must be reachable without
- * a session. Every field is validated twice: here for immediate feedback and
- * again on the server (`POST /api/register/student`, whitelisted in
- * `src/lib/server/index.ts`), because the server is the source of truth for
- * duplicate usernames/NISN and class existence.
- */
 export default function StudentRegisterPage() {
   const { t } = useI18n();
   const [form, setForm] = useState({ ...EMPTY });
@@ -47,7 +40,9 @@ export default function StudentRegisterPage() {
   useEffect(() => {
     fetchSettings()
       .then(setSettings)
-      .catch(() => { /* keep defaults — the form still works */ });
+      .catch(() => {
+        /* keep defaults */
+      });
     fetchClasses()
       .then(setClasses)
       .catch(() => setClasses([]))
@@ -57,7 +52,6 @@ export default function StudentRegisterPage() {
   const schoolName = settings?.school_name || "SmartCBT";
   const schoolLogo = settings?.school_logo || "";
 
-  /** Client-side validation mirroring the server rules. */
   const validationError = useMemo(() => {
     if (!form.fullName.trim()) return t("Nama lengkap wajib diisi.");
     if (form.username.trim().length < 3) return t("Username minimal 3 karakter.");
@@ -108,76 +102,86 @@ export default function StudentRegisterPage() {
   const inputStyle = {
     width: "100%",
     padding: "10px 12px",
-    borderRadius: 8,
+    minHeight: 44,
+    borderRadius: 10,
     fontSize: 14,
     outline: "none",
-    border: "1px solid #e2e8f0",
-    background: "#fff",
-    color: "#0f172a",
+    border: `1px solid ${C.base.border}`,
+    background: C.base.surfaceMuted,
+    color: C.base.text,
+    boxShadow: S.inset,
   } as const;
 
   return (
-    <div className="min-h-screen" style={{ background: "#F0F4F8" }}>
-      <div className="absolute top-5 right-5">
-        <LanguageSwitcher />
-      </div>
+    <div className="min-h-screen safe-area-top safe-area-bottom" style={{ background: C.base.page }}>
+      <div className="max-w-2xl mx-auto px-4 py-6 sm:py-10">
+        {/* Top Controls + Header */}
+        <div className="flex items-center justify-between gap-3 mb-7">
+          <div className="flex items-center gap-3 min-w-0">
+            {schoolLogo ? (
+              <img
+                src={schoolLogo}
+                alt={schoolName}
+                className="w-11 h-11 rounded-xl object-contain p-0.5 shrink-0"
+                style={{ background: C.base.surface, border: `1px solid ${C.base.border}`, boxShadow: S.control }}
+              />
+            ) : (
+              <div
+                className="w-11 h-11 rounded-xl flex items-center justify-center font-bold shrink-0"
+                style={{
+                  background: "linear-gradient(135deg, #2563EB 0%, #1E40AF 100%)",
+                  color: "#FFFFFF",
+                  boxShadow: S.btnPrimary,
+                }}
+              >
+                SE
+              </div>
+            )}
+            <div className="min-w-0">
+              <div className="font-bold text-lg truncate" style={{ color: C.base.text, fontFamily: "var(--font-serif)" }}>
+                {t("Daftar Akun Siswa")}
+              </div>
+              <div className="text-xs truncate" style={{ color: C.base.textMuted }}>
+                {schoolName} · SmartCBT
+              </div>
+            </div>
+          </div>
 
-      <div className="max-w-2xl mx-auto px-4 py-10">
-        {/* Header */}
-        <div className="flex items-center gap-3 mb-8">
-          {schoolLogo ? (
-            <img
-              src={schoolLogo}
-              alt={schoolName}
-              className="w-11 h-11 rounded-xl object-contain"
-              style={{ background: "#fff", border: "1px solid #e2e8f0" }}
-            />
-          ) : (
-            <div
-              className="w-11 h-11 rounded-xl flex items-center justify-center font-bold"
-              style={{ background: "#1D4ED8", color: "#fff" }}
-            >
-              SE
-            </div>
-          )}
-          <div>
-            <div className="font-bold text-lg" style={{ color: "#0f172a", fontFamily: "var(--font-serif)" }}>
-              {t("Daftar Akun Siswa")}
-            </div>
-            <div className="text-xs" style={{ color: "#64748b" }}>
-              {schoolName} · SmartCBT
-            </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <ThemeToggle compact />
+            <LanguageSwitcher />
           </div>
         </div>
 
         <div
-          className="rounded-2xl p-6 sm:p-8"
-          style={{ background: "#fff", border: "1px solid #e2e8f0", boxShadow: "0 8px 30px rgba(15,23,42,0.06)" }}
+          className="cbt-card rounded-2xl p-5 sm:p-8"
+          style={{ background: C.base.surface, border: `1px solid ${C.base.border}`, boxShadow: S.card }}
         >
-          <p className="text-sm leading-relaxed mb-6" style={{ color: "#64748b" }}>
+          <p className="text-sm leading-relaxed mb-6" style={{ color: C.base.textMuted }}>
             {t("Isi data berikut untuk membuat akun siswa. Hubungi admin sekolah bila nama kelas Anda belum tersedia.")}
           </p>
 
           {done ? (
             <div className="space-y-5">
               <div
-                className="rounded-xl px-4 py-3 text-sm"
-                style={{ background: "#D1FAE5", color: "#065F46", border: "1px solid #A7F3D0" }}
+                className="rounded-xl px-4 py-3 text-sm flex items-start gap-2.5"
+                style={{ background: C.ok.msgBg, color: C.ok.msgText, border: `1px solid ${C.ok.msgBorder}` }}
               >
-                ✓ {t("Akun siswa dibuat. Silakan login memakai username dan password Anda.")}
+                <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>{t("Akun siswa dibuat. Silakan login memakai username dan password Anda.")}</span>
               </div>
               <Link
                 to="/login"
-                className="block w-full text-center py-3 rounded-lg text-sm font-semibold"
-                style={{ background: "#1D4ED8", color: "#fff" }}
+                className="flex items-center justify-center w-full py-3 rounded-xl text-sm font-semibold min-h-[48px]"
+                style={{ background: C.brand.main, color: "#FFFFFF", boxShadow: S.btnPrimary }}
               >
                 {t("Login di sini")}
               </Link>
               <button
                 type="button"
                 onClick={() => setDone(false)}
-                className="w-full text-center text-xs"
-                style={{ color: "#64748b" }}
+                className="w-full text-center text-xs py-2"
+                style={{ color: C.base.textMuted }}
               >
                 {t("Daftar lagi")}
               </button>
@@ -185,8 +189,8 @@ export default function StudentRegisterPage() {
           ) : (
             <form onSubmit={submit} className="space-y-4">
               <div>
-                <label className="block text-xs font-medium mb-1.5" style={{ color: "#374151" }}>
-                  {t("Full Name")} <span style={{ color: "#DC2626" }}>*</span>
+                <label className="block text-xs font-medium mb-1.5" style={{ color: C.base.textBody }}>
+                  {t("Full Name")} <span style={{ color: C.danger.main }}>*</span>
                 </label>
                 <input
                   type="text"
@@ -201,8 +205,8 @@ export default function StudentRegisterPage() {
 
               <div className="grid sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-medium mb-1.5" style={{ color: "#374151" }}>
-                    {t("NISN / NIS")} <span style={{ color: "#DC2626" }}>*</span>
+                  <label className="block text-xs font-medium mb-1.5" style={{ color: C.base.textBody }}>
+                    {t("NISN / NIS")} <span style={{ color: C.danger.main }}>*</span>
                   </label>
                   <input
                     type="text"
@@ -215,8 +219,8 @@ export default function StudentRegisterPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium mb-1.5" style={{ color: "#374151" }}>
-                    {t("Kelas (pilih dari daftar)")} <span style={{ color: "#DC2626" }}>*</span>
+                  <label className="block text-xs font-medium mb-1.5" style={{ color: C.base.textBody }}>
+                    {t("Kelas (pilih dari daftar)")} <span style={{ color: C.danger.main }}>*</span>
                   </label>
                   <select
                     value={form.classId}
@@ -236,14 +240,13 @@ export default function StudentRegisterPage() {
                 </div>
               </div>
 
-              {/* Contact details */}
-              <div className="pt-2" style={{ borderTop: "1px solid #f1f5f9" }}>
-                <div className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: "#94a3b8" }}>
+              <div className="pt-3" style={{ borderTop: `1px solid ${C.base.borderLight}` }}>
+                <div className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: C.base.textFaint }}>
                   {t("Data Kontak Siswa")}
                 </div>
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-xs font-medium mb-1.5" style={{ color: "#374151" }}>
+                    <label className="block text-xs font-medium mb-1.5" style={{ color: C.base.textBody }}>
                       {t("Email Aktif")}
                     </label>
                     <input
@@ -256,7 +259,7 @@ export default function StudentRegisterPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium mb-1.5" style={{ color: "#374151" }}>
+                    <label className="block text-xs font-medium mb-1.5" style={{ color: C.base.textBody }}>
                       {t("Nomor WhatsApp")}
                     </label>
                     <input
@@ -267,18 +270,18 @@ export default function StudentRegisterPage() {
                       placeholder={t("e.g. 081234567890")}
                       maxLength={32}
                     />
-                    <div className="text-xs mt-1" style={{ color: "#94a3b8" }}>
+                    <div className="text-xs mt-1" style={{ color: C.base.textFaint }}>
                       {t("Nomor WA siswa (mis. 0812xxxxxxx) atau nomor orang tua.")}
                     </div>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium mb-1.5" style={{ color: "#374151" }}>
+                    <label className="block text-xs font-medium mb-1.5" style={{ color: C.base.textBody }}>
                       {t("Alamat Lengkap")}
                     </label>
                     <textarea
                       value={form.address}
                       onChange={(e) => setField({ address: e.target.value })}
-                      style={{ ...inputStyle, minHeight: 76, resize: "vertical" }}
+                      style={{ ...inputStyle, minHeight: 80, resize: "vertical" }}
                       placeholder={t("e.g. Jl. Teknologi No. 1, Karawang")}
                       maxLength={512}
                     />
@@ -286,12 +289,11 @@ export default function StudentRegisterPage() {
                 </div>
               </div>
 
-              {/* Credentials */}
-              <div className="pt-2" style={{ borderTop: "1px solid #f1f5f9" }}>
+              <div className="pt-3" style={{ borderTop: `1px solid ${C.base.borderLight}` }}>
                 <div className="grid sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-medium mb-1.5" style={{ color: "#374151" }}>
-                      Username <span style={{ color: "#DC2626" }}>*</span>
+                    <label className="block text-xs font-medium mb-1.5" style={{ color: C.base.textBody }}>
+                      Username <span style={{ color: C.danger.main }}>*</span>
                     </label>
                     <input
                       type="text"
@@ -304,8 +306,8 @@ export default function StudentRegisterPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium mb-1.5" style={{ color: "#374151" }}>
-                      {t("Password")} <span style={{ color: "#DC2626" }}>*</span>
+                    <label className="block text-xs font-medium mb-1.5" style={{ color: C.base.textBody }}>
+                      {t("Password")} <span style={{ color: C.danger.main }}>*</span>
                     </label>
                     <input
                       type="password"
@@ -318,8 +320,8 @@ export default function StudentRegisterPage() {
                   </div>
                 </div>
                 <div className="mt-4">
-                  <label className="block text-xs font-medium mb-1.5" style={{ color: "#374151" }}>
-                    {t("Konfirmasi Password")} <span style={{ color: "#DC2626" }}>*</span>
+                  <label className="block text-xs font-medium mb-1.5" style={{ color: C.base.textBody }}>
+                    {t("Konfirmasi Password")} <span style={{ color: C.danger.main }}>*</span>
                   </label>
                   <input
                     type="password"
@@ -334,8 +336,8 @@ export default function StudentRegisterPage() {
 
               {error && (
                 <div
-                  className="rounded-lg px-3 py-2 text-sm"
-                  style={{ background: "#FEE2E2", color: "#B91C1C", border: "1px solid #FECACA" }}
+                  className="rounded-xl px-3.5 py-2.5 text-sm"
+                  style={{ background: C.danger.bgLight, color: C.danger.text, border: `1px solid ${C.danger.border}` }}
                 >
                   {error}
                 </div>
@@ -344,22 +346,22 @@ export default function StudentRegisterPage() {
               <button
                 type="submit"
                 disabled={busy || !!validationError}
-                className="w-full py-3 rounded-lg text-sm font-semibold transition-all disabled:opacity-60"
-                style={{ background: "#1D4ED8", color: "#fff" }}
+                className="w-full py-3 rounded-xl text-sm font-semibold transition-all disabled:opacity-60 min-h-[48px] active:scale-[0.99]"
+                style={{ background: C.brand.main, color: "#FFFFFF", boxShadow: S.btnPrimary }}
               >
                 {busy ? t("Menyimpan…") : t("Daftar Akun Siswa")}
               </button>
 
-              <p className="text-xs text-center" style={{ color: "#94a3b8" }}>
+              <p className="text-xs text-center" style={{ color: C.base.textFaint }}>
                 {t("Bisa juga didaftarkan oleh admin di halaman Pengguna.")}
               </p>
             </form>
           )}
         </div>
 
-        <div className="text-center text-xs mt-6" style={{ color: "#94a3b8" }}>
+        <div className="text-center text-xs mt-6" style={{ color: C.base.textFaint }}>
           {t("Sudah punya akun?")}{" "}
-          <Link to="/login" className="font-medium" style={{ color: "#1D4ED8" }}>
+          <Link to="/login" className="font-semibold hover:underline" style={{ color: C.brand.dark }}>
             {t("Login di sini")}
           </Link>
         </div>

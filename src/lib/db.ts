@@ -19,6 +19,7 @@ import mysql from "mysql2/promise";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { executeMockQuery } from "./mock-db.js";
 
 const CONFIG_FILE = resolve(
   fileURLToPath(new URL(".", import.meta.url)),
@@ -422,6 +423,53 @@ function createMyPool(cfg: DatabaseConfig): ActivePool {
   };
 }
 
+let usingMock = false;
+
+function createMockPool(): ActivePool {
+  return {
+    type: "postgres",
+    async query(sql, params) {
+      return executeMockQuery(sql, params);
+    },
+    async connect() {
+      return {
+        query: <T = any>(sql: string, params?: any[]) =>
+          executeMockQuery(sql, params) as Promise<T[]>,
+        release: () => {},
+      };
+    },
+    async end() {},
+  };
+}
+
+function isConnectionError(err: any): boolean {
+  const code = String(err?.code || err?.cause?.code || "");
+  const msg = String(err?.message || "");
+  return (
+    code === "ECONNREFUSED" ||
+    code === "ENOTFOUND" ||
+    code === "ETIMEDOUT" ||
+    code === "EAI_AGAIN" ||
+    code === "ECONNRESET" ||
+    /ECONNREFUSED|ETIMEDOUT|ENOTFOUND|Connection terminated|timeout/i.test(msg)
+  );
+}
+
+function activateMockPool(reason?: unknown): ActivePool {
+  if (!usingMock) {
+    console.warn(
+      "[AI Studio] Database not connected — using in-memory mock",
+      reason instanceof Error ? `(${reason.message})` : ""
+    );
+  }
+  usingMock = true;
+  const mock = createMockPool();
+  const previous = pool;
+  pool = mock;
+  if (previous) void previous.end().catch(() => {});
+  return mock;
+}
+
 /** Create the pooled client for the given config (driver chosen by type). */
 function createPool(cfg: DatabaseConfig): ActivePool {
   return isMySqlLike(cfg.type) ? createMyPool(cfg) : createPgPool(cfg);
@@ -429,6 +477,10 @@ function createPool(cfg: DatabaseConfig): ActivePool {
 
 /** Returns the current pool, creating it lazily if needed. */
 export function getPool(): ActivePool {
+  if (process.env.MOCK_DB === "true") {
+    if (!pool || !usingMock) return activateMockPool("MOCK_DB=true");
+    return pool;
+  }
   if (!pool) pool = createPool(getDatabaseConfig());
   return pool;
 }
@@ -461,6 +513,7 @@ export async function applyDatabaseConfig(
   }
 
   const previous = pool;
+  usingMock = false;
   pool = fresh;
   saveDatabaseConfig(cfg);
 
@@ -526,21 +579,43 @@ export async function testDatabaseConfig(
  */
 export async function probeActiveDatabase(): Promise<DbProbeInfo> {
   const active = getPool();
-  const client = await active.connect();
   try {
-    return await probeClient(active.type, client);
-  } finally {
-    client.release();
+    const client = await active.connect();
+    try {
+      return await probeClient(active.type, client);
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    if (!isConnectionError(err)) throw err;
+    const mock = activateMockPool(err);
+    const client = await mock.connect();
+    try {
+      return await probeClient(mock.type, client);
+    } finally {
+      client.release();
+    }
   }
 }
 
 /** Execute a parameterized query against the active pool. */
 export async function query<T = any>(text: string, params?: any[]): Promise<T[]> {
-  const client = await getPool().connect();
   try {
-    return await client.query<T>(text, params);
-  } finally {
-    client.release();
+    const client = await getPool().connect();
+    try {
+      return await client.query<T>(text, params);
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    if (!isConnectionError(err)) throw err;
+    const mock = activateMockPool(err);
+    const client = await mock.connect();
+    try {
+      return await client.query<T>(text, params);
+    } finally {
+      client.release();
+    }
   }
 }
 
@@ -561,6 +636,7 @@ export async function closePool(): Promise<void> {
   if (!pool) return;
   const active = pool;
   pool = null;
+  usingMock = false;
   try {
     await (active as any).end?.();
   } catch {

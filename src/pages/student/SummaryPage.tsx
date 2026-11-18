@@ -9,8 +9,10 @@
  * role-scoped endpoints and registers the `/student/summary` route.
  */
 import { useEffect, useState, type ReactNode } from "react";
+import { RefreshCw } from "lucide-react";
 import { useAuth } from "../../app/AuthContext";
 import { useI18n } from "../../i18n";
+import { C, S } from "../../styles/tokens";
 import {
   fetchStudentDashboard,
   fetchLearningModules,
@@ -23,7 +25,7 @@ import { Btn, Card, Notice } from "../../components/ui";
 
 const GRADE_COLORS: Record<string, string> = {
   A: "#059669",
-  B: "#1D4ED8",
+  B: "#2563EB",
   C: "#D97706",
   D: "#DC2626",
   E: "#6B7280",
@@ -37,7 +39,6 @@ function gradeFromScore(pct: number): string {
   return "E";
 }
 
-/** `total_score` is normalised to a 0–100 value server-side (matches dashboard). */
 function examScore(row: ExamResultsRow): number {
   return Math.round(Number(row.total_score) || 0);
 }
@@ -79,8 +80,13 @@ export default function StudentSummaryPage() {
 
   if (loading) {
     return (
-      <div className="py-16 text-center text-sm" style={{ color: "#64748b" }}>
-        {t("Memuat ringkasan…")}
+      <div className="space-y-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="h-24 rounded-2xl animate-pulse" style={{ background: C.base.surfaceSoft }} />
+          ))}
+        </div>
+        <div className="h-48 rounded-2xl animate-pulse" style={{ background: C.base.surfaceSoft }} />
       </div>
     );
   }
@@ -95,23 +101,28 @@ export default function StudentSummaryPage() {
   const best = scores.length ? Math.max(...scores) : 0;
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold" style={{ color: "#0f172a" }}>
+    <div className="space-y-4 sm:space-y-5">
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="text-xl sm:text-2xl font-bold" style={{ color: C.base.text, fontFamily: "var(--font-serif)" }}>
           {t("Ringkasan Nilai")}
         </h1>
-        <Btn onClick={() => void loadData()}>{t("Muat ulang")}</Btn>
+        <Btn onClick={() => void loadData()} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <RefreshCw size={14} />
+          {t("Muat ulang")}
+        </Btn>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <Stat label={t("Jumlah Ujian Selesai")} value={String(exams.length)} />
         <Stat label={t("Rata-rata Nilai")} value={String(average)} accent={GRADE_COLORS[gradeFromScore(average)]} />
-        <Stat label={t("Nilai Tertinggi")} value={String(best)} accent={GRADE_COLORS[gradeFromScore(best)]} />
+        <div className="col-span-2 sm:col-span-1">
+          <Stat label={t("Nilai Tertinggi")} value={String(best)} accent={GRADE_COLORS[gradeFromScore(best)]} />
+        </div>
       </div>
 
-      <Card>
+      <Card pad={false}>
         <SectionHeader title={t("Hasil Ujian")} />
-        <div className="px-4 py-4 space-y-2">
+        <div className="p-4 space-y-2.5">
           {exams.length === 0 ? (
             <Empty>{t("Belum ada hasil ujian")}</Empty>
           ) : (
@@ -127,21 +138,21 @@ export default function StudentSummaryPage() {
               return (
                 <div
                   key={r.id}
-                  className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg"
-                  style={{ background: "#FAFAFA", border: "1px solid #e2e8f0" }}
+                  className="flex items-center justify-between gap-3 px-3.5 py-3 rounded-xl"
+                  style={{ background: C.base.surfaceMuted, border: `1px solid ${C.base.border}`, boxShadow: S.inset }}
                 >
                   <div className="min-w-0">
-                    <div className="font-medium truncate" style={{ color: "#0f172a" }}>{r.title}</div>
-                    <div className="text-xs" style={{ color: "#64748b" }}>{r.subject_name ?? "Umum"} · {dateStr}</div>
+                    <div className="font-semibold text-sm truncate" style={{ color: C.base.text }}>{r.title}</div>
+                    <div className="text-xs mt-0.5" style={{ color: C.base.textMuted }}>{r.subject_name ?? "Umum"} · {dateStr}</div>
                     {(correct || wrong) ? (
-                      <div className="text-[11px] mt-0.5" style={{ color: "#94a3b8" }}>
+                      <div className="text-[11px] mt-0.5 tabular-nums" style={{ color: C.base.textFaint }}>
                         {t("Benar")}: {correct} · {t("Salah")}: {wrong}
                       </div>
                     ) : null}
                   </div>
                   <div className="text-right shrink-0">
-                    <div className="text-2xl font-bold" style={{ color, fontFamily: "var(--font-serif)" }}>{score}</div>
-                    <div className="text-[10px] font-semibold" style={{ color }}>{t("Grade")}: {grade}</div>
+                    <div className="text-2xl font-bold tabular-nums" style={{ color, fontFamily: "var(--font-serif)" }}>{score}</div>
+                    <div className="text-[11px] font-semibold" style={{ color }}>{t("Grade")} {grade}</div>
                   </div>
                 </div>
               );
@@ -150,27 +161,27 @@ export default function StudentSummaryPage() {
         </div>
       </Card>
 
-      <Card>
+      <Card pad={false}>
         <SectionHeader title={t("Progress Modul")} />
-        <div className="px-4 py-4 space-y-3">
+        <div className="p-4 space-y-3">
           {modules.length === 0 ? (
             <Empty>{t("Belum ada modul")}</Empty>
           ) : (
             modules.map((m) => {
               const pct = Math.max(0, Math.min(100, Math.round(Number(m.max_scroll_percent) || 0)));
               const done = !!m.completed;
-              const color = done ? "#059669" : "#1D4ED8";
+              const color = done ? C.ok.main : C.brand.main;
               return (
                 <div key={m.id}>
                   <div className="flex items-center justify-between gap-2 mb-1">
-                    <div className="text-sm font-medium truncate" style={{ color: "#0f172a" }}>{m.title}</div>
-                    <div className="text-xs shrink-0" style={{ color: done ? "#059669" : "#64748b" }}>
+                    <div className="text-sm font-medium truncate" style={{ color: C.base.text }}>{m.title}</div>
+                    <div className="text-xs font-semibold shrink-0 tabular-nums" style={{ color: done ? C.ok.dark : C.base.textMuted }}>
                       {done ? t("Selesai") : `${pct}%`}
                     </div>
                   </div>
-                  <div className="text-[11px] mb-1" style={{ color: "#94a3b8" }}>{m.subject_name ?? "Umum"}</div>
-                  <div className="h-1.5 rounded-full" style={{ background: "#e2e8f0" }}>
-                    <div className="h-1.5 rounded-full" style={{ width: `${pct}%`, background: color }} />
+                  <div className="text-[11px] mb-1.5" style={{ color: C.base.textFaint }}>{m.subject_name ?? "Umum"}</div>
+                  <div className="h-2 rounded-full overflow-hidden" style={{ background: C.base.surfaceSoft }}>
+                    <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: color }} />
                   </div>
                 </div>
               );
@@ -179,9 +190,9 @@ export default function StudentSummaryPage() {
         </div>
       </Card>
 
-      <Card>
+      <Card pad={false}>
         <SectionHeader title={t("Status Tugas")} />
-        <div className="px-4 py-4 space-y-2">
+        <div className="p-4 space-y-2.5">
           {assignments.length === 0 ? (
             <Empty>{t("Belum ada data tugas")}</Empty>
           ) : (
@@ -192,32 +203,28 @@ export default function StudentSummaryPage() {
                 status === "submitted" ? t("Terkumpul") :
                 status === "returned" ? t("Perlu Revisi") :
                 t("Belum Dikumpulkan");
-              const bg =
-                status === "graded" ? "#ECFDF5" :
-                status === "submitted" ? "#EFF6FF" :
-                status === "returned" ? "#FEF3C7" : "#F1F5F9";
               const fg =
-                status === "graded" ? "#059669" :
-                status === "submitted" ? "#1D4ED8" :
-                status === "returned" ? "#D97706" : "#64748b";
+                status === "graded" ? C.ok.dark :
+                status === "submitted" ? C.brand.dark :
+                status === "returned" ? C.warn.dark : C.base.textMuted;
               const score = a.score != null ? Math.round(Number(a.score)) : null;
               const max = Number(a.max_score) || 100;
               return (
                 <div
                   key={a.id}
-                  className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg"
-                  style={{ background: "#FAFAFA", border: "1px solid #e2e8f0" }}
+                  className="flex items-center justify-between gap-3 px-3.5 py-3 rounded-xl"
+                  style={{ background: C.base.surfaceMuted, border: `1px solid ${C.base.border}`, boxShadow: S.inset }}
                 >
                   <div className="min-w-0">
-                    <div className="font-medium truncate" style={{ color: "#0f172a" }}>{a.title}</div>
-                    <div className="text-xs" style={{ color: "#64748b" }}>{a.subject_name ?? "Umum"}</div>
+                    <div className="font-semibold text-sm truncate" style={{ color: C.base.text }}>{a.title}</div>
+                    <div className="text-xs mt-0.5" style={{ color: C.base.textMuted }}>{a.subject_name ?? "Umum"}</div>
                   </div>
                   <div className="text-right shrink-0">
-                    <span className="inline-block text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ background: bg, color: fg }}>
+                    <div className="text-xs font-semibold" style={{ color: fg }}>
                       {label}
-                    </span>
+                    </div>
                     {status === "graded" && score != null ? (
-                      <div className="text-xs mt-1" style={{ color: "#0f172a" }}>{score}/{max}</div>
+                      <div className="text-xs mt-0.5 tabular-nums font-medium" style={{ color: C.base.text }}>{score}/{max}</div>
                     ) : null}
                   </div>
                 </div>
@@ -233,11 +240,9 @@ export default function StudentSummaryPage() {
 function Stat({ label, value, accent }: { label: string; value: string; accent?: string }) {
   return (
     <Card>
-      <div className="px-4 py-4">
-        <div className="text-xs" style={{ color: "#64748b" }}>{label}</div>
-        <div className="text-3xl font-bold mt-1" style={{ color: accent ?? "#0f172a", fontFamily: "var(--font-serif)" }}>
-          {value}
-        </div>
+      <div className="text-xs" style={{ color: C.base.textMuted }}>{label}</div>
+      <div className="text-3xl font-bold mt-1 tabular-nums" style={{ color: accent ?? C.base.text, fontFamily: "var(--font-serif)" }}>
+        {value}
       </div>
     </Card>
   );
@@ -245,12 +250,13 @@ function Stat({ label, value, accent }: { label: string; value: string; accent?:
 
 function SectionHeader({ title }: { title: string }) {
   return (
-    <div className="px-4 py-3 border-b" style={{ borderColor: "#e2e8f0" }}>
-      <h2 className="font-bold text-base sm:text-lg" style={{ color: "#0f172a" }}>{title}</h2>
+    <div className="px-4 py-3.5 border-b" style={{ borderColor: C.base.borderLight }}>
+      <h2 className="font-bold text-base sm:text-lg" style={{ color: C.base.text, fontFamily: "var(--font-serif)" }}>{title}</h2>
     </div>
   );
 }
 
 function Empty({ children }: { children: ReactNode }) {
-  return <div className="text-center text-sm py-6" style={{ color: "#64748b" }}>{children}</div>;
+  return <div className="text-center text-sm py-6" style={{ color: C.base.textMuted }}>{children}</div>;
 }
+

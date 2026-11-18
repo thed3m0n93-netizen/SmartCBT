@@ -21,11 +21,11 @@ export const NEWS_CATEGORIES: Array<{
   bg: string;
   border: string;
 }> = [
-  { key: "info", label: "Info", color: "#1D4ED8", bg: "#EFF6FF", border: "#BFDBFE" },
-  { key: "academic", label: "Akademik", color: "#7C3AED", bg: "#F5F3FF", border: "#DDD6FE" },
-  { key: "event", label: "Kegiatan", color: "#059669", bg: "#D1FAE5", border: "#A7F3D0" },
-  { key: "exam", label: "Ujian", color: "#D97706", bg: "#FEF3C7", border: "#FDE68A" },
-  { key: "urgent", label: "Penting", color: "#DC2626", bg: "#FEE2E2", border: "#FECACA" },
+  { key: "info", label: "Info", color: C.brand.dark, bg: C.brand.bg, border: C.brand.border },
+  { key: "academic", label: "Akademik", color: C.purple.dark, bg: C.purple.bg, border: C.purple.border },
+  { key: "event", label: "Kegiatan", color: C.ok.dark, bg: C.ok.bg, border: C.ok.border },
+  { key: "exam", label: "Ujian", color: C.warn.dark, bg: C.warn.bg, border: C.warn.border },
+  { key: "urgent", label: "Penting", color: C.danger.text, bg: C.danger.bg, border: C.danger.border },
 ];
 
 /**
@@ -69,9 +69,9 @@ export function formatNewsDate(value?: string | null): string {
 export const ARTICLE_CSS = `
   .news-body { font-size: 0.95rem; line-height: 1.75; color: ${C.base.textBody}; }
   .news-body p { margin: 0.7em 0; }
-  .news-body h1 { font-size: 1.4rem; font-weight: 700; margin: 1em 0 0.4em; }
-  .news-body h2 { font-size: 1.2rem; font-weight: 700; margin: 0.9em 0 0.35em; }
-  .news-body h3 { font-size: 1.05rem; font-weight: 600; margin: 0.8em 0 0.3em; }
+  .news-body h1 { font-size: 1.4rem; font-weight: 700; margin: 1em 0 0.4em; color: ${C.base.text}; }
+  .news-body h2 { font-size: 1.2rem; font-weight: 700; margin: 0.9em 0 0.35em; color: ${C.base.text}; }
+  .news-body h3 { font-size: 1.05rem; font-weight: 600; margin: 0.8em 0 0.3em; color: ${C.base.text}; }
   .news-body ul { list-style: disc; padding-left: 1.4em; margin: 0.6em 0; }
   .news-body ol { list-style: decimal; padding-left: 1.4em; margin: 0.6em 0; }
   .news-body blockquote {
@@ -80,10 +80,10 @@ export const ARTICLE_CSS = `
   }
   .news-body img { max-width: 100%; height: auto; border-radius: 8px; margin: 0.7em 0; display: block; }
   .news-body video { max-width: 100%; border-radius: 8px; margin: 0.7em 0; display: block; background: #0f172a; }
-  .news-body a { color: ${C.brand.main}; text-decoration: underline; }
+  .news-body a { color: ${C.brand.dark}; text-decoration: underline; }
   .news-body table { width: 100%; border-collapse: collapse; margin: 0.8em 0; font-size: 0.9em; }
   .news-body th, .news-body td { border: 1px solid ${C.base.border}; padding: 0.4em 0.6em; text-align: left; }
-  .news-body th { background: #f8fafc; font-weight: 600; }
+  .news-body th { background: ${C.base.surfaceMuted}; font-weight: 600; color: ${C.base.text}; }
 `;
 
 /**

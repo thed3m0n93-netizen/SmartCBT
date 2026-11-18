@@ -1,18 +1,26 @@
 /**
  * SmartCBT — Dashboard stats cards (shared).
  *
- * Konsisten di semua halaman admin & guru. Diganti manual inline-card
- * yang sebelumnya ada di tiap halaman.
+ * Responsive mobile-first grid (`grid-cols-2 lg:grid-cols-N`) with tactile
+ * elevation, tabular numerals, and theme-aware contrast.
  */
-import { C } from "../../styles/tokens";
+import type { ReactNode } from "react";
+import { C, S, alpha } from "../../styles/tokens";
 
 interface StatCardData {
   label: string;
   value: string | number;
-  icon?: string;
+  icon?: ReactNode;
   color?: string;
   trend?: { label: string; up: boolean };
 }
+
+const DESKTOP_GRID: Record<2 | 3 | 4 | 6, string> = {
+  2: "grid-cols-2",
+  3: "grid-cols-2 md:grid-cols-3",
+  4: "grid-cols-2 lg:grid-cols-4",
+  6: "grid-cols-2 sm:grid-cols-3 lg:grid-cols-6",
+};
 
 export default function DashboardStats({
   cards,
@@ -21,44 +29,54 @@ export default function DashboardStats({
   cards: StatCardData[];
   cols?: 2 | 3 | 4 | 6;
 }) {
-  const gridCols = { 2: "grid-cols-2", 3: "grid-cols-3", 4: "grid-cols-4", 6: "grid-cols-6" }[cols];
   return (
-    <div className={`grid ${gridCols} lg:grid-cols-${cols} gap-4`}>
-      {cards.map((c) => (
-        <div
-          key={c.label}
-          className="rounded-xl p-4 flex items-center gap-3 min-w-0"
-          style={{
-            background: C.base.surface,
-            border: `1px solid ${C.base.border}`,
-          }}
-        >
-          {c.icon && (
-            <div
-              className="w-10 h-10 rounded-lg flex items-center justify-center text-base shrink-0"
-              style={{
-                background: `${c.color ?? C.brand.main}15`,
-                color: c.color ?? C.brand.main,
-              }}
-            >
-              {c.icon}
-            </div>
-          )}
-          <div className="min-w-0 flex-1">
-            <div className="text-2xl font-bold" style={{ color: c.color ?? C.base.text, fontFamily: "var(--font-serif)" }}>
-              {c.value}
-            </div>
-            <div className="text-xs truncate" style={{ color: C.base.textMuted }}>
-              {c.label}
-            </div>
-            {c.trend && (
-              <div className="text-[10px] mt-0.5" style={{ color: c.trend.up ? C.ok.main : C.danger.main }}>
-                {c.trend.up ? "▲" : "▼"} {c.trend.label}
+    <div className={`grid ${DESKTOP_GRID[cols]} gap-3 sm:gap-4`}>
+      {cards.map((c) => {
+        const accent = c.color ?? C.brand.main;
+        return (
+          <div
+            key={c.label}
+            className="cbt-card rounded-2xl p-3.5 sm:p-4 flex items-center gap-3 min-w-0"
+            style={{
+              background: C.base.surface,
+              border: `1px solid ${C.base.border}`,
+              boxShadow: S.card,
+            }}
+          >
+            {c.icon && (
+              <div
+                className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center text-base shrink-0"
+                style={{
+                  background: alpha(accent, 12),
+                  color: accent,
+                  border: `1px solid ${alpha(accent, 22)}`,
+                }}
+              >
+                {c.icon}
               </div>
             )}
+            <div className="min-w-0 flex-1">
+              <div
+                className="text-xl sm:text-2xl font-bold tabular-nums tracking-tight"
+                style={{ color: C.base.text, fontFamily: "var(--font-display)" }}
+              >
+                {c.value}
+              </div>
+              <div className="text-xs font-medium truncate mt-0.5" style={{ color: C.base.textMuted }}>
+                {c.label}
+              </div>
+              {c.trend && (
+                <div
+                  className="text-[11px] font-medium mt-0.5 tabular-nums"
+                  style={{ color: c.trend.up ? C.ok.main : C.danger.main }}
+                >
+                  {c.trend.up ? "▲" : "▼"} {c.trend.label}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

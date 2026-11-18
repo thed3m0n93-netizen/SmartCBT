@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { AlertTriangle, CheckCircle2, ClipboardList, Download, Flag, Info, RefreshCw, Users } from "lucide-react";
 import { useI18n } from "../../i18n";
 import { useAuth } from "../../app/AuthContext";
 import {
@@ -18,14 +19,14 @@ import {
   type ActiveSessionsResponse,
   type SystemHealthData,
 } from "../../lib/api";
-import { C, R, alpha } from "../../styles/tokens";
-import { Card, SectionCard, PageHeader, Btn, Modal, Notice } from "../../components/ui";
+import { C, R, S } from "../../styles/tokens";
+import { getAiProvider } from "../../lib/ai-providers";
+import { SectionCard, PageHeader, Btn, Modal, Notice } from "../../components/ui";
 import { DashboardStats as DashboardStatsComponent } from "../../components/dashboard";
+import AiProviderPanel from "../../components/AiProviderWidget";
 
-/** Rows-per-page choices for the Active Sessions list (`0` = show all). */
 const SESSION_PAGE_SIZES = [10, 20, 50, 0] as const;
 
-/** Stable identity of a session row (one token per logged-in device). */
 function sessionKey(s: ActiveSessionInfo): string {
   return `${s.userId}:${s.createdAt}`;
 }
@@ -46,12 +47,6 @@ function formatUptime(sec: number): string {
   return `${m}m`;
 }
 
-/**
- * One row in the System Health card.
- * `state` has three levels: "ok" (green), "warn" (amber — reachable but not
- * fully usable, e.g. AI server up but the configured model is missing) and
- * "down" (red — hard failure such as unreachable/timeout).
- */
 function HealthRow(props: {
   name: string;
   ok: boolean;
@@ -61,29 +56,25 @@ function HealthRow(props: {
   downLabel: string;
   warnLabel?: string;
 }) {
-  const state: "ok" | "warn" | "down" =
-    props.state ?? (props.ok ? "ok" : "warn");
-  const color =
-    state === "ok" ? C.ok.main : state === "down" ? C.danger.main : C.warn.main;
+  const state: "ok" | "warn" | "down" = props.state ?? (props.ok ? "ok" : "warn");
+  const color = state === "ok" ? C.ok.dark : state === "down" ? C.danger.text : C.warn.dark;
   const bg = state === "ok" ? C.ok.bg : state === "down" ? C.danger.bg : C.warn.bg;
   const label =
-    state === "ok"
-      ? props.okLabel
-      : state === "down"
-      ? props.downLabel
-      : props.warnLabel ?? props.downLabel;
+    state === "ok" ? props.okLabel : state === "down" ? props.downLabel : props.warnLabel ?? props.downLabel;
   return (
-    <div className="flex items-center justify-between">
-      <div className="flex items-center gap-2">
-        <span className="w-2 h-2 rounded-full" style={{ background: color }} />
-        <span className="text-sm" style={{ color: C.base.text }}>{props.name}</span>
-      </div>
-      <div className="flex items-center gap-2">
-        <span className="text-xs" style={{ color: C.base.textFaint, fontFamily: "var(--font-mono)" }}>
+    <div className="flex items-center justify-between gap-2 py-0.5">
+      <span className="text-sm font-medium truncate" style={{ color: C.base.text }}>
+        {props.name}
+      </span>
+      <div className="flex items-center gap-2 shrink-0">
+        <span
+          className="text-xs tabular-nums hidden sm:inline"
+          style={{ color: C.base.textFaint, fontFamily: "var(--font-mono)" }}
+        >
           {props.detail}
         </span>
         <span
-          className="text-xs px-1.5 py-0.5 rounded"
+          className="text-[11px] font-semibold px-2 py-0.5 rounded-md"
           style={{ background: bg, color }}
         >
           {label}
@@ -102,28 +93,20 @@ export default function AdminDashboard() {
   const [activeExamsData, setActiveExamsData] = useState<ActiveExamRow[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // ── Active Sessions Monitoring ──
   const [sessionsData, setSessionsData] = useState<ActiveSessionsResponse | null>(null);
   const [revokeBusy, setRevokeBusy] = useState<string | null>(null);
   const [revokeMsg, setRevokeMsg] = useState<{ type: "ok" | "error"; text: string } | null>(null);
-  // Paging for the session list: many devices signed in at once would otherwise
-  // stretch the card indefinitely. `0` rows-per-page means "show all".
   const [sessionPage, setSessionPage] = useState(1);
   const [sessionPageSize, setSessionPageSize] = useState<number>(SESSION_PAGE_SIZES[0]);
-  // Session ids hidden locally right after a revoke, so the card reacts
-  // instantly instead of waiting for the next 15s auto-refresh.
   const [revokedSessionIds, setRevokedSessionIds] = useState<string[]>([]);
 
-  // ── Real System Health ──
   const [healthData, setHealthData] = useState<SystemHealthData | null>(null);
   const [healthLoading, setHealthLoading] = useState(true);
   const [healthError, setHealthError] = useState<string | null>(null);
 
-  // ── Auto-refresh state ──
   const [healthUpdatedAt, setHealthUpdatedAt] = useState<Date | null>(null);
   const [sessionsUpdatedAt, setSessionsUpdatedAt] = useState<Date | null>(null);
 
-  // `silent` = background auto-refresh: keep showing old data, no loading flicker.
   const loadHealth = async (opts?: { silent?: boolean }) => {
     const silent = opts?.silent === true;
     if (!silent) setHealthLoading(true);
@@ -138,14 +121,11 @@ export default function AdminDashboard() {
     }
   };
 
-  // `opts.silent` is accepted for API symmetry with loadHealth (sessions list
-  // already renders the previous data while refreshing, so no flicker occurs).
   const loadSessions = async (opts?: { silent?: boolean }) => {
     try {
       const sessionsRes = await fetchActiveSessions();
       setSessionsData(sessionsRes);
       setSessionsUpdatedAt(new Date());
-      // Prune the locally-hidden rows that the server no longer reports.
       const liveKeys = new Set(sessionsRes.sessions.map(sessionKey));
       setRevokedSessionIds((prev) => prev.filter((key) => liveKeys.has(key)));
     } catch (err: any) {
@@ -160,13 +140,10 @@ export default function AdminDashboard() {
     setRevokeMsg(null);
     try {
       await revokeUserSessions(session.userId);
-      // Hide the row locally so the list reacts immediately (the server-side
-      // revoke is reflected for real on the next auto-refresh).
       setRevokedSessionIds((prev) =>
         prev.includes(sessionKey(session)) ? prev : [...prev, sessionKey(session)],
       );
       setRevokeMsg({ type: "ok", text: t("Sesi \"{name}\" telah dicabut.", { name: session.username }) });
-      // Refresh sessions list after revoke
       await loadSessions();
     } catch (err: any) {
       setRevokeMsg({ type: "error", text: err?.message || t("Gagal mencabut session.") });
@@ -175,7 +152,6 @@ export default function AdminDashboard() {
     }
   };
 
-  // ── Export exam results (Excel/CSV) ──
   const [exportOpen, setExportOpen] = useState(false);
   const [exportExams, setExportExams] = useState<{ id: string; title: string }[]>([]);
   const [exportExamId, setExportExamId] = useState<string>("all");
@@ -213,9 +189,6 @@ export default function AdminDashboard() {
     }
   };
 
-  // ── Active sessions paging (derived) ──
-  // Sessions revoked in this browser are hidden immediately; the list shrinks
-  // again for real on the next auto-refresh.
   const sessions = sessionsData
     ? sessionsData.sessions.filter((s) => !revokedSessionIds.includes(sessionKey(s)))
     : [];
@@ -234,7 +207,6 @@ export default function AdminDashboard() {
   useEffect(() => {
     loadHealth();
     loadSessions();
-    // Auto-refresh: health every 30s, active sessions every 15s (silent = no flicker).
     const healthTimer = window.setInterval(() => loadHealth({ silent: true }), 30000);
     const sessionsTimer = window.setInterval(() => loadSessions({ silent: true }), 15000);
 
@@ -267,47 +239,55 @@ export default function AdminDashboard() {
         {
           label: t("Total Users"),
           value: statsData.totalUsers,
-          icon: "👥",
+          icon: <Users className="w-5 h-5" />,
           color: C.brand.main,
         },
         {
           label: t("Active Exams"),
           value: statsData.activeExams,
-          icon: "📋",
+          icon: <ClipboardList className="w-5 h-5" />,
           color: C.ok.main,
         },
         {
           label: t("Submissions Today"),
           value: statsData.submissionsToday,
-          icon: "✔",
+          icon: <CheckCircle2 className="w-5 h-5" />,
           color: C.purple.main,
         },
         {
           label: t("Flagged Events"),
           value: statsData.flaggedEvents,
-          icon: "⚑",
+          icon: <Flag className="w-5 h-5" />,
           color: C.danger.main,
         },
       ]
     : [];
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-5 sm:space-y-6">
       <PageHeader
         title={t("System Dashboard")}
         subtitle={`Selasa, 1 September 2026 · ${user?.institution ?? "SMK TEKNOLOGI"}`}
         actions={
           <>
-            <Btn variant="primary" onClick={openExportModal}>⬇ {t("Export Exam Results")}</Btn>
-            <div className="flex gap-1 rounded-lg p-1" style={{ background: C.base.surfaceSoft }}>
+            <Btn variant="primary" onClick={openExportModal}>
+              <Download className="w-4 h-4" />
+              {t("Export Exam Results")}
+            </Btn>
+            <div
+              className="flex gap-1 rounded-xl p-1"
+              style={{ background: C.base.surfaceSoft, border: `1px solid ${C.base.border}`, boxShadow: S.inset }}
+            >
               {(["today", "week", "month"] as const).map((p) => (
                 <button
                   key={p}
+                  type="button"
                   onClick={() => setSelectedPeriod(p)}
-                  className="px-3 py-1.5 rounded-md text-xs font-medium capitalize transition-all"
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold capitalize transition-all min-h-[34px]"
                   style={{
                     background: selectedPeriod === p ? C.base.surface : "transparent",
                     color: selectedPeriod === p ? C.base.text : C.base.textMuted,
-                    boxShadow: selectedPeriod === p ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+                    boxShadow: selectedPeriod === p ? S.control : "none",
                   }}
                 >
                   {t(p)}
@@ -318,39 +298,79 @@ export default function AdminDashboard() {
         }
       />
 
-      {statCards.length > 0 && <DashboardStatsComponent cards={statCards} cols={4} />}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {loading && statCards.length === 0 ? (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          {[0, 1, 2, 3].map((k) => (
+            <div
+              key={k}
+              className="h-24 rounded-2xl animate-pulse"
+              style={{ background: C.base.surfaceSoft, border: `1px solid ${C.base.border}` }}
+            />
+          ))}
+        </div>
+      ) : (
+        statCards.length > 0 && <DashboardStatsComponent cards={statCards} cols={4} />
+      )}
+
+      <AiProviderPanel />
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 sm:gap-6">
         {/* Activity feed */}
         <div className="lg:col-span-2">
           <SectionCard
             title={t("Recent Activity")}
             right={
-              <span className="text-xs" style={{ color: C.base.textFaint }}>
+              <span
+                className="text-[11px] font-semibold px-2 py-0.5 rounded-md"
+                style={{ background: C.ok.bg, color: C.ok.dark }}
+              >
                 {t("Live")}
-                <span className="inline-block w-1.5 h-1.5 rounded-full ml-1.5 align-middle" style={{ background: C.ok.main }} />
               </span>
             }
             bodyStyle={{ padding: 0 }}
           >
-            <div className="divide-y">
+            <div className="divide-y" style={{ borderColor: C.base.borderLight }}>
               {activityData.map((a, i) => (
-                <div key={i} className="px-5 py-3 flex items-start gap-4 hover:bg-slate-50 transition-colors" style={{ borderColor: C.base.borderLight }}>
+                <div
+                  key={i}
+                  className="px-4 sm:px-5 py-3.5 flex items-start gap-3.5 cbt-row-hover transition-colors"
+                  style={{ borderColor: C.base.borderLight }}
+                >
                   <div
-                    className="mt-0.5 w-5 h-5 rounded-full flex items-center justify-center text-xs shrink-0"
+                    className="mt-0.5 w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
                     style={{
-                      background: a.type === "warning" ? C.warn.bg : a.type === "success" ? C.ok.bg : C.brand.bg,
-                      color: a.type === "warning" ? C.warn.main : a.type === "success" ? C.ok.main : C.brand.main,
+                      background:
+                        a.type === "warning" ? C.warn.bg : a.type === "success" ? C.ok.bg : C.brand.bg,
+                      color:
+                        a.type === "warning" ? C.warn.dark : a.type === "success" ? C.ok.dark : C.brand.dark,
                     }}
                   >
-                    {a.type === "warning" ? "!" : a.type === "success" ? "✓" : "i"}
+                    {a.type === "warning" ? (
+                      <AlertTriangle className="w-3.5 h-3.5" />
+                    ) : a.type === "success" ? (
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                    ) : (
+                      <Info className="w-3.5 h-3.5" />
+                    )}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-baseline justify-between gap-2">
-                      <span className="text-sm font-medium" style={{ color: C.base.text }}>{a.event}</span>
-                      <span className="text-xs shrink-0" style={{ color: C.base.textFaint, fontFamily: "var(--font-mono)" }}>{a.time}</span>
+                      <span className="text-sm font-semibold truncate" style={{ color: C.base.text }}>
+                        {a.event}
+                      </span>
+                      <span
+                        className="text-xs shrink-0 tabular-nums"
+                        style={{ color: C.base.textFaint, fontFamily: "var(--font-mono)" }}
+                      >
+                        {a.time}
+                      </span>
                     </div>
-                    <div className="text-xs mt-0.5" style={{ color: C.base.textMuted }}>{a.detail}</div>
-                    <div className="text-xs mt-0.5" style={{ color: C.base.textFaint }}>by {a.user_name}</div>
+                    <div className="text-xs mt-0.5" style={{ color: C.base.textMuted }}>
+                      {a.detail}
+                    </div>
+                    <div className="text-xs mt-0.5" style={{ color: C.base.textFaint }}>
+                      by {a.user_name}
+                    </div>
                   </div>
                 </div>
               ))}
@@ -365,37 +385,47 @@ export default function AdminDashboard() {
             right={
               <div className="flex items-center gap-2">
                 {healthUpdatedAt && (
-                  <span className="text-xs" style={{ color: C.base.textFaint, fontFamily: "var(--font-mono)" }}>
-                    {healthUpdatedAt.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                  <span
+                    className="text-xs tabular-nums"
+                    style={{ color: C.base.textFaint, fontFamily: "var(--font-mono)" }}
+                  >
+                    {healthUpdatedAt.toLocaleTimeString("id-ID", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      second: "2-digit",
+                    })}
                   </span>
                 )}
-                <span className="text-xs" style={{ color: C.base.textFaint }}>
-                  {t("Auto")}
-                  <span className="inline-block w-1.5 h-1.5 rounded-full ml-1.5 align-middle" style={{ background: C.ok.main }} />
-                </span>
                 <button
+                  type="button"
                   onClick={() => loadHealth()}
                   disabled={healthLoading}
-                  className="text-xs font-medium px-2 py-1 rounded transition-colors"
+                  className="text-xs font-semibold px-2.5 py-1 rounded-lg transition-colors inline-flex items-center gap-1.5 min-h-[30px]"
                   style={{
-                    background: C.base.borderLight,
-                    color: C.base.textMuted,
+                    background: C.base.surfaceSoft,
+                    color: C.base.textBody,
+                    border: `1px solid ${C.base.border}`,
                     cursor: healthLoading ? "wait" : "pointer",
                     opacity: healthLoading ? 0.6 : 1,
                   }}
                 >
-                  ⟳ {t("Refresh")}
+                  <RefreshCw className={`w-3 h-3 ${healthLoading ? "animate-spin" : ""}`} />
+                  {t("Refresh")}
                 </button>
               </div>
             }
             bodyStyle={{ padding: 0 }}
           >
-            <div className="px-5 py-3 space-y-2.5">
+            <div className="px-4 sm:px-5 py-3.5 space-y-2.5">
               {healthLoading && (
-                <div className="text-xs" style={{ color: C.base.textMuted }}>{t("Loading…")}</div>
+                <div className="text-xs" style={{ color: C.base.textMuted }}>
+                  {t("Loading…")}
+                </div>
               )}
               {healthError && !healthData && (
-                <div className="text-xs" style={{ color: C.warn.main }}>{healthError}</div>
+                <div className="text-xs" style={{ color: C.warn.dark }}>
+                  {healthError}
+                </div>
               )}
               {healthData && (
                 <>
@@ -435,71 +465,86 @@ export default function AdminDashboard() {
                     downLabel={t("Idle")}
                   />
                   <HealthRow
-                    name={t("AI (Ollama)")}
+                    name={`AI (${getAiProvider(healthData.ai.provider).label.split(" (")[0]})`}
                     ok={healthData.ai.ok}
                     state={
-                      !healthData.ai.checked
-                        ? "warn"
-                        : healthData.ai.ok && healthData.ai.modelAvailable
-                        ? "ok"
-                        : healthData.ai.ok
-                        ? "warn"
-                        : "down"
+                      healthData.ai.checked
+                        ? healthData.ai.ok && healthData.ai.modelAvailable
+                          ? "ok"
+                          : healthData.ai.ok
+                            ? "warn"
+                            : "down"
+                        : healthData.ai.ok && getAiProvider(healthData.ai.provider).hasBuiltInApiKey
+                          ? "ok"
+                          : "warn"
                     }
                     detail={
                       !healthData.ai.checked
                         ? `${healthData.ai.provider} · ${healthData.ai.model}`
                         : healthData.ai.ok
-                        ? `${healthData.ai.model} · ${healthData.ai.models} ${t("models")} · ${healthData.ai.latencyMs}ms`
-                        : `${healthData.ai.baseUrl} · ${healthData.ai.error ?? t("Unreachable")}`
+                          ? `${healthData.ai.model} · ${healthData.ai.models} ${t("models")} · ${healthData.ai.latencyMs}ms`
+                          : `${healthData.ai.baseUrl} · ${healthData.ai.error ?? t("Unreachable")}`
                     }
                     okLabel={t("Ready")}
-                    warnLabel={healthData.ai.checked && healthData.ai.ok ? t("Model missing") : t("Not verified")}
+                    warnLabel={
+                      healthData.ai.checked && healthData.ai.ok ? t("Model missing") : t("Not verified")
+                    }
                     downLabel={t("Offline")}
                   />
-                  {healthData.ai.availableModels && healthData.ai.availableModels.length > 0 && !healthData.ai.modelAvailable && (
-                    <div className="pt-1 text-xs leading-relaxed" style={{ color: C.warn.main }}>
-                      {t("Available models")}: {healthData.ai.availableModels.slice(0, 6).join(", ")}
-                      {healthData.ai.availableModels.length > 6 ? ` +${healthData.ai.availableModels.length - 6}` : ""}
-                    </div>
-                  )}
+                  {healthData.ai.availableModels &&
+                    healthData.ai.availableModels.length > 0 &&
+                    !healthData.ai.modelAvailable && (
+                      <div className="pt-1 text-xs leading-relaxed" style={{ color: C.warn.dark }}>
+                        {t("Available models")}: {healthData.ai.availableModels.slice(0, 6).join(", ")}
+                        {healthData.ai.availableModels.length > 6
+                          ? ` +${healthData.ai.availableModels.length - 6}`
+                          : ""}
+                      </div>
+                    )}
                   {healthData.ai.note && (
                     <div className="text-xs" style={{ color: C.base.textFaint }}>
                       {healthData.ai.note}
                     </div>
                   )}
                   {healthData.storage.diskFree != null && (
-                    <div className="pt-1 text-xs" style={{ color: C.base.textFaint }}>
-                      {t("Disk free")}: {formatBytes(healthData.storage.diskFree)} / {formatBytes(healthData.storage.diskTotal ?? 0)}
+                    <div className="pt-1 text-xs tabular-nums" style={{ color: C.base.textFaint }}>
+                      {t("Disk free")}: {formatBytes(healthData.storage.diskFree)} /{" "}
+                      {formatBytes(healthData.storage.diskTotal ?? 0)}
                     </div>
                   )}
                 </>
               )}
             </div>
           </SectionCard>
-          {/* Active Sessions Monitoring */}
+
           <SectionCard
             title={t("Active Sessions")}
             right={
               <div className="flex items-center gap-2">
                 {sessionsUpdatedAt && (
-                  <span className="text-xs" style={{ color: C.base.textFaint, fontFamily: "var(--font-mono)" }}>
-                    {sessionsUpdatedAt.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                  <span
+                    className="text-xs tabular-nums"
+                    style={{ color: C.base.textFaint, fontFamily: "var(--font-mono)" }}
+                  >
+                    {sessionsUpdatedAt.toLocaleTimeString("id-ID", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      second: "2-digit",
+                    })}
                   </span>
                 )}
-                <span className="text-xs" style={{ color: C.base.textFaint }}>
-                  {t("Auto")}
-                  <span className="inline-block w-1.5 h-1.5 rounded-full ml-1.5 align-middle" style={{ background: C.ok.main }} />
-                </span>
                 <button
+                  type="button"
                   onClick={() => loadSessions()}
-                  className="text-xs font-medium px-2 py-1 rounded transition-colors"
+                  className="text-xs font-semibold px-2.5 py-1 rounded-lg transition-colors inline-flex items-center gap-1.5 min-h-[30px]"
                   style={{
-                    background: C.base.borderLight,
-                    color: C.base.textMuted,
+                    background: C.base.surfaceSoft,
+                    color: C.base.textBody,
+                    border: `1px solid ${C.base.border}`,
                   }}
                 >
-                  ⟳ {t("Refresh")}
+                  <RefreshCw className="w-3 h-3" />
+                  {t("Refresh")}
                 </button>
               </div>
             }
@@ -507,35 +552,51 @@ export default function AdminDashboard() {
           >
             {sessionsData ? (
               <>
-                {/* Summary stats */}
-                <div className="px-5 py-3 flex items-center justify-between border-b" style={{ borderColor: C.base.borderLight }}>
+                <div
+                  className="px-4 sm:px-5 py-3 flex items-center justify-between border-b"
+                  style={{ borderColor: C.base.borderLight }}
+                >
                   <div className="flex items-center gap-3">
-                    <div className="text-2xl font-bold" style={{ color: C.brand.main }}>
+                    <div className="text-2xl font-bold tabular-nums" style={{ color: C.brand.dark }}>
                       {sessionsData.stats.activeUsers}
                     </div>
                     <div className="text-xs" style={{ color: C.base.textMuted }}>
                       {t("users online")}
                     </div>
                   </div>
-                  <div className="text-xs" style={{ color: C.base.textFaint }}>
+                  <div className="text-xs tabular-nums" style={{ color: C.base.textFaint }}>
                     {sessionsData.stats.activeSessions} {t("sessions")}
                   </div>
                 </div>
 
-                {/* Session list */}
                 {sessionTotal > 0 ? (
                   <>
-                    <div className="divide-y">
+                    <div className="divide-y" style={{ borderColor: C.base.borderLight }}>
                       {visibleSessions.map((s) => {
                         const key = sessionKey(s);
                         const busy = revokeBusy === key;
                         return (
-                          <div key={key} className="px-5 py-3 flex items-center justify-between hover:bg-slate-50 transition-colors" style={{ borderColor: C.base.borderLight }}>
+                          <div
+                            key={key}
+                            className="px-4 sm:px-5 py-3 flex items-center justify-between gap-2 cbt-row-hover transition-colors"
+                            style={{ borderColor: C.base.borderLight }}
+                          >
                             <div className="flex items-center gap-3 min-w-0">
-                              <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
+                              <div
+                                className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
                                 style={{
-                                  background: s.role === "super_admin" ? C.danger.bg : s.role === "teacher" ? C.brand.bg : C.ok.bg,
-                                  color: s.role === "super_admin" ? C.danger.main : s.role === "teacher" ? C.brand.main : C.ok.main,
+                                  background:
+                                    s.role === "super_admin"
+                                      ? C.danger.bg
+                                      : s.role === "teacher"
+                                        ? C.brand.bg
+                                        : C.ok.bg,
+                                  color:
+                                    s.role === "super_admin"
+                                      ? C.danger.text
+                                      : s.role === "teacher"
+                                        ? C.brand.dark
+                                        : C.ok.dark,
                                 }}
                               >
                                 {s.fullName.charAt(0).toUpperCase()}
@@ -544,24 +605,31 @@ export default function AdminDashboard() {
                                 <div className="text-sm font-medium truncate" style={{ color: C.base.text }}>
                                   {s.fullName}
                                 </div>
-                                <div className="text-xs" style={{ color: C.base.textMuted }}>
+                                <div className="text-xs truncate" style={{ color: C.base.textMuted }}>
                                   {s.username} · {t(s.role)}
                                 </div>
                               </div>
                             </div>
                             <div className="flex items-center gap-2 shrink-0">
-                              <span className="text-xs" style={{ color: C.base.textFaint, fontFamily: "var(--font-mono)" }}>
-                                {new Date(s.createdAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
+                              <span
+                                className="text-xs tabular-nums"
+                                style={{ color: C.base.textFaint, fontFamily: "var(--font-mono)" }}
+                              >
+                                {new Date(s.createdAt).toLocaleTimeString("id-ID", {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
                               </span>
                               {s.role !== "super_admin" && (
                                 <button
+                                  type="button"
                                   onClick={() => handleRevokeUser(s)}
                                   disabled={busy}
-                                  className="text-xs px-2 py-1 rounded transition-colors"
+                                  className="text-xs font-semibold px-2.5 py-1 rounded-lg transition-colors min-h-[30px]"
                                   style={{
-                                    background: busy ? C.base.borderLight : "transparent",
-                                    color: busy ? C.base.textFaint : C.danger.main,
-                                    border: `1px solid ${busy ? C.base.border : C.danger.bg}`,
+                                    background: busy ? C.base.borderLight : C.danger.bgLight,
+                                    color: busy ? C.base.textFaint : C.danger.text,
+                                    border: `1px solid ${busy ? C.base.border : C.danger.border}`,
                                     cursor: busy ? "wait" : "pointer",
                                   }}
                                 >
@@ -574,10 +642,8 @@ export default function AdminDashboard() {
                       })}
                     </div>
 
-                    {/* Paging controls — keeps the card short no matter how many
-                        devices are signed in at once. */}
                     <div
-                      className="px-5 py-3 flex flex-wrap items-center justify-between gap-3"
+                      className="px-4 sm:px-5 py-3 flex flex-wrap items-center justify-between gap-3 rounded-b-2xl"
                       style={{ borderTop: `1px solid ${C.base.borderLight}`, background: C.base.surfaceMuted }}
                     >
                       <label className="flex items-center gap-2 text-xs" style={{ color: C.base.textMuted }}>
@@ -589,7 +655,7 @@ export default function AdminDashboard() {
                             setSessionPage(1);
                           }}
                           aria-label={t("Show")}
-                          className="rounded-md px-2 py-1 text-xs outline-none"
+                          className="rounded-lg px-2 py-1 text-xs outline-none"
                           style={{
                             background: C.base.surface,
                             border: `1px solid ${C.base.border}`,
@@ -603,7 +669,7 @@ export default function AdminDashboard() {
                             </option>
                           ))}
                         </select>
-                        <span style={{ fontFamily: "var(--font-mono)" }}>
+                        <span className="tabular-nums" style={{ fontFamily: "var(--font-mono)" }}>
                           {sessionFrom}–{sessionTo} {t("of")} {sessionTotal}
                         </span>
                       </label>
@@ -624,8 +690,14 @@ export default function AdminDashboard() {
                         >
                           ‹ {t("Prev")}
                         </button>
-                        <span className="text-xs" style={{ color: C.base.textMuted, fontFamily: "var(--font-mono)" }}>
-                          {t("Page {page} / {total}", { page: sessionCurrentPage, total: sessionTotalPages })}
+                        <span
+                          className="text-xs tabular-nums"
+                          style={{ color: C.base.textMuted, fontFamily: "var(--font-mono)" }}
+                        >
+                          {t("Page {page} / {total}", {
+                            page: sessionCurrentPage,
+                            total: sessionTotalPages,
+                          })}
                         </span>
                         <button
                           type="button"
@@ -653,7 +725,7 @@ export default function AdminDashboard() {
 
                 {revokeMsg && (
                   <div className="px-5 py-3" style={{ borderTop: `1px solid ${C.base.borderLight}` }}>
-                    <Notice type={revokeMsg.type} icon={revokeMsg.type === "ok" ? "✓" : "⚠"}>{revokeMsg.text}</Notice>
+                    <Notice type={revokeMsg.type}>{revokeMsg.text}</Notice>
                   </div>
                 )}
               </>
@@ -665,20 +737,39 @@ export default function AdminDashboard() {
           </SectionCard>
 
           <SectionCard title={t("Active Exams")} bodyStyle={{ padding: 0 }}>
-            <div className="px-5 py-3 space-y-4">
+            <div className="px-4 sm:px-5 py-3.5 space-y-4">
               {activeExamsData.map((e, i) => (
                 <div key={e.id ?? i}>
-                  <div className="text-xs font-medium mb-1" style={{ color: C.base.text }}>{e.title}</div>
-                  <div className="text-xs mb-1.5 flex items-center justify-between" style={{ color: C.base.textFaint }}>
-                    <span>{e.teacher} · {new Date(e.start_time).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}–{new Date(e.end_time).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}</span>
+                  <div className="text-xs font-semibold mb-1" style={{ color: C.base.text }}>
+                    {e.title}
+                  </div>
+                  <div
+                    className="text-xs mb-1.5 flex items-center justify-between gap-2"
+                    style={{ color: C.base.textFaint }}
+                  >
+                    <span className="truncate">
+                      {e.teacher} ·{" "}
+                      {new Date(e.start_time).toLocaleTimeString("id-ID", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                      –
+                      {new Date(e.end_time).toLocaleTimeString("id-ID", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </span>
                     {(e.flagged ?? 0) > 0 && (
-                      <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: C.danger.bg, color: C.danger.main }}>
+                      <span
+                        className="text-[11px] font-semibold px-1.5 py-0.5 rounded shrink-0"
+                        style={{ background: C.danger.bg, color: C.danger.text }}
+                      >
                         {t("{n} flagged", { n: e.flagged ?? 0 }).replace("{n}", String(e.flagged ?? 0))}
                       </span>
                     )}
                   </div>
                   <div className="flex items-center gap-2">
-                    <div className="flex-1 h-1.5 rounded-full" style={{ background: C.base.border }}>
+                    <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: C.base.surfaceSoft }}>
                       <div
                         className="h-full rounded-full transition-all"
                         style={{
@@ -687,7 +778,9 @@ export default function AdminDashboard() {
                         }}
                       />
                     </div>
-                    <span className="text-xs shrink-0" style={{ color: C.base.textMuted }}>{e.completed ?? 0}/{e.student_count ?? 0}</span>
+                    <span className="text-xs shrink-0 tabular-nums" style={{ color: C.base.textMuted }}>
+                      {e.completed ?? 0}/{e.student_count ?? 0}
+                    </span>
                   </div>
                 </div>
               ))}
@@ -695,55 +788,74 @@ export default function AdminDashboard() {
           </SectionCard>
         </div>
       </div>
+
       {exportOpen && (
         <Modal
           title={t("Export Exam Results")}
           onClose={() => setExportOpen(false)}
           width={560}
-          overlay="rgba(15,23,42,0.5)"
           actions={
             <>
-              <Btn onClick={() => setExportOpen(false)} disabled={exportBusy} style={{ flex: 1 }}>{t("Tutup")}</Btn>
-              <Btn variant="primary" onClick={runExport} disabled={exportBusy || exportExams.length === 0} style={{ flex: 1 }}>
-                {exportBusy ? t("Menyiapkan file…") : `⬇ ${t("Unduh")}`}
+              <Btn onClick={() => setExportOpen(false)} disabled={exportBusy} style={{ flex: 1 }}>
+                {t("Tutup")}
+              </Btn>
+              <Btn
+                variant="primary"
+                onClick={runExport}
+                disabled={exportBusy || exportExams.length === 0}
+                style={{ flex: 1 }}
+              >
+                <Download className="w-4 h-4" />
+                {exportBusy ? t("Menyiapkan file…") : t("Unduh")}
               </Btn>
             </>
           }
         >
           <p className="text-sm" style={{ color: C.base.textMuted }}>
-            {t("Unduh hasil ujian sebagai tabel Excel (.xlsx) atau CSV yang tersusun rapi: data siswa, skor, nilai 0–100, predikat, dan statistik per ujian.")}
+            {t(
+              "Unduh hasil ujian sebagai tabel Excel (.xlsx) atau CSV yang tersusun rapi: data siswa, skor, nilai 0–100, predikat, dan statistik per ujian.",
+            )}
           </p>
 
           <div>
-            <label className="text-xs font-medium uppercase tracking-wide" style={{ color: C.base.textMuted }}>{t("Pilih ujian")}</label>
+            <label className="text-xs font-semibold uppercase tracking-wide" style={{ color: C.base.textMuted }}>
+              {t("Pilih ujian")}
+            </label>
             <select
               value={exportExamId}
               onChange={(e) => setExportExamId(e.target.value)}
-              className="mt-1 w-full px-3 py-2 rounded-lg text-sm outline-none"
+              className="mt-1.5 w-full px-3 py-2.5 rounded-xl text-sm outline-none min-h-[42px]"
               style={{ border: `1px solid ${C.base.border}`, background: C.base.surfaceMuted, color: C.base.text }}
             >
               <option value="all">{t("Semua ujian (rekap gabungan)")}</option>
               {exportExams.map((exam) => (
-                <option key={exam.id} value={exam.id}>{exam.title}</option>
+                <option key={exam.id} value={exam.id}>
+                  {exam.title}
+                </option>
               ))}
             </select>
             {exportExams.length === 0 && (
-              <p className="text-xs mt-1" style={{ color: C.warn.main }}>{t("Belum ada ujian yang dapat diekspor.")}</p>
+              <p className="text-xs mt-1.5" style={{ color: C.warn.dark }}>
+                {t("Belum ada ujian yang dapat diekspor.")}
+              </p>
             )}
           </div>
 
           <div>
-            <label className="text-xs font-medium uppercase tracking-wide" style={{ color: C.base.textMuted }}>{t("Format file")}</label>
-            <div className="mt-1 flex gap-1 rounded-lg p-1 w-fit" style={{ background: C.base.borderLight }}>
+            <label className="text-xs font-semibold uppercase tracking-wide" style={{ color: C.base.textMuted }}>
+              {t("Format file")}
+            </label>
+            <div className="mt-1.5 flex gap-1 rounded-xl p-1 w-fit" style={{ background: C.base.surfaceSoft, border: `1px solid ${C.base.border}` }}>
               {([["excel", "Excel (.xlsx)"], ["csv", "CSV (.csv)"]] as const).map(([fmt, label]) => (
                 <button
                   key={fmt}
+                  type="button"
                   onClick={() => setExportFormat(fmt)}
-                  className="px-3 py-1.5 rounded-md text-xs font-medium transition-all"
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
                   style={{
                     background: exportFormat === fmt ? C.base.surface : "transparent",
                     color: exportFormat === fmt ? C.base.text : C.base.textMuted,
-                    boxShadow: exportFormat === fmt ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+                    boxShadow: exportFormat === fmt ? S.control : "none",
                   }}
                 >
                   {label}
@@ -752,9 +864,7 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          {exportMsg && (
-            <Notice type={exportMsg.type} icon={exportMsg.type === "ok" ? "✓" : "⚠"}>{exportMsg.text}</Notice>
-          )}
+          {exportMsg && <Notice type={exportMsg.type}>{exportMsg.text}</Notice>}
         </Modal>
       )}
     </div>

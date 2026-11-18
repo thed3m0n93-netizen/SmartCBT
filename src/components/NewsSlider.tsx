@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { resolveAssetUrl, type NewsRow } from "../lib/api";
+import { C } from "../styles/tokens";
 import { formatNewsDate, newsCategoryStyle, newsTeaser } from "./NewsCard";
 
 /** Auto-advance interval. Long enough to read a headline. */
@@ -79,11 +80,11 @@ return (
       onBlur={() => setPaused(false)}
       onTouchStart={onTouchStart}
       onTouchEnd={onTouchEnd}
-      className="rounded-xl overflow-hidden outline-none"
-      style={{ background: "#0f172a", border: "1px solid #1e293b" }}
+      className="rounded-2xl overflow-hidden outline-none"
+      style={{ background: "#0F172A", border: `1px solid ${C.base.border}`, boxShadow: "var(--shadow-card)" }}
     >
       {/* Fixed height so the block never resizes between articles. */}
-      <div className="relative overflow-hidden" style={{ height: 168 }}>
+      <div className="relative overflow-hidden" style={{ height: 176 }}>
         <div
           className="flex h-full transition-transform duration-500 ease-out"
           style={{ transform: `translateX(-${index * 100}%)` }}
@@ -112,7 +113,7 @@ return (
                   <div
                     className="absolute inset-0"
                     style={{
-                      background: `linear-gradient(135deg, ${cat.color} 0%, #0f172a 100%)`,
+                      background: `linear-gradient(135deg, #1E3A8A 0%, #0F172A 100%)`,
                     }}
                   />
                 )}
@@ -121,14 +122,14 @@ return (
                   className="absolute inset-0"
                   style={{
                     background:
-                      "linear-gradient(180deg, rgba(15,23,42,0.25) 0%, rgba(15,23,42,0.88) 100%)",
+                      "linear-gradient(180deg, rgba(15,23,42,0.28) 0%, rgba(15,23,42,0.90) 100%)",
                   }}
                 />
                 <div className="relative h-full flex flex-col justify-end p-4 sm:p-5">
                   <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
                     <span
                       className="text-[11px] font-semibold px-2 py-0.5 rounded-full"
-                      style={{ background: cat.color, color: "#fff" }}
+                      style={{ background: "rgba(37,99,235,0.88)", color: "#FFFFFF" }}
                     >
                       {cat.label}
                     </span>

@@ -36,10 +36,12 @@ import BankCard, {
   computeBankStats,
   emptyBankStats,
 } from "../../components/BankCard";
+import { BookOpen, FileSpreadsheet, FolderKanban, Sparkles, Upload, X } from "lucide-react";
 import { Btn, Chip, Card, SectionCard, controlStyle } from "../../components/ui";
 import { TablePagination } from "../../components/DataTable";
 import { useDataTable, type Accessors } from "../../hooks/useDataTable";
-import { C, R, alpha } from "../../styles/tokens";
+import { C, R, S, alpha } from "../../styles/tokens";
+import AiProviderPanel, { AiProviderInlineChip } from "../../components/AiProviderWidget";
 
 /** UI type → DB `question_type` enum. */
 const DB_TYPE: Record<QType, string> = {
@@ -347,6 +349,7 @@ export default function QuestionBankPage() {
 
   // Import / export state.
   const [showImportModal, setShowImportModal] = useState(false);
+  const [importModalTab, setImportModalTab] = useState<"ai" | "file">("ai");
   const [importBankId, setImportBankId] = useState("");
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importType, setImportType] = useState<"excel" | "csv" | "word" | "qti">("excel");
@@ -683,6 +686,7 @@ export default function QuestionBankPage() {
 
   /** Open the import modal with this bank pre-selected as the target. */
   function openImportForBank(bankId: string) {
+    setImportModalTab("file");
     setImportBankId(bankId);
     setImportType("excel");
     setImportFile(null);
@@ -757,6 +761,7 @@ export default function QuestionBankPage() {
 
   async function handleImportFile(file: File) {
     const detected = detectImportType(file.name);
+    setImportModalTab("file");
     setImportFile(file);
     setImportType(detected);
     setImportBankId(banks[0]?.id ?? "");
@@ -958,14 +963,14 @@ export default function QuestionBankPage() {
           <div className="flex gap-2 relative">
             <button
               onClick={() => setShowToolMenu(!showToolMenu)}
-              className="px-4 py-2 rounded-lg text-sm font-medium border transition-all hover:bg-slate-50"
-              style={{ border: `1px solid ${C.base.border}`, color: C.base.textBody }}
+              className="px-4 py-2 rounded-xl text-sm font-medium border transition-all cbt-row-hover min-h-[40px]"
+              style={{ border: `1px solid ${C.base.border}`, color: C.base.textBody, background: C.base.surface, boxShadow: S.control }}
             >
               ⇅ Import / Export
             </button>
             {showToolMenu && (
-              <div className="absolute right-0 top-full mt-1 z-[120] w-56 rounded-xl shadow-lg"
-                style={{ background: C.base.surface, border: `1px solid ${C.base.border}`, zIndex: 120 }}
+              <div className="absolute right-0 top-full mt-1 z-[120] w-56 rounded-2xl p-1"
+                style={{ background: C.base.surface, border: `1px solid ${C.base.border}`, zIndex: 120, boxShadow: S.elevated }}
               >
                 <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide" style={{ color: C.base.textFaint }}>
                   Import
@@ -982,12 +987,12 @@ export default function QuestionBankPage() {
                     };
                     input.click();
                   }}
-                  className="w-full text-left px-3 py-2 text-xs rounded-lg hover:bg-slate-50"
+                  className="w-full text-left px-3 py-2 text-xs rounded-lg cbt-row-hover"
                   style={{ color: C.base.textMenu }}
                 >
                   ↑ Import Soal dari File…
                 </button>
-                <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide pt-4 mt-1 border-t" style={{ color: C.base.textFaint, borderColor: C.base.border }}>
+                <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide pt-3 mt-1 border-t" style={{ color: C.base.textFaint, borderColor: C.base.border }}>
                   Export
                 </div>
                 {([
@@ -998,25 +1003,25 @@ export default function QuestionBankPage() {
                   <button
                     key={o.fmt}
                     onClick={() => handleExport(o.fmt)}
-                    className="w-full text-left px-3 py-2 text-xs rounded-lg hover:bg-slate-50"
+                    className="w-full text-left px-3 py-2 text-xs rounded-lg cbt-row-hover"
                     style={{ color: C.base.textMenu }}
                   >
                     {o.label}
                   </button>
                 ))}
-                <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide pt-4 mt-1 border-t" style={{ color: C.base.textFaint, borderColor: C.base.border }}>
+                <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide pt-3 mt-1 border-t" style={{ color: C.base.textFaint, borderColor: C.base.border }}>
                   Template
                 </div>
                 <button
                   onClick={() => handleDownloadTemplate("excel")}
-                  className="w-full text-left px-3 py-2 text-xs rounded-lg hover:bg-slate-50"
+                  className="w-full text-left px-3 py-2 text-xs rounded-lg cbt-row-hover"
                   style={{ color: C.base.textMenu }}
                 >
                   ⬇ Template Excel (.xlsx)
                 </button>
                 <button
                   onClick={() => handleDownloadTemplate("word")}
-                  className="w-full text-left px-3 py-2 text-xs rounded-lg hover:bg-slate-50"
+                  className="w-full text-left px-3 py-2 text-xs rounded-lg cbt-row-hover"
                   style={{ color: C.base.textMenu }}
                 >
                   ⬇ Template Word (.docx)
@@ -1031,14 +1036,26 @@ export default function QuestionBankPage() {
       >
       </SectionCard>
 
+      {/* AI Provider instant access & switcher (Teacher dashboard) */}
+      <AiProviderPanel
+        compact
+        onOpenAiGenerate={() => {
+          setImportModalTab("ai");
+          setImportBankId(selectedBankId || banks[0]?.id || "");
+          setImportResult(null);
+          setImportError(null);
+          setShowImportModal(true);
+        }}
+      />
+
       {/* Modern question-bank card grid */}
       <div className="rounded-xl" style={{ background: C.base.surface, border: `1px solid ${C.base.border}` }}>
         <button
           onClick={() => setShowBanks((v) => !v)}
           className="w-full flex items-center justify-between px-5 py-3.5"
         >
-          <div className="flex items-center gap-3">
-            <span className="text-base">🗂️</span>
+          <div className="flex items-center gap-2.5">
+            <FolderKanban className="w-4 h-4 shrink-0" style={{ color: C.brand.dark }} />
             <span className="text-sm font-semibold" style={{ color: C.base.text }}>
               {t("Bank Soal")} ({banks.length})
             </span>
@@ -1093,8 +1110,8 @@ export default function QuestionBankPage() {
                   setShowBankModal(true);
                 }
               }}
-              className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all hover:opacity-90"
-              style={{ background: C.brand.main, color: C.base.surface }}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all hover:opacity-90"
+              style={{ background: C.brand.main, color: "#FFFFFF" }}
             >
               + {t("Bank Baru")}
             </span>
@@ -1105,17 +1122,17 @@ export default function QuestionBankPage() {
         </button>
 
         {showBanks && (
-          <div className="px-5 pb-5">
+          <div className="px-4 sm:px-5 pb-5">
             {banks.length > 1 && (
               <div className="flex flex-wrap gap-1.5 mb-4">
                 {["All", ...Array.from(new Set(banks.map((b) => b.subject_name ?? "").filter((s) => s.length > 0)))].map((s) => (
                   <button
                     key={s}
                     onClick={() => setBankSubjectFilter(s)}
-                    className="px-2.5 py-1 rounded-full text-xs font-medium transition-all"
+                    className="px-3 py-1.5 rounded-full text-xs font-medium transition-all"
                     style={{
                       background: bankSubjectFilter === s ? C.base.dark : C.base.surfaceSoft,
-                      color: bankSubjectFilter === s ? C.base.textOnDark : C.base.textMenu,
+                      color: bankSubjectFilter === s ? "#FFFFFF" : C.base.textMenu,
                     }}
                   >
                     {s}
@@ -1124,8 +1141,8 @@ export default function QuestionBankPage() {
               </div>
             )}
             {banks.length === 0 ? (
-              <div className="text-center py-8 rounded-lg" style={{ background: C.base.surfaceMuted }}>
-                <div className="text-3xl mb-2">🗂️</div>
+              <div className="text-center py-8 rounded-xl flex flex-col items-center" style={{ background: C.base.surfaceMuted }}>
+                <FolderKanban className="w-8 h-8 mb-2" style={{ color: C.base.textFaint }} />
                 <p className="text-sm font-medium" style={{ color: C.base.text }}>
                   {t("Belum ada bank soal — buat bank pertama untuk mulai menambah soal.")}
                 </p>
@@ -1153,9 +1170,9 @@ export default function QuestionBankPage() {
         )}
       </div>
 
-      <div className="flex gap-5 h-[calc(100vh-280px)] min-h-[560px] overflow-visible relative">
+      <div className="flex flex-col lg:flex-row gap-5 lg:h-[calc(100vh-280px)] lg:min-h-[560px] overflow-visible relative">
         {/* Left: filters + list */}
-        <div className="flex flex-col gap-4 w-[500px] shrink-0 overflow-visible relative z-10">
+        <div className="flex flex-col gap-4 w-full lg:w-[440px] xl:w-[500px] lg:shrink-0 overflow-visible relative z-10">
           {/* Search */}
           <input
             type="text"
@@ -1250,7 +1267,7 @@ export default function QuestionBankPage() {
                   <button
                     key={q.id}
                     onClick={() => setSelectedQ(q)}
-                    className="w-full text-left px-4 py-4 hover:bg-slate-50 transition-colors"
+                    className="w-full text-left px-4 py-4 cbt-row-hover transition-colors"
                     style={{
                       background: selectedQ?.id === q.id ? C.brand.bg : undefined,
                       borderLeft: selectedQ?.id === q.id ? `3px solid ${C.brand.main}` : "3px solid transparent",
@@ -1401,7 +1418,7 @@ export default function QuestionBankPage() {
                         className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
                         style={{
                           background: isCorrect ? C.ok.main : C.base.border,
-                          color: isCorrect ? C.base.surface : C.base.textMuted,
+                          color: isCorrect ? "#FFFFFF" : C.base.textMuted,
                         }}
                       >
                         {["A", "B", "C", "D", "E"][i]}
@@ -1434,7 +1451,7 @@ export default function QuestionBankPage() {
                     >
                       <div
                         className="w-5 h-5 rounded flex items-center justify-center text-xs shrink-0"
-                        style={{ background: isCorrect ? C.ok.main : C.base.border, color: isCorrect ? C.base.surface : C.base.textMuted }}
+                        style={{ background: isCorrect ? C.ok.main : C.base.border, color: isCorrect ? "#FFFFFF" : C.base.textMuted }}
                       >
                         {isCorrect ? "✓" : ""}
                       </div>
@@ -1507,9 +1524,9 @@ export default function QuestionBankPage() {
             )}
           </div>
         ) : (
-          <div className="flex-1 rounded-xl flex items-center justify-center" style={{ background: C.base.surface, border: `1px solid ${C.base.border}` }}>
-            <div className="text-center">
-              <div className="text-4xl mb-3">📚</div>
+          <div className="flex-1 rounded-2xl flex items-center justify-center min-h-[200px]" style={{ background: C.base.surface, border: `1px solid ${C.base.border}`, boxShadow: S.card }}>
+            <div className="text-center flex flex-col items-center">
+              <BookOpen className="w-9 h-9 mb-2.5" style={{ color: C.base.textFaint }} />
               <p className="text-sm" style={{ color: C.base.textFaint }}>Select a question to preview</p>
             </div>
           </div>
@@ -1518,9 +1535,9 @@ export default function QuestionBankPage() {
 
       {/* Create Question Modal */}
       {showCreate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.4)" }}>
-          <Card pad={false} style={{ maxWidth: 720 }}>
-            <div className="p-6 max-h-[90vh] overflow-y-auto rounded-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" style={{ background: S.overlay }}>
+          <Card pad={false} style={{ maxWidth: 720, width: "100%" }}>
+            <div className="p-5 sm:p-6 max-h-[90dvh] overflow-y-auto overscroll-contain rounded-t-3xl sm:rounded-2xl safe-area-bottom" onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between mb-5">
                 <h3 className="font-bold text-lg" style={{ color: C.base.text, fontFamily: "var(--font-serif)" }}>
                   {editingId ? "Edit Question" : "Create New Question"}
@@ -1528,8 +1545,8 @@ export default function QuestionBankPage() {
                 <button type="button" onClick={() => setShowCreate(false)} style={{ color: C.base.textFaint }}>✕</button>
               </div>
               <div className="space-y-4">
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="col-span-2">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="sm:col-span-2">
                     <label className="block text-xs font-medium mb-1.5" style={{ color: C.base.textBody }}>Question Bank</label>
                     <select value={form.bankId} onChange={(e) => setField("bankId", e.target.value)} className="w-full px-3 py-2 rounded-lg text-sm outline-none" style={{ ...controlStyle }}>
                       <option value="">— Select a bank —</option>
@@ -1569,7 +1586,7 @@ export default function QuestionBankPage() {
                       return (
                         <div key={i} className="flex items-center gap-2">
                           <span className="w-7 text-[11px] font-bold shrink-0" style={{ color: C.base.textFaint }}>{i + 1}.</span>
-                          <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0" style={{ background: checked ? C.ok.main : C.base.surfaceSoft, color: checked ? C.base.surface : C.base.textMuted }}>{letter}</div>
+                          <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0" style={{ background: checked ? C.ok.main : C.base.surfaceSoft, color: checked ? "#FFFFFF" : C.base.textMuted }}>{letter}</div>
                           <input type="text" value={text} onChange={(e) => { const next = [...form.choices]; next[i] = e.target.value; setField("choices", next); }} placeholder={`Option ${letter}`} className="flex-1 px-3 py-2 rounded-lg text-sm outline-none" style={{ ...controlStyle }} />
                           <input type={newType === "single" ? "radio" : "checkbox"} checked={checked} onChange={(e) => {
                             if (newType === "single") {
@@ -1613,7 +1630,7 @@ export default function QuestionBankPage() {
                 )}
 
                 {newType === "essay" && (
-                  <div className="p-3 rounded-lg text-xs" style={{ background: "#F8FAFC", border: "1px solid #e2e8f0", color: "#64748b" }}>
+                  <div className="p-3 rounded-xl text-xs" style={{ background: C.base.surfaceMuted, border: `1px solid ${C.base.border}`, color: C.base.textMuted }}>
                     Essay questions are graded manually — no answer options or key required.
                   </div>
                 )}
@@ -1736,21 +1753,23 @@ export default function QuestionBankPage() {
 
       {/* New question bank modal */}
       {showBankModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(15,23,42,0.45)" }} onClick={() => setShowBankModal(false)}>
-          <Card pad={false} style={{ maxWidth: 480 }}>
-            <div className="p-6 rounded-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" style={{ background: S.overlay }} onClick={() => setShowBankModal(false)}>
+          <Card pad={false} style={{ maxWidth: 480, width: "100%" }}>
+            <div className="p-5 sm:p-6 max-h-[90dvh] overflow-y-auto overscroll-contain rounded-t-2xl sm:rounded-2xl safe-area-bottom" onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between mb-5">
                 <h3 className="font-bold text-lg" style={{ color: C.base.text, fontFamily: "var(--font-serif)" }}>New Question Bank</h3>
-                <button type="button" onClick={() => setShowBankModal(false)} style={{ color: C.base.textFaint }}>✕</button>
+                <button type="button" onClick={() => setShowBankModal(false)} className="w-9 h-9 rounded-xl flex items-center justify-center cbt-row-hover" style={{ color: C.base.textFaint }} aria-label="Close">
+                  <X className="w-4 h-4" />
+                </button>
               </div>
               <div className="space-y-4">
                 <div>
                   <label className="block text-xs font-medium mb-1.5" style={{ color: C.base.textBody }}>Bank Title</label>
-                  <input type="text" value={bankForm.title} onChange={(e) => setBankForm((f) => ({ ...f, title: e.target.value }))} placeholder="e.g. Bank Soal UAS Matematika XII" className="w-full px-3 py-2 rounded-lg text-sm outline-none" style={{ ...controlStyle }} />
+                  <input type="text" value={bankForm.title} onChange={(e) => setBankForm((f) => ({ ...f, title: e.target.value }))} placeholder="e.g. Bank Soal UAS Matematika XII" className="w-full px-3 py-2 rounded-lg text-base sm:text-sm outline-none" style={{ ...controlStyle }} />
                 </div>
                 <div>
                   <label className="block text-xs font-medium mb-1.5" style={{ color: C.base.textBody }}>Subject</label>
-                  <select value={bankForm.subjectId} onChange={(e) => setBankForm((f) => ({ ...f, subjectId: Number(e.target.value) }))} className="w-full px-3 py-2 rounded-lg text-sm outline-none" style={{ ...controlStyle }}>
+                  <select value={bankForm.subjectId} onChange={(e) => setBankForm((f) => ({ ...f, subjectId: Number(e.target.value) }))} className="w-full px-3 py-2 rounded-lg text-base sm:text-sm outline-none" style={{ ...controlStyle }}>
                     <option value={0}>— Select a subject —</option>
                     {subjects.map((s) => (
                       <option key={s.id} value={s.id}>{s.subject_name} ({s.subject_code})</option>
@@ -1758,9 +1777,9 @@ export default function QuestionBankPage() {
                   </select>
                 </div>
               </div>
-              <div className="flex gap-3 mt-6">
-                <Btn variant="ghost" onClick={() => setShowBankModal(false)}>Cancel</Btn>
-                <Btn variant="primary" disabled={savingBank} onClick={saveBank}>{savingBank ? "Saving…" : "Create Bank"}</Btn>
+              <div className="flex flex-col-reverse sm:flex-row gap-2.5 mt-6">
+                <Btn variant="ghost" onClick={() => setShowBankModal(false)} className="w-full sm:w-auto">Cancel</Btn>
+                <Btn variant="primary" disabled={savingBank} onClick={saveBank} className="w-full sm:w-auto">{savingBank ? "Saving…" : "Create Bank"}</Btn>
               </div>
             </div>
           </Card>
@@ -1769,21 +1788,23 @@ export default function QuestionBankPage() {
 
       {/* Edit question bank modal (rename / move subject) */}
       {showEditBankModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(15,23,42,0.45)" }} onClick={() => setShowEditBankModal(false)}>
-          <Card pad={false} style={{ maxWidth: 480 }}>
-            <div className="p-6 rounded-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" style={{ background: S.overlay }} onClick={() => setShowEditBankModal(false)}>
+          <Card pad={false} style={{ maxWidth: 480, width: "100%" }}>
+            <div className="p-5 sm:p-6 max-h-[90dvh] overflow-y-auto overscroll-contain rounded-t-2xl sm:rounded-2xl safe-area-bottom" onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between mb-5">
                 <h3 className="font-bold text-lg" style={{ color: C.base.text, fontFamily: "var(--font-serif)" }}>{t("Edit Bank Soal")}</h3>
-                <button type="button" onClick={() => setShowEditBankModal(false)} style={{ color: C.base.textFaint }}>✕</button>
+                <button type="button" onClick={() => setShowEditBankModal(false)} className="w-9 h-9 rounded-xl flex items-center justify-center cbt-row-hover" style={{ color: C.base.textFaint }} aria-label="Close">
+                  <X className="w-4 h-4" />
+                </button>
               </div>
               <div className="space-y-4">
                 <div>
                   <label className="block text-xs font-medium mb-1.5" style={{ color: C.base.textBody }}>Bank Title</label>
-                  <input type="text" value={editBankForm.title} onChange={(e) => setEditBankForm((f) => ({ ...f, title: e.target.value }))} placeholder="e.g. Bank Soal UAS Matematika XII" className="w-full px-3 py-2 rounded-lg text-sm outline-none" style={{ ...controlStyle }} />
+                  <input type="text" value={editBankForm.title} onChange={(e) => setEditBankForm((f) => ({ ...f, title: e.target.value }))} placeholder="e.g. Bank Soal UAS Matematika XII" className="w-full px-3 py-2 rounded-lg text-base sm:text-sm outline-none" style={{ ...controlStyle }} />
                 </div>
                 <div>
                   <label className="block text-xs font-medium mb-1.5" style={{ color: C.base.textBody }}>Subject</label>
-                  <select value={editBankForm.subjectId} onChange={(e) => setEditBankForm((f) => ({ ...f, subjectId: Number(e.target.value) }))} className="w-full px-3 py-2 rounded-lg text-sm outline-none" style={{ ...controlStyle }}>
+                  <select value={editBankForm.subjectId} onChange={(e) => setEditBankForm((f) => ({ ...f, subjectId: Number(e.target.value) }))} className="w-full px-3 py-2 rounded-lg text-base sm:text-sm outline-none" style={{ ...controlStyle }}>
                     <option value={0}>— Select a subject —</option>
                     {subjects.map((s) => (
                       <option key={s.id} value={s.id}>{s.subject_name} ({s.subject_code})</option>
@@ -1791,93 +1812,161 @@ export default function QuestionBankPage() {
                   </select>
                 </div>
               </div>
-              <div className="flex gap-3 mt-6">
-                <Btn variant="ghost" onClick={() => setShowEditBankModal(false)}>Cancel</Btn>
-                <Btn variant="primary" disabled={savingEditBank} onClick={saveEditBank}>{savingEditBank ? "Saving…" : t("Simpan Perubahan")}</Btn>
+              <div className="flex flex-col-reverse sm:flex-row gap-2.5 mt-6">
+                <Btn variant="ghost" onClick={() => setShowEditBankModal(false)} className="w-full sm:w-auto">Cancel</Btn>
+                <Btn variant="primary" disabled={savingEditBank} onClick={saveEditBank} className="w-full sm:w-auto">{savingEditBank ? "Saving…" : t("Simpan Perubahan")}</Btn>
               </div>
             </div>
           </Card>
         </div>
       )}
 
-      {/* Import Questions Modal */}
+      {/* Import & AI Generate Questions Modal (sticky header + scrollable body + sticky CTA footer) */}
       {showImportModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ background: "rgba(15,23,42,0.45)" }} onClick={() => setShowImportModal(false)}>
-          <Card pad={false} style={{ maxWidth: 480 }}>
-            <div className="p-6 rounded-xl" onClick={(e) => e.stopPropagation()}>
-              <div className="flex items-center justify-between mb-5">
-                <h3 className="font-bold text-lg" style={{ color: C.base.text, fontFamily: "var(--font-serif)" }}>Import Soal</h3>
-                <button type="button" onClick={() => setShowImportModal(false)} style={{ color: C.base.textFaint }}>✕</button>
+        <div
+          className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4 backdrop-blur-xs"
+          style={{ background: S.overlay }}
+          onClick={() => setShowImportModal(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={importModalTab === "ai" ? t("Generate Soal AI") : t("Import Soal")}
+            onClick={(e) => e.stopPropagation()}
+            className="w-full sm:max-w-[580px] max-h-[92dvh] sm:max-h-[88dvh] flex flex-col rounded-t-3xl sm:rounded-2xl overflow-hidden safe-area-bottom"
+            style={{
+              background: C.base.surfaceElevated,
+              border: `1px solid ${C.base.border}`,
+              boxShadow: S.elevated,
+            }}
+          >
+            {/* Mobile drag handle + Sticky modal header */}
+            <div
+              className="shrink-0 px-4 sm:px-6 pt-2.5 sm:pt-4 pb-3.5 border-b space-y-3"
+              style={{ background: C.base.surfaceMuted, borderColor: C.base.borderLight }}
+            >
+              <div className="sm:hidden flex justify-center">
+                <div className="w-10 h-1 rounded-full" style={{ background: C.base.border }} />
               </div>
 
-              <div className="space-y-4">
-                {importFile && (
-                  <Chip color={C.base.textMenu} style={{ background: C.base.surfaceSoft }}>
-                    <span style={{ fontSize: 14 }}>📄</span>
-                    <span className="text-xs font-medium truncate flex-1">{importFile.name}</span>
-                    <span className="text-[10px] font-bold uppercase" style={{ color: C.base.textFaint }}>{importType.toUpperCase()}</span>
-                  </Chip>
-                )}
-
-                <div>
-                  <label className="block text-xs font-medium mb-1.5" style={{ color: C.base.textBody }}>Format</label>
-                  <div className="flex flex-wrap gap-2">
-                    {(["excel", "csv", "word", "qti"] as const).map((fmt) => (
-                      <Chip key={fmt} active={importType === fmt} color={C.brand.main} onClick={() => setImportType(fmt)}>
-                        {fmt === "excel" ? "Excel" : fmt === "csv" ? "CSV" : fmt === "word" ? "Word" : "QTI"}
-                      </Chip>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium mb-1.5" style={{ color: C.base.textBody }}>Target Question Bank</label>
-                  {banks.length === 0 ? (
-                    <p className="text-xs" style={{ color: "#dc2626" }}>No question bank yet — create one first.</p>
-                  ) : (
-                    <select value={importBankId} onChange={(e) => setImportBankId(e.target.value)} className="w-full px-3 py-2 rounded-lg text-sm outline-none" style={{ ...controlStyle }}>
-                      {banks.map((b) => (
-                        <option key={b.id} value={b.id}>{b.title}</option>
-                      ))}
-                    </select>
-                  )}
-                </div>
-
-                <div className="flex items-center justify-between gap-2">
-                  <div className="text-[11px] font-medium" style={{ color: C.base.textFaint }}>
-                    Dokumen upload
-                  </div>
-                  <button
-                    type="button"
-                    onClick={openImportFilePicker}
-                    className="px-2.5 py-1.5 rounded-md text-[11px] font-semibold border"
-                    style={{ background: C.base.surface, color: C.base.textBody, borderColor: C.base.border }}
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <h3
+                    className="font-bold text-base sm:text-lg leading-tight truncate"
+                    style={{ color: C.base.text, fontFamily: "var(--font-serif)" }}
                   >
-                    Upload
-                  </button>
+                    {importModalTab === "ai" ? t("Generate Soal AI") : t("Import Soal dari File")}
+                  </h3>
+                  <p className="text-xs mt-0.5 truncate" style={{ color: C.base.textMuted }}>
+                    {importModalTab === "ai"
+                      ? t("Buat soal otomatis ke Bank Soal menggunakan provider AI aktif.")
+                      : t("Unggah berkas Excel, CSV, Word, atau QTI XML ke Bank Soal.")}
+                  </p>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setShowImportModal(false)}
+                  className="w-10 h-10 -mr-1.5 rounded-xl flex items-center justify-center cbt-row-hover shrink-0"
+                  style={{ color: C.base.textMuted }}
+                  aria-label={t("Tutup")}
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
 
-                <div className="rounded-lg p-3" style={{ background: C.base.surfaceMuted, border: `1px solid ${C.base.border}` }}>
-                  <div className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: C.base.textFaint }}>
-                    AI Import
-                  </div>
-                  <textarea
-                    rows={4}
-                    value={importPrompt}
-                    placeholder="Contoh: Buatkan 10 soal pilihan ganda untuk Cyber Security untuk SMK kelas XII. TIPS : Pastikan materi sesuai tingkat, semester, dan topik siswa, serta sesuaikan dengan kurikulum dan tujuan pembelajaran."
-                    onChange={(e) => setImportPrompt(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg text-sm outline-none resize-none"
-                    style={{ ...controlStyle, background: C.base.surface, color: C.base.text }}
-                  />
-                  <div className="mt-2 text-[11px]" style={{ color: C.base.textFaint }}>
-                    Tips: materi harus cocok dengan tingkat dan semester siswa, serta topik lain yang relevan untuk kurikulum.
+              {/* Segmented mode switch */}
+              <div
+                className="grid grid-cols-2 gap-1 p-1 rounded-xl"
+                style={{ background: C.base.surfaceSoft, border: `1px solid ${C.base.border}`, boxShadow: S.inset }}
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    setImportModalTab("ai");
+                    setImportError(null);
+                  }}
+                  className="px-3 py-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all min-h-[38px]"
+                  style={{
+                    background: importModalTab === "ai" ? C.base.surface : "transparent",
+                    color: importModalTab === "ai" ? C.brand.dark : C.base.textMuted,
+                    boxShadow: importModalTab === "ai" ? S.control : "none",
+                  }}
+                >
+                  <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate">{t("Generate Soal AI")}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setImportModalTab("file");
+                    setImportError(null);
+                  }}
+                  className="px-3 py-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all min-h-[38px]"
+                  style={{
+                    background: importModalTab === "file" ? C.base.surface : "transparent",
+                    color: importModalTab === "file" ? C.brand.dark : C.base.textMuted,
+                    boxShadow: importModalTab === "file" ? S.control : "none",
+                  }}
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate">{t("Import File")}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Scrollable body */}
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 sm:px-6 py-4 space-y-4">
+              {/* Target Bank */}
+              <div>
+                <label className="block text-xs font-semibold mb-1.5" style={{ color: C.base.textBody }}>
+                  {t("Target Bank Soal")}
+                </label>
+                {banks.length === 0 ? (
+                  <p className="text-xs" style={{ color: C.danger.text }}>
+                    {t("Belum ada bank soal — buat bank soal terlebih dahulu.")}
+                  </p>
+                ) : (
+                  <select
+                    value={importBankId}
+                    onChange={(e) => setImportBankId(e.target.value)}
+                    className="w-full min-w-0 px-3 py-2.5 rounded-xl text-base sm:text-sm outline-none min-h-[42px]"
+                    style={{ ...controlStyle }}
+                  >
+                    {banks.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.title}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              {importModalTab === "ai" ? (
+                <div className="space-y-4">
+                  <AiProviderInlineChip compact />
+
+                  <div>
+                    <label className="block text-xs font-semibold mb-1.5" style={{ color: C.base.textBody }}>
+                      {t("Prompt / Topik Soal")}
+                    </label>
+                    <textarea
+                      rows={4}
+                      value={importPrompt}
+                      placeholder="Contoh: Buatkan 10 soal pilihan ganda tentang Cyber Security untuk SMK kelas XII sesuai kurikulum merdeka."
+                      onChange={(e) => setImportPrompt(e.target.value)}
+                      className="w-full px-3 py-2.5 rounded-xl text-base sm:text-sm outline-none resize-y min-h-[104px]"
+                      style={{ ...controlStyle, background: C.base.surface, color: C.base.text }}
+                    />
+                    <p className="mt-1.5 text-[11px] leading-relaxed" style={{ color: C.base.textMuted }}>
+                      {t("Tips: sertakan jenjang, kelas, topik spesifik, serta tingkat kesulitan agar hasil AI tepat sasaran.")}
+                    </p>
                   </div>
 
-                  <div className="mt-3">
-                    <div className="text-[11px] font-semibold uppercase tracking-wide mb-2" style={{ color: C.base.textFaint }}>
-                      Question Type
+                  <div>
+                    <div className="text-xs font-semibold mb-2" style={{ color: C.base.textBody }}>
+                      {t("Tipe Soal")}
                     </div>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       {[
                         { key: "single", label: "Single Choice" },
                         { key: "multiple", label: "Multiple Choice" },
@@ -1885,69 +1974,100 @@ export default function QuestionBankPage() {
                         { key: "matching", label: "Matching Pairs" },
                         { key: "essay", label: "Essay" },
                       ].map((type) => (
-                        <label key={type.key} className="flex items-center gap-2 text-[11px]" style={{ color: C.base.textBody }}>
+                        <label
+                          key={type.key}
+                          className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium cursor-pointer min-h-[40px]"
+                          style={{
+                            background: aiQuestionTypes[type.key] ? C.brand.bg : C.base.surfaceSoft,
+                            border: `1px solid ${aiQuestionTypes[type.key] ? C.brand.borderSoft : C.base.borderLight}`,
+                            color: C.base.textBody,
+                          }}
+                        >
                           <input
                             type="checkbox"
+                            className="w-4 h-4 shrink-0"
                             checked={aiQuestionTypes[type.key]}
                             onChange={(e) => setAiQuestionTypes((prev) => ({ ...prev, [type.key]: e.target.checked }))}
                           />
-                          {type.label}
+                          <span className="truncate">{type.label}</span>
                         </label>
                       ))}
-                      <label className="flex items-center gap-2 text-[11px]" style={{ color: C.base.textBody }}>
+                      <label
+                        className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium cursor-pointer min-h-[40px]"
+                        style={{
+                          background: aiRandom ? C.brand.bg : C.base.surfaceSoft,
+                          border: `1px solid ${aiRandom ? C.brand.borderSoft : C.base.borderLight}`,
+                          color: C.base.textBody,
+                        }}
+                      >
                         <input
                           type="checkbox"
+                          className="w-4 h-4 shrink-0"
                           checked={aiRandom}
                           onChange={(e) => setAiRandom(e.target.checked)}
                         />
-                        Random
+                        <span className="truncate">{t("Acak Tipe (Random)")}</span>
                       </label>
                     </div>
                   </div>
 
-                  <div className="mt-3">
-                    <label className="block text-[11px] font-semibold uppercase tracking-wide mb-1" style={{ color: C.base.textFaint }}>
-                      Jumlah Soal
-                    </label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={50}
-                      value={aiQuestionCount}
-                      onChange={(e) => setAiQuestionCount(Math.max(1, Math.min(50, Number(e.target.value) || 1)))}
-                      className="w-32 px-3 py-2 rounded-lg text-sm outline-none"
-                      style={{ ...controlStyle, background: C.base.surface, color: C.base.text }}
-                    />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-start">
+                    <div>
+                      <label className="block text-xs font-semibold mb-1.5" style={{ color: C.base.textBody }}>
+                        {t("Jumlah Soal (1–50)")}
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={50}
+                        value={aiQuestionCount}
+                        onChange={(e) => setAiQuestionCount(Math.max(1, Math.min(50, Number(e.target.value) || 1)))}
+                        className="w-full sm:w-36 px-3 py-2 rounded-xl text-base sm:text-sm outline-none min-h-[42px]"
+                        style={{ ...controlStyle, background: C.base.surface, color: C.base.text }}
+                      />
+                    </div>
                   </div>
 
-                  {/* ── Build 140: referensi materi (grounding AI) ── */}
-                  <div className="mt-4">
-                    <div className="text-[11px] font-semibold uppercase tracking-wide mb-1" style={{ color: C.base.textFaint }}>
-                      Referensi Materi
+                  {/* Referensi materi (grounding AI) */}
+                  <div
+                    className="rounded-xl p-3 space-y-2.5"
+                    style={{ background: C.base.surfaceMuted, border: `1px solid ${C.base.borderLight}` }}
+                  >
+                    <div className="text-xs font-semibold" style={{ color: C.base.textBody }}>
+                      {t("Referensi Materi")}
                     </div>
-                    <div className="flex flex-wrap gap-3 mb-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                       {[
                         { key: "off", label: "Tanpa materi" },
                         { key: "auto", label: "Otomatis relevan" },
                         { key: "manual", label: "Pilih materi" },
                       ].map((opt) => (
-                        <label key={opt.key} className="flex items-center gap-1.5 text-[11px]" style={{ color: C.base.textBody }}>
+                        <label
+                          key={opt.key}
+                          className="flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs cursor-pointer min-h-[38px]"
+                          style={{
+                            background: aiMaterialMode === opt.key ? C.base.surface : "transparent",
+                            border: `1px solid ${aiMaterialMode === opt.key ? C.brand.borderSoft : C.base.borderLight}`,
+                            color: C.base.textBody,
+                          }}
+                        >
                           <input
                             type="radio"
                             name="ai-material-mode"
+                            className="shrink-0"
                             checked={aiMaterialMode === opt.key}
                             onChange={() => {
                               setAiMaterialMode(opt.key as "off" | "auto" | "manual");
                               if (opt.key !== "off") ensureAiMaterialsLoaded();
                             }}
                           />
-                          {opt.label}
+                          <span className="truncate">{opt.label}</span>
                         </label>
                       ))}
                     </div>
 
                     {aiMaterialMode === "auto" && (
-                      <p className="text-[11px] mb-1" style={{ color: C.base.textMuted }}>
+                      <p className="text-[11px] leading-relaxed" style={{ color: C.base.textMuted }}>
                         AI akan memprioritaskan potongan dari lampiran materi pada mapel bank ini, lalu materi terbaru.
                       </p>
                     )}
@@ -1966,14 +2086,14 @@ export default function QuestionBankPage() {
                           </p>
                         )}
                         {aiMaterials && aiMaterials.length > 0 && (
-                          <div className="max-h-44 overflow-y-auto rounded-lg p-1.5" style={{ background: C.base.surface, border: `1px solid ${C.base.border}` }}>
+                          <div className="max-h-40 overflow-y-auto rounded-xl p-1.5" style={{ background: C.base.surface, border: `1px solid ${C.base.border}` }}>
                             {aiMaterials.map((m) => {
                               const selectable = m.supported;
                               const checked = aiMaterialIds.has(m.id);
                               return (
                                 <label
                                   key={m.id}
-                                  className={`flex items-center gap-2 px-2 py-1.5 rounded text-[11px] ${selectable ? "" : "opacity-50"}`}
+                                  className={`flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs min-h-[36px] ${selectable ? "" : "opacity-50"}`}
                                   style={{ color: C.base.textBody, cursor: selectable ? "pointer" : "not-allowed" }}
                                 >
                                   <input
@@ -1983,7 +2103,7 @@ export default function QuestionBankPage() {
                                     onChange={() => toggleAiMaterial(m.id)}
                                   />
                                   <span className="truncate flex-1" title={m.fileName}>{m.fileName}</span>
-                                  <span className="shrink-0" style={{ color: C.base.textMuted }}>
+                                  <span className="shrink-0 text-[11px]" style={{ color: C.base.textMuted }}>
                                     {m.subjectName || (m.kind === "exam-material" ? "Ujian" : m.kind === "assignment-material" ? "Tugas" : "Modul")}
                                     {!selectable && " · format?"}
                                   </span>
@@ -1993,7 +2113,7 @@ export default function QuestionBankPage() {
                           </div>
                         )}
                         {aiMaterialMode === "manual" && aiMaterials && aiMaterials.length > 0 && (
-                          <p className="text-[11px] mt-1" style={{ color: C.base.textMuted }}>
+                          <p className="text-[11px]" style={{ color: C.base.textMuted }}>
                             {aiMaterialIds.size} materi dipilih (maks 10).
                           </p>
                         )}
@@ -2001,67 +2121,134 @@ export default function QuestionBankPage() {
                     )}
                   </div>
                 </div>
-
-                {aiMaterialSummary && (aiMaterialSummary.sources.length > 0 || aiMaterialSummary.skipped.length > 0) && (
-                  <div className="rounded-lg px-3 py-2.5 text-[11px]" style={{ background: C.brand.bg, color: C.base.text }}>
-                    <div className="font-semibold mb-1">
-                      Referensi dipakai: {aiMaterialSummary.sources.length} berkas · ~{aiMaterialSummary.budgetChars.toLocaleString("id-ID")} karakter konteks
-                    </div>
-                    <ul className="list-disc pl-4 space-y-0.5">
-                      {aiMaterialSummary.sources.map((s) => (
-                        <li key={s.id}>
-                          {s.fileName} — {s.chunksUsed} potongan
-                          {s.subjectName ? ` (${s.subjectName})` : ""}
-                        </li>
+              ) : (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold mb-2" style={{ color: C.base.textBody }}>
+                      {t("Format File")}
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {(["excel", "csv", "word", "qti"] as const).map((fmt) => (
+                        <Chip key={fmt} active={importType === fmt} color={C.brand.main} onClick={() => setImportType(fmt)}>
+                          {fmt === "excel" ? "Excel (.xlsx)" : fmt === "csv" ? "CSV (.csv)" : fmt === "word" ? "Word (.docx)" : "QTI (.xml)"}
+                        </Chip>
                       ))}
-                    </ul>
-                    {aiMaterialSummary.skipped.length > 0 && (
-                      <div className="mt-1" style={{ color: C.warn.dark }}>
-                        Dilewati: {aiMaterialSummary.skipped.map((sk) => `${sk.file} (${sk.reason})`).join("; ")}
-                      </div>
-                    )}
+                    </div>
                   </div>
-                )}
 
-                {importResult && (
-                  <div className="rounded-lg px-3 py-2.5 text-xs" style={importResult.imported > 0 ? { background: C.ok.msgBg, color: C.ok.msgText } : { background: C.danger.bgLight, color: C.danger.text }}>
-                    <strong>{importResult.imported}</strong> dari <strong>{importResult.totalParsed}</strong> soal terimport.
-                    {importResult.errors.length > 0 && (
-                      <div className="mt-1.5 max-h-32 overflow-y-auto">
-                        {importResult.errors.slice(0, 12).map((e) => (
-                          <div key={e} className="flex items-start gap-1">
-                            <span style={{ color: C.danger.text }}>•</span>
-                            <span>{e}</span>
-                          </div>
-                        ))}
-                        {importResult.errors.length > 12 && (
-                          <div style={{ color: C.base.textMuted }}>… dan {importResult.errors.length - 12} lainnya</div>
-                        )}
+                  <div
+                    className="rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                    style={{ background: C.base.surfaceSoft, border: `1px dashed ${C.base.border}` }}
+                  >
+                    <div className="min-w-0">
+                      <div className="text-xs font-semibold truncate" style={{ color: C.base.text }}>
+                        {importFile ? importFile.name : t("Belum ada berkas dipilih")}
                       </div>
-                    )}
+                      <div className="text-[11px] mt-0.5" style={{ color: C.base.textMuted }}>
+                        {importFile
+                          ? `${(importFile.size / 1024).toFixed(1)} KB · ${importType.toUpperCase()}`
+                          : t("Pilih berkas .xlsx, .xls, .csv, .docx, atau .xml")}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={openImportFilePicker}
+                      className="px-3.5 py-2 rounded-xl text-xs font-semibold border inline-flex items-center justify-center gap-1.5 min-h-[40px] shrink-0 cbt-row-hover"
+                      style={{ background: C.base.surface, color: C.base.textBody, borderColor: C.base.border, boxShadow: S.control }}
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                      {importFile ? t("Ganti File") : t("Pilih File")}
+                    </button>
                   </div>
-                )}
+                </div>
+              )}
 
-                {importError && (
-                  <p className="text-xs" style={{ color: C.danger.main }}>{importError}</p>
-                )}
-              </div>
+              {aiMaterialSummary && (aiMaterialSummary.sources.length > 0 || aiMaterialSummary.skipped.length > 0) && (
+                <div className="rounded-xl px-3.5 py-2.5 text-xs" style={{ background: C.brand.bg, color: C.base.text, border: `1px solid ${C.brand.borderSoft}` }}>
+                  <div className="font-semibold mb-1">
+                    Referensi dipakai: {aiMaterialSummary.sources.length} berkas · ~{aiMaterialSummary.budgetChars.toLocaleString("id-ID")} karakter konteks
+                  </div>
+                  <ul className="list-disc pl-4 space-y-0.5 text-[11px]">
+                    {aiMaterialSummary.sources.map((s) => (
+                      <li key={s.id}>
+                        {s.fileName} — {s.chunksUsed} potongan
+                        {s.subjectName ? ` (${s.subjectName})` : ""}
+                      </li>
+                    ))}
+                  </ul>
+                  {aiMaterialSummary.skipped.length > 0 && (
+                    <div className="mt-1 text-[11px]" style={{ color: C.warn.dark }}>
+                      Dilewati: {aiMaterialSummary.skipped.map((sk) => `${sk.file} (${sk.reason})`).join("; ")}
+                    </div>
+                  )}
+                </div>
+              )}
 
-              <div className="flex gap-3 mt-6 flex-wrap">
-                <Btn variant="ghost" onClick={() => setShowImportModal(false)}>Cancel</Btn>
-                <Btn variant="primary" disabled={importBusy || !importFile || !importBankId} onClick={runImport}>{importBusy ? "Importing…" : "Import Soal"}</Btn>
-                <button
-                  type="button"
-                  className="px-3 py-2 rounded-lg text-xs font-semibold border"
-                  style={{ background: C.base.surface, color: C.base.textBody, borderColor: C.base.border }}
+              {importResult && (
+                <div className="rounded-xl px-3.5 py-2.5 text-xs" style={importResult.imported > 0 ? { background: C.ok.msgBg, color: C.ok.msgText } : { background: C.danger.bgLight, color: C.danger.text }}>
+                  <strong>{importResult.imported}</strong> dari <strong>{importResult.totalParsed}</strong> soal terimport.
+                  {importResult.errors.length > 0 && (
+                    <div className="mt-1.5 max-h-32 overflow-y-auto">
+                      {importResult.errors.slice(0, 12).map((e) => (
+                        <div key={e} className="flex items-start gap-1">
+                          <span style={{ color: C.danger.text }}>•</span>
+                          <span>{e}</span>
+                        </div>
+                      ))}
+                      {importResult.errors.length > 12 && (
+                        <div style={{ color: C.base.textMuted }}>… dan {importResult.errors.length - 12} lainnya</div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {importError && (
+                <div
+                  className="rounded-xl px-3.5 py-2.5 text-xs"
+                  style={{ background: C.danger.bgLight, color: C.danger.text, border: `1px solid ${C.danger.border}` }}
+                >
+                  {importError}
+                </div>
+              )}
+            </div>
+
+            {/* Sticky Footer — Action buttons always visible on desktop & mobile */}
+            <div
+              className="shrink-0 px-4 sm:px-6 py-3.5 border-t flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2.5"
+              style={{ background: C.base.surfaceMuted, borderColor: C.base.borderLight }}
+            >
+              <Btn
+                variant="ghost"
+                onClick={() => setShowImportModal(false)}
+                className="w-full sm:w-auto min-h-[44px] sm:min-h-[40px]"
+              >
+                {t("Tutup")}
+              </Btn>
+
+              {importModalTab === "file" ? (
+                <Btn
+                  variant="primary"
+                  disabled={importBusy || !importFile || !importBankId}
+                  onClick={runImport}
+                  className="w-full sm:w-auto min-h-[44px] sm:min-h-[40px]"
+                >
+                  <Upload className="w-4 h-4" />
+                  {importBusy ? t("Mengimpor…") : t("Import Soal")}
+                </Btn>
+              ) : (
+                <Btn
+                  variant="primary"
                   disabled={importBusy || !importBankId || !importPrompt.trim()}
                   onClick={runAiImport}
+                  className="w-full sm:w-auto min-h-[44px] sm:min-h-[40px]"
                 >
-                  Generate AI
-                </button>
-              </div>
+                  <Sparkles className="w-4 h-4" />
+                  {importBusy ? t("Membuat Soal…") : t("Generate AI")}
+                </Btn>
+              )}
             </div>
-          </Card>
+          </div>
         </div>
       )}
 
@@ -2215,8 +2402,8 @@ export default function QuestionBankPage() {
               <button
                 type="button"
                 onClick={() => setAiMinimized(false)}
-                className="shrink-0 text-[10px] font-semibold px-2 py-1 rounded transition-colors"
-                style={{ background: C.brand.main, color: C.base.surface }}
+                className="shrink-0 text-[10px] font-semibold px-2.5 py-1.5 rounded-lg transition-colors"
+                style={{ background: C.brand.main, color: "#FFFFFF" }}
               >
                 {t("Show details")}
               </button>

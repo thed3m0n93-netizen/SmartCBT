@@ -7,9 +7,10 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
+import { FileEdit, Megaphone, Newspaper, Plus } from "lucide-react";
 import { useI18n } from "../../i18n";
 import { useAuth } from "../../app/AuthContext";
-import { C } from "../../styles/tokens";
+import { C, S } from "../../styles/tokens";
 import { Btn, Field, Modal, Notice, PageHeader } from "../../components/ui";
 import { NewsListItem, NEWS_CATEGORIES } from "../../components/NewsCard";
 import { DashboardStats } from "../../components/dashboard";
@@ -241,7 +242,8 @@ return (
         subtitle={t("Tulis pengumuman yang akan tampil di dashboard siswa.")}
         actions={
           <Btn variant="primary" onClick={openCreate}>
-            + {t("Tulis Berita")}
+            <Plus className="w-4 h-4" />
+            <span>{t("Tulis Berita")}</span>
           </Btn>
         }
       />
@@ -251,9 +253,9 @@ return (
 
       <DashboardStats
         cards={[
-          { label: t("Total Berita"), value: counts.total, icon: "📰", color: C.brand.main },
-          { label: t("Tayang"), value: counts.published, icon: "📢", color: C.ok.main },
-          { label: t("Draft"), value: counts.drafts, icon: "📝", color: C.warn.main },
+          { label: t("Total Berita"), value: counts.total, icon: <Newspaper className="w-4 h-4" />, color: C.brand.main },
+          { label: t("Tayang"), value: counts.published, icon: <Megaphone className="w-4 h-4" />, color: C.ok.main },
+          { label: t("Draft"), value: counts.drafts, icon: <FileEdit className="w-4 h-4" />, color: C.warn.main },
         ]}
         cols={3}
       />
@@ -262,11 +264,12 @@ return (
       <div className="flex flex-wrap gap-1.5">
         <button
           onClick={() => setFilterCategory("all")}
-          className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+          className="px-3.5 py-2 rounded-xl text-xs font-medium transition-all min-h-[38px]"
           style={{
             background: filterCategory === "all" ? C.brand.main : C.base.surface,
-            color: filterCategory === "all" ? "#fff" : C.base.textMuted,
+            color: filterCategory === "all" ? "#FFFFFF" : C.base.textMuted,
             border: `1px solid ${filterCategory === "all" ? C.brand.main : C.base.border}`,
+            boxShadow: filterCategory === "all" ? S.btnPrimary : S.control,
           }}
         >
           {t("Semua")}
@@ -275,11 +278,12 @@ return (
           <button
             key={c.key}
             onClick={() => setFilterCategory(c.key)}
-            className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+            className="px-3.5 py-2 rounded-xl text-xs font-medium transition-all min-h-[38px]"
             style={{
               background: filterCategory === c.key ? c.color : C.base.surface,
-              color: filterCategory === c.key ? "#fff" : C.base.textMuted,
+              color: filterCategory === c.key ? "#FFFFFF" : C.base.textMuted,
               border: `1px solid ${filterCategory === c.key ? c.color : C.base.border}`,
+              boxShadow: S.control,
             }}
           >
             {c.label}
@@ -293,10 +297,10 @@ return (
         </div>
       ) : visible.length === 0 ? (
         <div
-          className="rounded-xl p-10 text-center"
-          style={{ background: C.base.surface, border: `1px dashed ${C.base.border}` }}
+          className="rounded-2xl p-10 text-center"
+          style={{ background: C.base.surface, border: `1px dashed ${C.base.border}`, boxShadow: S.card }}
         >
-          <div className="text-3xl mb-2">📰</div>
+          <Newspaper className="w-8 h-8 mx-auto mb-2.5" style={{ color: C.base.textFaint }} />
           <p className="text-sm font-medium" style={{ color: C.base.textMuted }}>
             {rows.length === 0
               ? t("Belum ada berita. Klik Tulis Berita untuk membuat pengumuman pertama.")
@@ -364,11 +368,12 @@ return (
               value={form.title}
               onChange={(e) => setForm({ ...form, title: e.target.value })}
               placeholder={t("Contoh: Jadwal Ujian Tengah Semester")}
-              className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+              className="w-full px-3 py-2.5 rounded-xl text-sm outline-none min-h-[44px]"
               style={{
                 background: C.base.surfaceMuted,
                 border: `1px solid ${C.base.border}`,
                 color: C.base.text,
+                boxShadow: S.inset,
               }}
             />
           </Field>
@@ -380,11 +385,12 @@ return (
                   key={c.key}
                   type="button"
                   onClick={() => setForm({ ...form, category: c.key })}
-                  className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+                  className="px-3.5 py-2 rounded-xl text-xs font-medium transition-all min-h-[38px]"
                   style={{
                     background: form.category === c.key ? c.color : C.base.surface,
-                    color: form.category === c.key ? "#fff" : C.base.textMuted,
+                    color: form.category === c.key ? "#FFFFFF" : C.base.textMuted,
                     border: `1px solid ${form.category === c.key ? c.color : C.base.border}`,
+                    boxShadow: S.control,
                   }}
                 >
                   {c.label}
@@ -477,7 +483,7 @@ return (
                   src={resolveAssetUrl(form.videoUrl)}
                   controls
                   className="mt-2 w-full rounded-lg"
-                  style={{ maxHeight: 110, background: "#0f172a" }}
+                  style={{ maxHeight: 110, background: "#09131F" }}
                 />
               )}
             </Field>

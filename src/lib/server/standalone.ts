@@ -286,7 +286,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
 
 // ── Server bootstrap ──────────────────────────────────────────────────────
 
-const PORT = Number(process.env.PORT || 8440);
+const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || "0.0.0.0";
 
 const server = createServer((req, res) => {

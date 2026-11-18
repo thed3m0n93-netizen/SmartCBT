@@ -13,9 +13,21 @@
  * submission is locked (the server answers 409).
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  AlertTriangle,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Clock,
+  FileText,
+  Inbox,
+  Paperclip,
+  RefreshCw,
+  X,
+} from "lucide-react";
 import { useAuth } from "../../app/AuthContext";
 import { useI18n } from "../../i18n";
-import { C } from "../../styles/tokens";
+import { C, S } from "../../styles/tokens";
 import { Btn, Card, Notice } from "../../components/ui";
 import {
   fetchAssignments,
@@ -311,7 +323,7 @@ export default function StudentAssignmentsPage() {
       {error && <Notice type="error">{error}</Notice>}
 
       {/* Filter chips */}
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         {(
           [
             { key: "all", label: t("Semua") },
@@ -319,40 +331,47 @@ export default function StudentAssignmentsPage() {
             { key: "submitted", label: t("Terkumpul") },
             { key: "graded", label: t("Sudah Dinilai") },
           ] as const
-        ).map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setFilter(tab.key)}
-            className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
-            style={{
-              background: filter === tab.key ? C.base.dark : C.base.surface,
-              color: filter === tab.key ? C.base.surface : C.base.textMuted,
-              border: `1px solid ${filter === tab.key ? C.base.dark : C.base.border}`,
-            }}
-          >
-            {tab.label}
-            <span
-              className="ml-1.5 px-1.5 py-0.5 rounded text-[10px]"
+        ).map((tab) => {
+          const active = filter === tab.key;
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setFilter(tab.key)}
+              className="px-3.5 py-2 rounded-xl text-xs font-medium transition-all min-h-[40px] inline-flex items-center whitespace-nowrap"
               style={{
-                background:
-                  filter === tab.key ? "rgba(255,255,255,0.2)" : C.base.surfaceSoft,
-                color: filter === tab.key ? C.base.surface : C.base.textMuted,
+                background: active ? C.base.dark : C.base.surface,
+                color: active ? "#FFFFFF" : C.base.textMuted,
+                border: `1px solid ${active ? C.base.dark : C.base.border}`,
+                boxShadow: active ? S.control : undefined,
               }}
             >
-              {counts[tab.key]}
-            </span>
-          </button>
-        ))}
+              {tab.label}
+              <span
+                className="ml-1.5 px-1.5 py-0.5 rounded text-[10px] tabular-nums"
+                style={{
+                  background: active ? "rgba(255,255,255,0.2)" : C.base.surfaceSoft,
+                  color: active ? "#FFFFFF" : C.base.textMuted,
+                }}
+              >
+                {counts[tab.key]}
+              </span>
+            </button>
+          );
+        })}
         <button
+          type="button"
           onClick={() => void load()}
-          className="ml-auto px-3 py-1.5 rounded-lg text-xs font-medium"
+          className="ml-auto inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium min-h-[40px] cbt-row-hover"
           style={{
             border: `1px solid ${C.base.border}`,
             color: C.base.textBody,
             background: C.base.surface,
+            boxShadow: S.control,
           }}
         >
-          ⟳ {t("Refresh")}
+          <RefreshCw className="w-3.5 h-3.5" />
+          {t("Refresh")}
         </button>
       </div>
 
@@ -362,8 +381,13 @@ export default function StudentAssignmentsPage() {
         </div>
       ) : visible.length === 0 ? (
         <Card>
-          <div className="py-10 text-center">
-            <div className="text-3xl mb-2">📭</div>
+          <div className="py-10 text-center flex flex-col items-center">
+            <div
+              className="w-12 h-12 rounded-2xl flex items-center justify-center mb-3"
+              style={{ background: C.base.surfaceSoft, color: C.base.textMuted }}
+            >
+              <Inbox className="w-6 h-6" />
+            </div>
             <p className="text-sm font-medium" style={{ color: C.base.text }}>
               {t("Belum ada tugas untuk kelasmu.")}
             </p>
@@ -452,27 +476,25 @@ function StudentAssignmentCard({
   return (
     <Card pad={false} style={{ overflow: "hidden" }}>
       {/* Card header — always visible, toggles the body */}
-      <button type="button" onClick={onToggle} className="w-full text-left px-5 py-4">
+      <button type="button" onClick={onToggle} className="w-full text-left px-4 sm:px-5 py-4 min-h-[64px]">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-wrap mb-1">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap mb-1 text-xs">
               <span
-                className="text-xs px-2 py-0.5 rounded-full font-medium"
+                className="px-2 py-0.5 rounded-full font-medium"
                 style={{ background: status.bg, color: status.color }}
               >
                 {status.label}
               </span>
               {row.subject_name && (
-                <span className="text-xs" style={{ color: C.brand.main }}>
+                <span className="font-medium" style={{ color: C.brand.dark }}>
                   {row.subject_name}
                 </span>
               )}
               {row.allow_file_upload && (
-                <span
-                  className="text-xs px-2 py-0.5 rounded-full"
-                  style={{ background: C.purple.bg, color: C.purple.dark }}
-                >
-                  📎 {t("Unggah berkas")}
+                <span className="inline-flex items-center gap-1" style={{ color: C.purple.dark }}>
+                  <Paperclip className="w-3 h-3" />
+                  {t("Unggah berkas")}
                 </span>
               )}
             </div>
@@ -488,17 +510,18 @@ function StudentAssignmentCard({
           <div className="flex items-center gap-3 shrink-0">
             {due.text && !due.overdue && (
               <span
-                className="text-xs px-2 py-1 rounded-lg font-medium"
+                className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg font-medium tabular-nums"
                 style={{
                   background: due.soon ? C.warn.bg : C.base.surfaceSoft,
                   color: due.soon ? C.warn.dark : C.base.textMuted,
                 }}
               >
-                ⏳ {due.text}
+                <Clock className="w-3 h-3" />
+                {due.text}
               </span>
             )}
             {scored != null && (
-              <div className="text-right">
+              <div className="text-right tabular-nums">
                 <div
                   className="text-2xl font-bold leading-none"
                   style={{ color: C.ok.main, fontFamily: "var(--font-serif)" }}
@@ -510,8 +533,8 @@ function StudentAssignmentCard({
                 </div>
               </div>
             )}
-            <span className="text-xs" style={{ color: C.base.textFaint }}>
-              {open ? "▾" : "▸"}
+            <span style={{ color: C.base.textFaint }}>
+              {open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
             </span>
           </div>
         </div>
@@ -519,7 +542,7 @@ function StudentAssignmentCard({
 
       {open && (
         <div
-          className="px-5 pb-5 space-y-4"
+          className="px-4 sm:px-5 pb-5 space-y-4"
           style={{ borderTop: `1px solid ${C.base.borderLight}`, paddingTop: 16 }}
         >
           {row.description && (
@@ -548,8 +571,8 @@ function StudentAssignmentCard({
                 {t("Petunjuk Pengerjaan")}
               </div>
               <div
-                className="text-sm whitespace-pre-wrap rounded-lg px-3 py-2.5"
-                style={{ background: C.base.surfaceMuted, color: C.base.textBody }}
+                className="text-sm whitespace-pre-wrap rounded-xl px-3.5 py-2.5"
+                style={{ background: C.base.surfaceMuted, color: C.base.textBody, boxShadow: S.inset }}
               >
                 {row.instructions}
               </div>
@@ -561,14 +584,15 @@ function StudentAssignmentCard({
               href={row.attachment_url}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium"
+              className="inline-flex items-center gap-2 rounded-xl px-3.5 py-2.5 text-sm font-medium min-h-[44px]"
               style={{
                 background: C.brand.bg,
-                color: C.brand.main,
+                color: C.brand.dark,
                 border: `1px solid ${C.brand.border}`,
               }}
             >
-              📄 {t("Buka lampiran dari guru")}
+              <FileText className="w-4 h-4 shrink-0" />
+              {t("Buka lampiran dari guru")}
               {row.attachment_name ? `: ${row.attachment_name}` : ""}
             </a>
           )}
@@ -576,12 +600,13 @@ function StudentAssignmentCard({
           {/* Previous hand-in summary */}
           {row.submission_id && (
             <div
-              className="rounded-lg px-3 py-3 space-y-2"
+              className="rounded-xl px-3.5 py-3 space-y-2"
               style={{ background: C.ok.bgLight, border: `1px solid ${C.ok.border}` }}
             >
               <div className="flex items-center justify-between flex-wrap gap-2">
-                <span className="text-sm font-medium" style={{ color: C.ok.dark }}>
-                  ✓ {t("Dikumpulkan")} {formatDateTime(row.submitted_at)}
+                <span className="inline-flex items-center gap-1.5 text-sm font-medium" style={{ color: C.ok.dark }}>
+                  <Check className="w-4 h-4" />
+                  {t("Dikumpulkan")} {formatDateTime(row.submitted_at)}
                 </span>
                 {row.graded_at && (
                   <span className="text-xs" style={{ color: C.ok.dark }}>
@@ -605,21 +630,22 @@ function StudentAssignmentCard({
                       href={file.file_url}
                       target="_blank"
                       rel="noreferrer"
-                      className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg"
+                      className="inline-flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg min-h-[38px]"
                       style={{
                         background: C.base.surface,
                         border: `1px solid ${C.base.border}`,
-                        color: C.brand.main,
+                        color: C.brand.dark,
                       }}
                     >
-                      📎 {file.file_name} ({formatBytes(Number(file.size_bytes))})
+                      <Paperclip className="w-3.5 h-3.5 shrink-0" />
+                      {file.file_name} ({formatBytes(Number(file.size_bytes))})
                     </a>
                   ))}
                 </div>
               )}
               {row.feedback && (
                 <div
-                  className="text-sm rounded-lg px-3 py-2"
+                  className="text-sm rounded-xl px-3 py-2"
                   style={{
                     background: C.base.surface,
                     border: `1px solid ${C.base.border}`,
@@ -641,7 +667,7 @@ function StudentAssignmentCard({
           {/* Hand-in form */}
           {locked ? (
             <div
-              className="text-xs rounded-lg px-3 py-2"
+              className="text-xs rounded-xl px-3.5 py-2.5"
               style={{ background: C.base.surfaceSoft, color: C.base.textMuted }}
             >
               {t("Tugas ini sudah dinilai sehingga tidak dapat dikumpulkan ulang.")}
@@ -660,11 +686,12 @@ function StudentAssignmentCard({
                 value={draft.text}
                 onChange={(e) => onTextChange(e.target.value)}
                 placeholder={t("Tulis jawaban atau catatan pengerjaan di sini…")}
-                className="w-full px-3 py-2.5 rounded-lg text-sm outline-none resize-y"
+                className="w-full px-3.5 py-2.5 rounded-xl text-base sm:text-sm outline-none resize-y"
                 style={{
                   border: `1px solid ${C.base.border}`,
                   background: C.base.surfaceAlt,
                   color: C.base.text,
+                  boxShadow: S.inset,
                 }}
               />
 
@@ -672,7 +699,7 @@ function StudentAssignmentCard({
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
                     <label
-                      className="px-3 py-2 rounded-lg text-xs font-medium cursor-pointer"
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-medium cursor-pointer min-h-[42px]"
                       style={{
                         background: C.base.surfaceSoft,
                         color: C.base.textMenuSoft,
@@ -680,7 +707,8 @@ function StudentAssignmentCard({
                         opacity: uploading ? 0.6 : 1,
                       }}
                     >
-                      {uploading ? t("Mengunggah…") : `📎 ${t("Tambah berkas")}`}
+                      <Paperclip className="w-3.5 h-3.5" />
+                      {uploading ? t("Mengunggah…") : t("Tambah berkas")}
                       <input
                         ref={fileInputRef}
                         type="file"
@@ -700,22 +728,23 @@ function StudentAssignmentCard({
                       {draft.files.map((file) => (
                         <span
                           key={file.url}
-                          className="inline-flex items-center gap-2 text-xs px-2.5 py-1.5 rounded-lg"
+                          className="inline-flex items-center gap-2 text-xs px-3 py-1.5 rounded-lg"
                           style={{
                             background: C.brand.bg,
                             border: `1px solid ${C.brand.border}`,
-                            color: C.brand.main,
+                            color: C.brand.dark,
                           }}
                         >
-                          📎 {file.name} ({formatBytes(file.sizeBytes)})
+                          <Paperclip className="w-3 h-3 shrink-0" />
+                          {file.name} ({formatBytes(file.sizeBytes)})
                           <button
                             type="button"
                             onClick={() => onRemoveFile(file.url)}
-                            className="font-bold"
-                            style={{ color: C.danger.main }}
+                            className="p-0.5 rounded hover:opacity-80"
+                            style={{ color: C.danger.text }}
                             aria-label={t("Hapus berkas")}
                           >
-                            ✕
+                            <X className="w-3.5 h-3.5" />
                           </button>
                         </span>
                       ))}
@@ -724,7 +753,7 @@ function StudentAssignmentCard({
                 </div>
               ) : (
                 <div
-                  className="text-xs rounded-lg px-3 py-2"
+                  className="text-xs rounded-xl px-3.5 py-2.5"
                   style={{ background: C.base.surfaceSoft, color: C.base.textMuted }}
                 >
                   {t("Tugas ini hanya menerima jawaban teks.")}
@@ -733,7 +762,7 @@ function StudentAssignmentCard({
 
               {formError && (
                 <div
-                  className="text-xs rounded-lg px-3 py-2"
+                  className="text-xs rounded-xl px-3.5 py-2.5"
                   style={{
                     background: C.danger.bgLight,
                     border: `1px solid ${C.danger.border}`,
@@ -746,21 +775,23 @@ function StudentAssignmentCard({
 
               {lateBlocked && (
                 <div
-                  className="text-xs rounded-lg px-3 py-2"
+                  className="flex items-start gap-2 text-xs rounded-xl px-3.5 py-2.5"
                   style={{
                     background: C.danger.bgLight,
                     border: `1px solid ${C.danger.border}`,
                     color: C.danger.text,
                   }}
                 >
-                  ⚠{" "}
-                  {t(
-                    "Batas waktu sudah lewat dan tugas ini tidak menerima pengumpulan terlambat.",
-                  )}
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>
+                    {t(
+                      "Batas waktu sudah lewat dan tugas ini tidak menerima pengumpulan terlambat.",
+                    )}
+                  </span>
                 </div>
               )}
 
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Btn variant="primary" disabled={busy || lateBlocked} onClick={onSubmit}>
                   {submitting
                     ? t("Mengirim…")

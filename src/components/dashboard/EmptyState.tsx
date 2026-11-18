@@ -1,32 +1,47 @@
 /**
  * SmartCBT — Empty state (shared).
- *
- * Kosongan konsisten di semua halaman daftar data.
  */
+import type { ReactNode } from "react";
+import { Inbox } from "lucide-react";
+import { C, S } from "../../styles/tokens";
+
 export default function EmptyState({
-  icon = "📭",
+  icon,
   title,
   subtitle,
   action,
 }: {
-  icon?: string;
+  icon?: ReactNode;
   title: string;
   subtitle?: string;
-  action?: React.ReactNode;
+  action?: ReactNode;
 }) {
   return (
     <div
-      className="rounded-xl p-10 text-center"
-      style={{ background: "#F8FAFC", border: "1px dashed #CBD5E1" }}
+      className="rounded-2xl p-8 sm:p-10 text-center"
+      style={{
+        background: C.base.surfaceMuted,
+        border: `1px dashed ${C.base.dashed}`,
+        boxShadow: S.inset,
+      }}
     >
-      <div className="text-3xl mb-3" aria-hidden>
-        {icon}
+      <div
+        className="w-12 h-12 rounded-2xl mx-auto mb-3 flex items-center justify-center"
+        style={{
+          background: C.base.surface,
+          border: `1px solid ${C.base.border}`,
+          color: C.base.textMuted,
+          boxShadow: S.control,
+        }}
+        aria-hidden
+      >
+        {icon ?? <Inbox className="w-5 h-5" />}
       </div>
-      <div className="text-sm font-medium" style={{ color: "#0F172A" }}>
+      <div className="text-sm font-semibold" style={{ color: C.base.text, fontFamily: "var(--font-display)" }}>
         {title}
       </div>
       {subtitle && (
-        <p className="text-sm mt-1" style={{ color: "#64748B" }}>
+        <p className="text-xs sm:text-sm mt-1 max-w-md mx-auto" style={{ color: C.base.textMuted }}>
           {subtitle}
         </p>
       )}

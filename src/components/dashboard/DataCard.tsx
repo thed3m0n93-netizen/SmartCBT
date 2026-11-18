@@ -1,14 +1,15 @@
 /**
  * SmartCBT — Data card (shared).
  *
- * Kartu data konsisten (list item) untuk daftar tugas, ujian, siswa, dll.
+ * Tactile card surface for assignments, exams, students, and resource rows.
  */
-import { C } from "../../styles/tokens";
+import type { CSSProperties, ReactNode } from "react";
+import { C, S } from "../../styles/tokens";
 
 interface DataCardProps {
-  children: React.ReactNode;
+  children: ReactNode;
   className?: string;
-  style?: React.CSSProperties;
+  style?: CSSProperties;
   hover?: boolean;
 }
 
@@ -20,10 +21,11 @@ export default function DataCard({
 }: DataCardProps) {
   return (
     <div
-      className={`rounded-xl p-4 ${hover ? "transition-all hover:shadow-sm" : ""} ${className ?? ""}`}
+      className={`cbt-card rounded-2xl p-4 ${hover ? "cbt-card-hover" : ""} ${className ?? ""}`}
       style={{
         background: C.base.surface,
         border: `1px solid ${C.base.border}`,
+        boxShadow: S.card,
         ...style,
       }}
     >

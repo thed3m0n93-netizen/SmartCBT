@@ -1,11 +1,10 @@
 /**
  * SmartCBT — Filter bar (shared).
  *
- * Bar filter konsisten untuk daftar data di admin & guru:
- * search + dropdown filter + tombol reset.
+ * Mobile-friendly search + dropdown filters + reset button with recessed controls.
  */
-import { useState } from "react";
-import { C } from "../../styles/tokens";
+import { Search, RotateCcw } from "lucide-react";
+import { C, S } from "../../styles/tokens";
 
 type FilterOption = { value: string; label: string };
 
@@ -28,39 +27,48 @@ export default function FilterBar({
   resetFilters,
   className,
 }: FilterBarProps) {
-  const [open, setOpen] = useState(false);
+  const hasActive = Boolean(search.trim() || (activeFilters ?? []).some((f) => f !== "all"));
 
   return (
     <div
-      className={`rounded-xl p-3 flex flex-wrap items-center gap-3 ${className ?? ""}`}
+      className={`cbt-card rounded-2xl p-3 flex flex-wrap items-center gap-2.5 sm:gap-3 ${className ?? ""}`}
       style={{
         background: C.base.surface,
         border: `1px solid ${C.base.border}`,
+        boxShadow: S.card,
       }}
     >
-      <input
-        type="search"
-        value={search}
-        onChange={(e) => onSearchChange(e.target.value)}
-        placeholder="Cari…"
-        className="flex-1 min-w-[200px] rounded-lg px-3 py-2 text-sm outline-none"
-        style={{
-          background: C.base.surfaceMuted,
-          border: `1px solid ${C.base.border}`,
-          color: C.base.text,
-        }}
-      />
+      <div className="relative flex-1 min-w-[200px]">
+        <Search
+          className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+          style={{ color: C.base.textFaint }}
+        />
+        <input
+          type="search"
+          value={search}
+          onChange={(e) => onSearchChange(e.target.value)}
+          placeholder="Cari…"
+          className="w-full rounded-xl pl-9 pr-3 py-2 text-sm outline-none min-h-[42px]"
+          style={{
+            background: C.base.surfaceMuted,
+            border: `1px solid ${C.base.border}`,
+            color: C.base.text,
+            boxShadow: S.inset,
+          }}
+        />
+      </div>
 
       {filters.map((group, gi) => (
         <select
           key={gi}
           value={activeFilters?.[gi] ?? "all"}
           onChange={(e) => onFilterChange?.(gi, e.target.value)}
-          className="min-w-[150px] rounded-lg px-3 py-2 text-sm outline-none"
+          className="flex-1 sm:flex-none min-w-[140px] rounded-xl px-3 py-2 text-sm outline-none min-h-[42px]"
           style={{
-            background: C.base.surface,
+            background: C.base.surfaceMuted,
             border: `1px solid ${C.base.border}`,
             color: C.base.text,
+            boxShadow: S.control,
           }}
         >
           <option value="all">{group[0]?.label ?? "Semua"}</option>
@@ -72,31 +80,24 @@ export default function FilterBar({
         </select>
       ))}
 
-      {(search.trim() || (activeFilters ?? []).some((f) => f !== "all")) && (
+      {hasActive && (
         <button
           type="button"
           onClick={() => {
             onSearchChange("");
             resetFilters?.();
-            setOpen(false);
           }}
-          className="rounded-lg px-2.5 py-2 text-xs font-medium transition-all"
+          className="rounded-xl px-3 py-2 text-xs font-semibold transition-all inline-flex items-center gap-1.5 min-h-[42px] whitespace-nowrap active:scale-95"
           style={{
             background: C.danger.bgLight,
-            color: C.danger.main,
+            color: C.danger.text,
             border: `1px solid ${C.danger.border}`,
           }}
         >
+          <RotateCcw className="w-3.5 h-3.5" />
           Reset
         </button>
       )}
-
-      <span
-        className="ml-auto text-xs"
-        style={{ color: C.base.textFaint, whiteSpace: "nowrap" }}
-      >
-        {filters.length === 0 ? "" : "Filter"}
-      </span>
     </div>
   );
 }

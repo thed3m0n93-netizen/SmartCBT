@@ -1,6 +1,8 @@
-﻿import { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
+import { ChevronRight } from "lucide-react";
 import { fetchLearningModules, type LearningModuleRow } from "../../lib/api";
+import { C, S } from "../../styles/tokens";
 
 const LEARNING_PROGRESS_EVENT = "smartcbt:learning-progress-updated";
 
@@ -54,37 +56,46 @@ export default function StudentLearningModulesPage() {
   }, []);
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 max-w-4xl mx-auto">
       <header>
-        <div className="text-xs font-semibold uppercase tracking-widest text-slate-400">Learning Management</div>
-        <h1 className="mt-1 text-2xl font-bold text-slate-900" style={{ fontFamily: "var(--font-serif)" }}>Modul Belajar</h1>
-        <p className="mt-1 text-sm text-slate-500">Pilih modul untuk membuka materi secara penuh.</p>
+        <div className="text-xs font-semibold uppercase tracking-widest" style={{ color: C.base.textFaint }}>Learning Management</div>
+        <h1 className="mt-1 text-2xl font-bold" style={{ color: C.base.text, fontFamily: "var(--font-serif)" }}>Modul Belajar</h1>
+        <p className="mt-1 text-sm" style={{ color: C.base.textMuted }}>Pilih modul untuk membuka materi secara penuh.</p>
       </header>
 
-      {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
+      {error && (
+        <div className="rounded-xl px-4 py-3 text-sm" style={{ background: C.danger.bgLight, border: `1px solid ${C.danger.border}`, color: C.danger.text }}>
+          {error}
+        </div>
+      )}
 
       {loading ? (
-        <div className="text-sm text-slate-500">Memuat modul...</div>
+        <div className="space-y-2.5">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="h-16 rounded-2xl animate-pulse" style={{ background: C.base.surfaceSoft }} />
+          ))}
+        </div>
       ) : modules.length === 0 ? (
-        <div className="rounded-xl bg-white p-8 text-center text-sm text-slate-500">
+        <div className="rounded-2xl p-8 text-center text-sm" style={{ background: C.base.surface, border: `1px dashed ${C.base.dashed}`, color: C.base.textMuted }}>
           Belum ada modul belajar untuk kelasmu.
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-2.5">
           {modules.map((module) => (
             <button
               key={module.id}
               type="button"
               onClick={() => navigate(`/student/modules/${module.id}`)}
-              className="flex w-full items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-left transition hover:border-blue-200 hover:bg-blue-50 active:bg-blue-100"
+              className="cbt-card cbt-card-hover flex w-full items-center justify-between gap-3 rounded-2xl px-4 py-3.5 text-left transition-all active:scale-[0.99] min-h-[64px]"
+              style={{ background: C.base.surface, border: `1px solid ${C.base.border}`, boxShadow: S.card }}
             >
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-semibold text-slate-900">{module.title}</span>
-                <span className="mt-1 block text-xs text-slate-400">
+                <span className="block truncate text-sm font-semibold" style={{ color: C.base.text }}>{module.title}</span>
+                <span className="mt-1 block text-xs tabular-nums" style={{ color: C.base.textMuted }}>
                   {module.completed ? "Selesai dibaca" : `${module.max_scroll_percent || 0}% terbaca`} · {module.estimated_minutes} menit
                 </span>
               </span>
-              <span className="shrink-0 text-lg text-blue-600" aria-hidden="true">›</span>
+              <ChevronRight size={18} style={{ color: C.brand.main }} className="shrink-0" />
             </button>
           ))}
         </div>
@@ -92,3 +103,4 @@ export default function StudentLearningModulesPage() {
     </div>
   );
 }
+

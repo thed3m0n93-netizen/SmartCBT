@@ -15,6 +15,7 @@ import {
   aiProviderNeedsApiKey,
   aiProviderRequiresKeyError,
   getAiProvider,
+  isKnownAiProvider,
   resolveAiApiKey,
   resolveAiBaseUrl,
   type AiProviderProtocol,
@@ -248,10 +249,16 @@ export async function callProvider(
   // LocalAI, and Ollama's own `/v1` shim). The base URL comes from the shared
   // catalog, so only the API key + model need to be configured per school.
   const url = `${base}/chat/completions`;
-  const body = {
+  const params = descriptor.defaultParams ?? {};
+  const body: Record<string, unknown> = {
     model: finalModel,
-    temperature: 0.6,
-    max_tokens: 4096,
+    temperature: params.temperature ?? 0.6,
+    max_tokens: params.maxTokens ?? 4096,
+    stream: false,
+    ...(params.topP !== undefined ? { top_p: params.topP } : {}),
+    ...(params.frequencyPenalty !== undefined ? { frequency_penalty: params.frequencyPenalty } : {}),
+    ...(params.presencePenalty !== undefined ? { presence_penalty: params.presencePenalty } : {}),
+    ...(params.reasoningEffort !== undefined ? { reasoning_effort: params.reasoningEffort } : {}),
     // JSON mode is honoured by OpenAI, DeepSeek, Groq, Mistral and OpenRouter,
     // but a handful of OpenAI-compatible gateways (older vLLM builds, some
     // self-hosted proxies) reject the field with HTTP 400. The request is sent
@@ -268,6 +275,7 @@ export async function callProvider(
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        Accept: "application/json",
         Authorization: `Bearer ${key}`,
       },
       body: JSON.stringify(body),
@@ -277,13 +285,19 @@ export async function callProvider(
   let resp = await send();
   let data = await resp.json().catch(() => null);
 
-  // Retry once without `response_format` when the endpoint does not accept it.
-  if (!resp.ok && body.response_format) {
+  // Retry once without `response_format` or `reasoning_effort` when an endpoint rejects them.
+  if (!resp.ok && (body.response_format || body.reasoning_effort)) {
     const message = String(
       data?.error?.message || (typeof data?.error === "string" ? data.error : "") || ""
     );
-    if (resp.status === 400 || /response_format|json_object|unsupported/i.test(message)) {
-      delete (body as { response_format?: unknown }).response_format;
+    if (
+      resp.status === 400 ||
+      /response_format|json_object|reasoning_effort|unsupported|extra_forbidden/i.test(message)
+    ) {
+      delete body.response_format;
+      if (/reasoning_effort|extra_forbidden|unsupported/i.test(message) || resp.status === 400) {
+        delete body.reasoning_effort;
+      }
       resp = await send();
       data = await resp.json().catch(() => null);
     }
@@ -855,3 +869,88 @@ addRoute("POST", /^\/api\/ai\/questions\/generate$/, async (req: AuthenticatedRe
     }, 400);
   }
 });
+
+async function upsertSettingKey(key: string, value: string): Promise<void> {
+  const existing = await queryOne(`SELECT key FROM settings WHERE key = $1`, [key]);
+  if (existing) {
+    await query(`UPDATE settings SET value = $1, updated_at = NOW() WHERE key = $2`, [value, key]);
+  } else {
+    await query(`INSERT INTO settings (key, value) VALUES ($1, $2)`, [key, value]);
+  }
+}
+
+async function readSafeAiConfigSnapshot() {
+  const providerRow = await queryOne<{ value: string }>(`SELECT value FROM settings WHERE key = 'ai_provider'`, []);
+  const modelRow = await queryOne<{ value: string }>(`SELECT value FROM settings WHERE key = 'ai_model'`, []);
+  const keyRow = await queryOne<{ value: string }>(`SELECT value FROM settings WHERE key = 'ai_api_key'`, []);
+  const baseUrlRow = await queryOne<{ value: string }>(`SELECT value FROM settings WHERE key = 'ai_base_url'`, []);
+
+  const rawProvider = (providerRow?.value || DEFAULT_AI_PROVIDER_ID).trim();
+  const descriptor = getAiProvider(rawProvider);
+  const provider = descriptor.id;
+  const model = (modelRow?.value || descriptor.defaultModel).trim();
+  const baseUrl = resolveAiBaseUrl(provider, baseUrlRow?.value);
+  const hasCustomApiKey = Boolean(keyRow?.value?.trim());
+  const hasBuiltInApiKey = Boolean(descriptor.hasBuiltInApiKey && getBuiltInAiApiKey(provider));
+  const resolvedKey = resolveAiApiKey(provider, keyRow?.value, getBuiltInAiApiKey(provider));
+  const isReady = Boolean(resolvedKey) || !aiProviderNeedsApiKey(provider);
+
+  return {
+    provider,
+    model,
+    baseUrl,
+    hasCustomApiKey,
+    hasBuiltInApiKey,
+    isReady,
+  };
+}
+
+// GET /api/ai/config — safe AI provider state for teachers & admins (never returns secrets)
+addRoute("GET", /^\/api\/ai\/config$/, async (req: AuthenticatedRequest, res) => {
+  if (!requireStaff(req, res)) return;
+  const snapshot = await readSafeAiConfigSnapshot();
+  json(res, snapshot);
+});
+
+// PUT /api/ai/config — instant AI provider/model switch for teachers & admins
+addRoute("PUT", /^\/api\/ai\/config$/, async (req: AuthenticatedRequest, res, body) => {
+  if (!requireStaff(req, res)) return;
+
+  const requestedProvider = typeof body?.provider === "string" ? body.provider.trim().toLowerCase() : "";
+  if (!requestedProvider || !isKnownAiProvider(requestedProvider)) {
+    return json(res, { error: "Provider AI tidak dikenal." }, 400);
+  }
+
+  const descriptor = getAiProvider(requestedProvider);
+  const currentRow = await queryOne<{ value: string }>(`SELECT value FROM settings WHERE key = 'ai_provider'`, []);
+  const currentProvider = (currentRow?.value || DEFAULT_AI_PROVIDER_ID).trim().toLowerCase();
+  const providerChanged = currentProvider !== descriptor.id;
+
+  const requestedModel = typeof body?.model === "string" ? body.model.trim() : "";
+  const finalModel = requestedModel || descriptor.defaultModel;
+
+  const requestedBaseUrl = typeof body?.baseUrl === "string" ? body.baseUrl.trim() : "";
+  const finalBaseUrl = descriptor.selfHosted
+    ? (requestedBaseUrl || descriptor.defaultBaseUrl).replace(/\/+$/, "")
+    : descriptor.defaultBaseUrl.replace(/\/+$/, "");
+
+  await upsertSettingKey("ai_provider", descriptor.id);
+  await upsertSettingKey("ai_model", finalModel);
+  await upsertSettingKey("ai_base_url", finalBaseUrl);
+
+  // Key handling:
+  //   • If caller provides an explicit non-empty custom `apiKey`, store it.
+  //   • If switching providers, clearing explicitly, or selecting an instant
+  //     built-in provider without a new custom key, clear stale `ai_api_key`
+  //     so a leftover key from another provider never overrides built-in auth.
+  const incomingKey = typeof body?.apiKey === "string" ? body.apiKey.trim() : "";
+  if (incomingKey) {
+    await upsertSettingKey("ai_api_key", incomingKey);
+  } else if (body?.clearApiKey === true || providerChanged || descriptor.hasBuiltInApiKey) {
+    await upsertSettingKey("ai_api_key", "");
+  }
+
+  const snapshot = await readSafeAiConfigSnapshot();
+  json(res, { success: true, config: snapshot });
+});
+

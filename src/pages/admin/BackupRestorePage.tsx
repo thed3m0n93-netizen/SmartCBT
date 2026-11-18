@@ -1,8 +1,9 @@
-﻿import { useState, useRef } from 'react';
+import { useState, useRef } from 'react';
+import { AlertTriangle, Download, RotateCcw } from 'lucide-react';
 import { useI18n } from '../../i18n';
 import { createBackup, restoreBackup, downloadFromBase64, type BackupRestoreResult } from '../../lib/api';
-import { C } from '../../styles/tokens';
-import { Btn, Notice, SectionCard, Card } from '../../components/ui';
+import { C, S } from '../../styles/tokens';
+import { Btn, Notice, SectionCard, Card, controlStyle } from '../../components/ui';
 
 export default function BackupRestorePage() {
   const { t } = useI18n();
@@ -85,7 +86,8 @@ export default function BackupRestorePage() {
           </p>
           <div className='flex justify-end'>
             <Btn onClick={handleBackup} disabled={creating}>
-              {creating ? t('Menyiapkan…') : t('↓ Backup Sekarang')}
+              <Download className='w-4 h-4' />
+              <span>{creating ? t('Menyiapkan…') : t('Backup Sekarang')}</span>
             </Btn>
           </div>
         </div>
@@ -106,8 +108,8 @@ export default function BackupRestorePage() {
               type='file'
               accept='.json,application/json'
               onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
-              className='w-full px-3 py-2 rounded-lg text-sm outline-none'
-              style={{ background: C.base.surfaceAlt, border: `1px solid ${C.base.border}` }}
+              className='w-full px-3 py-2 rounded-xl text-sm outline-none min-h-[44px]'
+              style={{ ...controlStyle, background: C.base.surfaceAlt, boxShadow: S.inset }}
             />
             {selectedFile && (
               <div className='text-xs mt-1.5' style={{ color: C.base.textMuted }}>
@@ -115,12 +117,21 @@ export default function BackupRestorePage() {
               </div>
             )}
           </div>
-          <div className='rounded-lg px-3 py-2.5 text-xs' style={{ background: C.danger.bgLight, color: C.danger.text, border: `1px solid ${C.danger.border}` }}>
-            ⚠ {t('Restore menghapus data yang ada. Pastikan Anda punya backup terbaru sebelum melanjutkan.')}
+          <div
+            className='rounded-xl px-3.5 py-2.5 text-xs flex items-start gap-2'
+            style={{ background: C.danger.bgLight, color: C.danger.text, border: `1px solid ${C.danger.border}` }}
+          >
+            <AlertTriangle className='w-4 h-4 shrink-0 mt-0.5' />
+            <span>{t('Restore menghapus data yang ada. Pastikan Anda punya backup terbaru sebelum melanjutkan.')}</span>
           </div>
           <div className='flex justify-end'>
-            <Btn onClick={handleRestore} disabled={restoring || !selectedFile} style={{ background: C.danger.main, color: C.base.surface }}>
-              {restoring ? t('Merestore…') : t('↺ Restore Database')}
+            <Btn
+              onClick={handleRestore}
+              disabled={restoring || !selectedFile}
+              style={{ background: C.danger.main, color: '#FFFFFF' }}
+            >
+              <RotateCcw className='w-4 h-4' />
+              <span>{restoring ? t('Merestore…') : t('Restore Database')}</span>
             </Btn>
           </div>
 

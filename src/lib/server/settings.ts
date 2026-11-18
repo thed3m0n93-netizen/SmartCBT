@@ -71,10 +71,10 @@ const DEFAULT_SETTINGS: Record<string, string> = {
   school_logo: "",
   school_background: "",
   school_favicon: "",
-  ai_provider: "ollama",
-  ai_model: "gemma3:4b",
+  ai_provider: "nvidia-mistral-large",
+  ai_model: "mistralai/mistral-large-4-1t-a52b",
   ai_api_key: "",
-  ai_base_url: "http://192.168.22.23:11434",
+  ai_base_url: "https://integrate.api.nvidia.com/v1",
 };
 
 // GET /api/settings — retrieve all school settings (authenticated)

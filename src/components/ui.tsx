@@ -1,12 +1,13 @@
 /**
  * SmartCBT — UI Primitives
  *
- * Small, styling-first building blocks shared by every page. They centralise
- * the tailwind-class + inline-style combinations that used to be repeated in
- * each page file, so pages contain business logic and layout only.
+ * Tactile, theme-aware building blocks shared across pages. Surfaces, borders,
+ * and shadows adapt cleanly between light and dark mode while maintaining
+ * crisp mobile touch targets and iOS/Android ergonomics.
  */
 import type { CSSProperties, MouseEvent, ReactNode } from "react";
-import { C, R, alpha } from "../styles/tokens";
+import { X } from "lucide-react";
+import { C, R, S, alpha } from "../styles/tokens";
 
 type Style = CSSProperties | undefined;
 
@@ -20,12 +21,18 @@ export interface CardProps {
   onClick?: (event: MouseEvent<HTMLDivElement>) => void;
 }
 
-/** White rounded box with the standard border. */
+/** Tactile rounded card with layered bevel shadow. */
 export function Card({ children, style, pad = true, hover = false, onClick }: CardProps) {
   return (
     <div
-      className={hover ? "rounded-xl transition-all hover:shadow-md" : "rounded-xl"}
-      style={{ background: C.base.surface, border: `1px solid ${C.base.border}`, ...(pad ? { padding: 20 } : {}), ...style }}
+      className={`rounded-2xl cbt-card ${hover ? "cbt-card-hover cursor-pointer" : ""}`}
+      style={{
+        background: C.base.surface,
+        border: `1px solid ${C.base.border}`,
+        boxShadow: S.card,
+        ...(pad ? { padding: 20 } : {}),
+        ...style,
+      }}
       onClick={onClick}
     >
       {children}
@@ -45,21 +52,52 @@ export interface SectionCardProps {
   pad?: boolean;
 }
 
-/** Card with a bordered header band (title left, `right` slot right). */
-export function SectionCard({ title, subtitle, right, children, bodyStyle, headerBg = C.base.surfaceMuted, pad = true }: SectionCardProps) {
+/** Card with a recessed header band and elevated body. */
+export function SectionCard({
+  title,
+  subtitle,
+  right,
+  children,
+  bodyStyle,
+  headerBg = C.base.surfaceMuted,
+  pad = true,
+}: SectionCardProps) {
   return (
-    <div className="rounded-xl overflow-visible" style={{ border: `1px solid ${C.base.border}`, position: "relative", zIndex: 1 }}>
+    <div
+      className="rounded-2xl overflow-visible"
+      style={{
+        background: C.base.surface,
+        border: `1px solid ${C.base.border}`,
+        boxShadow: S.card,
+        position: "relative",
+        zIndex: 1,
+      }}
+    >
       <div
-        className="px-5 py-4 border-b flex items-center justify-between"
+        className="px-4 sm:px-5 py-3.5 sm:py-4 border-b flex items-center justify-between gap-3 rounded-t-2xl flex-wrap"
         style={{ borderColor: C.base.borderLight, background: headerBg }}
       >
-        <div>
-          <div className="font-semibold text-sm" style={{ color: C.base.text }}>{title}</div>
-          {subtitle && <p className="text-xs mt-0.5" style={{ color: C.base.textMuted }}>{subtitle}</p>}
+        <div className="min-w-0">
+          <div
+            className="font-semibold text-sm tracking-tight"
+            style={{ color: C.base.text, fontFamily: "var(--font-display)" }}
+          >
+            {title}
+          </div>
+          {subtitle && (
+            <p className="text-xs mt-0.5" style={{ color: C.base.textMuted }}>
+              {subtitle}
+            </p>
+          )}
         </div>
-        {right}
+        {right && <div className="shrink-0">{right}</div>}
       </div>
-      <div style={{ background: C.base.surface, ...(pad ? { padding: 20 } : {}), ...bodyStyle }}>{children}</div>
+      <div
+        className="rounded-b-2xl"
+        style={{ background: C.base.surface, ...(pad ? { padding: 20 } : {}), ...bodyStyle }}
+      >
+        {children}
+      </div>
     </div>
   );
 }
@@ -69,12 +107,39 @@ export function SectionCard({ title, subtitle, right, children, bodyStyle, heade
 export type BtnVariant = "primary" | "ghost" | "success" | "danger" | "amber" | "outline-green";
 
 const VARIANTS: Record<BtnVariant, CSSProperties> = {
-  primary: { background: C.brand.main, color: C.base.surface },
-  ghost: { border: `1px solid ${C.base.border}`, color: C.base.textBody },
-  success: { background: C.ok.main, color: C.base.surface },
-  danger: { border: `1px solid ${C.danger.border}`, color: C.danger.main },
-  amber: { border: `1px solid ${C.warn.border}`, color: C.warn.deep },
-  "outline-green": { border: `1px solid ${C.ok.border}`, color: C.ok.main },
+  primary: {
+    background: C.brand.main,
+    color: "#FFFFFF",
+    boxShadow: S.btnPrimary,
+    border: "1px solid rgba(255,255,255,0.12)",
+  },
+  ghost: {
+    background: C.base.surface,
+    border: `1px solid ${C.base.border}`,
+    color: C.base.textBody,
+    boxShadow: S.control,
+  },
+  success: {
+    background: C.ok.main,
+    color: "#FFFFFF",
+    boxShadow: S.btnSuccess,
+    border: "1px solid rgba(255,255,255,0.12)",
+  },
+  danger: {
+    background: C.danger.bgLight,
+    border: `1px solid ${C.danger.border}`,
+    color: C.danger.text,
+  },
+  amber: {
+    background: C.warn.bgLight,
+    border: `1px solid ${C.warn.border}`,
+    color: C.warn.deep,
+  },
+  "outline-green": {
+    background: C.ok.bgLight,
+    border: `1px solid ${C.ok.border}`,
+    color: C.ok.dark,
+  },
 };
 
 export interface BtnProps {
@@ -88,26 +153,42 @@ export interface BtnProps {
   size?: "sm" | "md";
 }
 
-const BTN_SIZE: Record<"sm" | "md", React.CSSProperties> = {
-  sm: { padding: "6px 12px", fontSize: 12 },
-  md: { padding: "8px 16px", fontSize: 14 },
+const BTN_SIZE: Record<"sm" | "md", CSSProperties> = {
+  sm: { padding: "7px 13px", fontSize: 12, minHeight: 36 },
+  md: { padding: "9px 16px", fontSize: 13.5, minHeight: 42 },
 };
 
-/** Small styled button. Merge `style` for sizing / layout overrides. */
-export function Btn({ children, variant = "ghost", style, onClick, disabled, className, title, size = "md" }: BtnProps) {
+/** Tactile button with crisp press feedback and single-line label discipline. */
+export function Btn({
+  children,
+  variant = "ghost",
+  style,
+  onClick,
+  disabled,
+  className,
+  title,
+  size = "md",
+}: BtnProps) {
   const base: CSSProperties = {
     ...BTN_SIZE[size],
     borderRadius: R.control,
-    fontWeight: 500,
-    transition: "all 0.15s",
+    fontWeight: 600,
+    fontFamily: "var(--font-display)",
+    transition: "transform 0.12s ease, opacity 0.15s ease, box-shadow 0.15s ease",
     opacity: disabled ? 0.55 : 1,
     cursor: disabled ? "not-allowed" : "pointer",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    whiteSpace: "nowrap",
     ...VARIANTS[variant],
+    ...style,
   };
   return (
     <button
       type="button"
-      className={className ?? ""}
+      className={`active:scale-[0.98] hover:opacity-95 ${className ?? ""}`}
       style={base}
       onClick={onClick}
       disabled={disabled}
@@ -132,7 +213,7 @@ export interface BadgeProps {
 export function Badge({ children, bg, color, title, style }: BadgeProps) {
   return (
     <span
-      className="text-[11px] px-2 py-0.5 rounded-full font-medium inline-flex items-center gap-1"
+      className="text-[11px] px-2.5 py-0.5 rounded-full font-semibold inline-flex items-center gap-1 whitespace-nowrap"
       title={title}
       style={{ background: bg, color, ...style }}
     >
@@ -154,30 +235,62 @@ export interface StatCardProps {
   style?: Style;
 }
 
-/** Metric tile used on dashboards / monitoring (both left-aligned and centered). */
-export function StatCard({ label, value, sub, color, icon, valueSuffix, center = false, style }: StatCardProps) {
+/** Metric tile used on dashboards / monitoring (tactile, tabular numbers, no decorative dots). */
+export function StatCard({
+  label,
+  value,
+  sub,
+  color,
+  icon,
+  valueSuffix,
+  center = false,
+  style,
+}: StatCardProps) {
   return (
     <div
-      className={center ? "rounded-xl p-5 text-center" : "rounded-xl p-4"}
-      style={{ background: C.base.surface, border: `1px solid ${C.base.border}`, ...style }}
+      className={`cbt-card rounded-2xl ${center ? "p-4 sm:p-5 text-center" : "p-4 sm:p-5"}`}
+      style={{
+        background: C.base.surface,
+        border: `1px solid ${C.base.border}`,
+        boxShadow: S.card,
+        ...style,
+      }}
     >
-      {!center && (
-        <div className="flex items-start justify-between mb-3">
-          <div className="w-10 h-10 rounded-lg flex items-center justify-center text-lg shrink-0" style={{ background: alpha(color, 8) }}>
+      {!center && icon && (
+        <div className="flex items-center justify-between mb-3">
+          <div
+            className="w-10 h-10 rounded-xl flex items-center justify-center text-lg shrink-0"
+            style={{
+              background: alpha(color, 12),
+              color,
+              border: `1px solid ${alpha(color, 22)}`,
+            }}
+          >
             {icon}
           </div>
-          <span className="w-2 h-2 rounded-full" style={{ background: color }} />
         </div>
       )}
-      <div className="text-3xl font-bold" style={{ color: center ? color : C.base.text, fontFamily: "var(--font-serif)" }}>
+      <div
+        className="text-2xl sm:text-3xl font-bold tabular-nums tracking-tight"
+        style={{ color: center ? color : C.base.text, fontFamily: "var(--font-display)" }}
+      >
         {value}
-        {valueSuffix && <span className="text-base font-normal" style={{ color: C.base.textFaint }}>{valueSuffix}</span>}
+        {valueSuffix && (
+          <span className="text-sm sm:text-base font-normal ml-0.5" style={{ color: C.base.textFaint }}>
+            {valueSuffix}
+          </span>
+        )}
       </div>
-      <div className={center ? "text-xs mt-1" : "text-xs font-medium mb-0.5"} style={{ color: center ? C.base.textMuted : C.base.text }}>
+      <div
+        className={center ? "text-xs mt-1 font-medium" : "text-xs font-semibold mt-1"}
+        style={{ color: center ? C.base.textMuted : C.base.textBody }}
+      >
         {label}
       </div>
       {sub && !center && (
-        <div className="text-xs" style={{ color: C.base.textFaint }}>{sub}</div>
+        <div className="text-xs mt-0.5" style={{ color: C.base.textFaint }}>
+          {sub}
+        </div>
       )}
     </div>
   );
@@ -198,15 +311,15 @@ export interface NoticeProps {
   type: NoticeType;
   children: ReactNode;
   style?: Style;
-  icon?: string;
+  icon?: ReactNode;
 }
 
 /** Status banner (success / error / warning / info). */
 export function Notice({ type, children, style, icon }: NoticeProps) {
   return (
-    <div className="rounded-lg px-3 py-2 text-sm" style={{ ...NOTICE_COLORS[type], ...style }}>
-      {icon && <span>{icon} </span>}
-      {children}
+    <div className="rounded-xl px-3.5 py-2.5 text-sm flex items-start gap-2" style={{ ...NOTICE_COLORS[type], ...style }}>
+      {icon && <span className="shrink-0 mt-0.5">{icon}</span>}
+      <div className="min-w-0 flex-1">{children}</div>
     </div>
   );
 }
@@ -222,11 +335,14 @@ export interface ProgressProps {
 }
 
 /** Thin progress bar (0–100%). */
-export function Progress({ value, color, track = C.base.border, height = 8, style }: ProgressProps) {
+export function Progress({ value, color, track = C.base.surfaceSoft, height = 8, style }: ProgressProps) {
   return (
-    <div className="overflow-hidden rounded-full" style={{ background: track, height, ...style }}>
+    <div
+      className="overflow-hidden rounded-full"
+      style={{ background: track, height, boxShadow: S.inset, ...style }}
+    >
       <div
-        className="rounded-full transition-all"
+        className="rounded-full transition-all duration-300"
         style={{ width: `${Math.max(0, Math.min(100, value))}%`, background: color, height: "100%" }}
       />
     </div>
@@ -245,17 +361,26 @@ export interface PageHeaderProps {
 /** Consistent page heading: title + muted subtitle + action buttons. */
 export function PageHeader({ title, subtitle, actions, style }: PageHeaderProps) {
   return (
-    <div className="flex items-center justify-between flex-wrap gap-3" style={style}>
-      <div>
-        <h1 className="text-2xl font-bold" style={{ color: C.base.text, fontFamily: "var(--font-serif)" }}>{title}</h1>
-        {subtitle && <p className="text-sm mt-0.5" style={{ color: C.base.textMuted }}>{subtitle}</p>}
+    <div className="flex items-start sm:items-center justify-between flex-wrap gap-3" style={style}>
+      <div className="min-w-0">
+        <h1
+          className="text-xl sm:text-2xl font-bold tracking-tight"
+          style={{ color: C.base.text, fontFamily: "var(--font-serif)" }}
+        >
+          {title}
+        </h1>
+        {subtitle && (
+          <p className="text-xs sm:text-sm mt-0.5" style={{ color: C.base.textMuted }}>
+            {subtitle}
+          </p>
+        )}
       </div>
-      {actions && <div className="flex gap-2">{actions}</div>}
+      {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
     </div>
   );
 }
 
-/* ── Modal ────────────────────────────────────────────────────────────── */
+/* ── Modal (Responsive bottom-sheet on mobile, centered dialog on desktop) */
 
 export interface ModalProps {
   title: ReactNode;
@@ -267,25 +392,54 @@ export interface ModalProps {
   dismissable?: boolean;
 }
 
-/** Centered modal dialog with overlay + close button. */
-export function Modal({ title, onClose, children, actions, width = 480, overlay = "rgba(15,23,42,0.45)" }: ModalProps) {
+/** Responsive dialog: bottom-sheet on phones, centered modal on tablets/desktop. */
+export function Modal({
+  title,
+  onClose,
+  children,
+  actions,
+  width = 480,
+  overlay = S.overlay,
+}: ModalProps) {
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 backdrop-blur-xs"
       style={{ background: overlay }}
       onClick={onClose}
     >
       <div
-        className="rounded-xl p-6 max-h-[90vh] overflow-y-auto"
-        style={{ background: C.base.surface, border: `1px solid ${C.base.border}`, boxShadow: "0 12px 32px rgba(15,23,42,0.3)", width: "100%", maxWidth: width }}
+        className="rounded-t-2xl sm:rounded-2xl p-5 sm:p-6 max-h-[92dvh] overflow-y-auto w-full safe-area-bottom"
+        style={{
+          background: C.base.surfaceElevated,
+          border: `1px solid ${C.base.border}`,
+          boxShadow: S.elevated,
+          maxWidth: width,
+        }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between mb-5">
-          <h3 className="font-bold text-lg" style={{ color: C.base.text, fontFamily: "var(--font-serif)" }}>{title}</h3>
-          <button type="button" onClick={onClose} style={{ color: C.base.textFaint }}>✕</button>
+        {/* Mobile bottom-sheet grab bar */}
+        <div className="sm:hidden flex justify-center pb-3 -mt-1">
+          <div className="w-10 h-1 rounded-full" style={{ background: C.base.border }} />
+        </div>
+        <div className="flex items-center justify-between gap-3 mb-4 sm:mb-5">
+          <h3
+            className="font-bold text-lg tracking-tight"
+            style={{ color: C.base.text, fontFamily: "var(--font-serif)" }}
+          >
+            {title}
+          </h3>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="w-10 h-10 -mr-1.5 rounded-xl flex items-center justify-center transition-colors cbt-row-hover shrink-0"
+            style={{ color: C.base.textMuted }}
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
         <div className="space-y-4">{children}</div>
-        {actions && <div className="flex gap-3 mt-6">{actions}</div>}
+        {actions && <div className="flex flex-wrap gap-2.5 mt-6">{actions}</div>}
       </div>
     </div>
   );
@@ -303,23 +457,33 @@ export interface FieldProps {
 export function Field({ label, children, hint }: FieldProps) {
   return (
     <div>
-      {label && <label className="block text-sm font-medium mb-1.5" style={{ color: C.base.textBody }}>{label}</label>}
+      {label && (
+        <label className="block text-sm font-medium mb-1.5" style={{ color: C.base.textBody }}>
+          {label}
+        </label>
+      )}
       {children}
-      {hint && <div className="text-xs mt-1" style={{ color: C.base.textFaint }}>{hint}</div>}
+      {hint && (
+        <div className="text-xs mt-1" style={{ color: C.base.textFaint }}>
+          {hint}
+        </div>
+      )}
     </div>
   );
 }
 
-/** Standard control style (input / select / textarea). */
+/** Standard recessed control style (input / select / textarea). */
 export const controlStyle: CSSProperties = {
   width: "100%",
-  padding: "8px 12px",
+  padding: "9px 12px",
+  minHeight: 42,
   borderRadius: R.control,
   fontSize: 14,
   outline: "none",
   border: `1px solid ${C.base.border}`,
   color: C.base.text,
-  background: C.base.surfaceAlt,
+  background: C.base.surfaceMuted,
+  boxShadow: S.inset,
 };
 
 export interface ChipProps {
@@ -332,33 +496,36 @@ export interface ChipProps {
   style?: Style;
 }
 
-const CHIP_PAD: Record<"md" | "sm", string> = { md: "3px 10px", sm: "2px 8px" };
-const CHIP_TEXT: Record<"md" | "sm", number> = { md: 13, sm: 11 };
+const CHIP_PAD: Record<"md" | "sm", string> = { md: "4px 11px", sm: "2px 9px" };
+const CHIP_TEXT: Record<"md" | "sm", number> = { md: 12.5, sm: 11 };
 
-export function Chip({ children, color = C.brand.main, active, outline, onClick, size = "md", style }: ChipProps) {
-  const text = active ? C.base.surface : (outline ? color : C.base.textBody);
-  const bg = active
-    ? color
-    : outline
-      ? "transparent"
-      : C.base.surfaceSoft;
-  const bdr = outline ? `1px solid ${color}` : undefined;
+export function Chip({
+  children,
+  color = C.brand.main,
+  active,
+  outline,
+  onClick,
+  size = "md",
+  style,
+}: ChipProps) {
+  const text = active ? "#FFFFFF" : outline ? color : C.base.textBody;
+  const bg = active ? color : outline ? "transparent" : C.base.surfaceSoft;
+  const bdr = outline ? `1px solid ${color}` : `1px solid ${active ? color : C.base.borderLight}`;
   return (
     <span
-      className={onClick ? "cursor-pointer transition-all" : ""}
+      className={onClick ? "cursor-pointer transition-all active:scale-95" : ""}
       style={{
         display: "inline-flex",
         alignItems: "center",
         padding: CHIP_PAD[size],
         borderRadius: R.chip,
         fontSize: CHIP_TEXT[size],
-        fontWeight: 500,
+        fontWeight: 600,
         color: text,
         background: bg,
         border: bdr,
-        lineHeight: 1.2,
+        lineHeight: 1.25,
         whiteSpace: "nowrap",
-        ...(onClick ? { opacity: active ? 0.85 : 1 } : {}),
         ...style,
       }}
       onClick={onClick}

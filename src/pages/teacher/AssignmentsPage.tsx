@@ -17,6 +17,7 @@ import { useAuth } from "../../app/AuthContext";
 import { useI18n } from "../../i18n";
 import { C, alpha } from "../../styles/tokens";
 import { Badge, Btn, Chip, Field, Modal, Notice, StatCard, controlStyle } from "../../components/ui";
+import { AiProviderInlineChip } from "../../components/AiProviderWidget";
 import {
   createAssignment,
   deleteAssignment,
@@ -907,41 +908,44 @@ export default function TeacherAssignmentsPage() {
 
                 {/* AI grading controls */}
                 <div
-                  className="rounded-lg p-3 flex flex-wrap items-end gap-2"
+                  className="rounded-lg p-3 space-y-2.5"
                   style={{
                     background: C.brand.bg,
                     border: `1px solid ${C.brand.border}`,
                   }}
                 >
-                  <div className="flex-1 min-w-[220px]">
-                    <label
-                      className="block text-[11px] font-medium mb-1"
-                      style={{ color: C.base.textMuted }}
+                  <AiProviderInlineChip compact />
+                  <div className="flex flex-wrap items-end gap-2">
+                    <div className="flex-1 min-w-[220px]">
+                      <label
+                        className="block text-[11px] font-medium mb-1"
+                        style={{ color: C.base.textMuted }}
+                      >
+                        {t("Prompt penilaian khusus (opsional)")}
+                      </label>
+                      <input
+                        type="text"
+                        value={aiPromptOverride}
+                        onChange={(e) => setAiPromptOverride(e.target.value)}
+                        placeholder={t("Kosongkan untuk memakai prompt default tugas")}
+                        className="w-full px-2.5 py-1.5 rounded-lg text-sm outline-none"
+                        style={controlStyle}
+                      />
+                    </div>
+                    <Btn
+                      variant="primary"
+                      size="sm"
+                      disabled={aiRunning || totals.pending === 0}
+                      onClick={() => void runAiGrading(selected.id, { all: true })}
+                      title={
+                        totals.pending === 0
+                          ? t("Tidak ada pengumpulan yang belum dinilai.")
+                          : t("Nilai {n} pengumpulan dengan AI", { n: totals.pending })
+                      }
                     >
-                      {t("Prompt penilaian khusus (opsional)")}
-                    </label>
-                    <input
-                      type="text"
-                      value={aiPromptOverride}
-                      onChange={(e) => setAiPromptOverride(e.target.value)}
-                      placeholder={t("Kosongkan untuk memakai prompt default tugas")}
-                      className="w-full px-2.5 py-1.5 rounded-lg text-sm outline-none"
-                      style={controlStyle}
-                    />
+                      {aiRunning ? t("Memproses...") : t("Nilai Semua dengan AI")}
+                    </Btn>
                   </div>
-                  <Btn
-                    variant="primary"
-                    size="sm"
-                    disabled={aiRunning || totals.pending === 0}
-                    onClick={() => void runAiGrading(selected.id, { all: true })}
-                    title={
-                      totals.pending === 0
-                        ? t("Tidak ada pengumpulan yang belum dinilai.")
-                        : t("Nilai {n} pengumpulan dengan AI", { n: totals.pending })
-                    }
-                  >
-                    {aiRunning ? t("Memproses...") : `✨ ${t("Nilai Semua dengan AI")}`}
-                  </Btn>
                 </div>
 
                 <div className="grid grid-cols-3 gap-3">
@@ -1079,7 +1083,7 @@ export default function TeacherAssignmentsPage() {
                                   ? C.ok.main
                                   : C.brand.main
                                 : C.base.surfaceSoft,
-                              color: hasSubmission ? C.base.surface : C.base.textFaint,
+                              color: hasSubmission ? "#FFFFFF" : C.base.textFaint,
                             }}
                           >
                             {(sub.full_name || "?").charAt(0)}

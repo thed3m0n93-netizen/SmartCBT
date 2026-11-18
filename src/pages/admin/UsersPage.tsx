@@ -1,5 +1,17 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import {
+  AlertTriangle,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  Download,
+  PauseCircle,
+  Plus,
+  Upload,
+  UploadCloud,
+  X,
+} from "lucide-react";
+import {
   fetchUsers,
   fetchClasses,
   fetchSubjects,
@@ -16,7 +28,7 @@ import {
 } from "../../lib/api";
 import { mapRole, unmapRole, type Role } from "../../lib/types";
 import { useI18n } from "../../i18n";
-import { C, alpha } from "../../styles/tokens";
+import { C, S, alpha } from "../../styles/tokens";
 import { Badge, Btn, Field, Modal, Notice, controlStyle } from "../../components/ui";
 import { DataTableShell, ResultCount, SortableTh, TablePagination } from "../../components/DataTable";
 import { useDataTable, type Accessors } from "../../hooks/useDataTable";
@@ -211,11 +223,12 @@ function MultiCheckSelect({
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="w-full px-3 py-2 rounded-lg text-sm text-left flex items-center justify-between gap-2 outline-none transition-all"
+        className="w-full px-3 py-2 rounded-xl text-sm text-left flex items-center justify-between gap-2 outline-none transition-all min-h-[42px]"
         style={{
-          background: C.base.surface,
+          background: C.base.surfaceMuted,
           border: `1px solid ${C.base.border}`,
           color: C.base.text,
+          boxShadow: S.inset,
         }}
       >
         <span className="truncate">
@@ -223,15 +236,17 @@ function MultiCheckSelect({
             ? `— Pilih ${label.toLowerCase()} —`
             : `${selected.length} ${label.toLowerCase()} dipilih`}
         </span>
-        <span style={{ color: C.base.textFaint }}>{open ? "▲" : "▼"}</span>
+        <span style={{ color: C.base.textFaint }}>
+          {open ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+        </span>
       </button>
       {open && (
         <div
-          className="absolute z-20 mt-1 w-full rounded-lg p-2 max-h-44 overflow-y-auto"
-          style={{ background: C.base.surface, border: `1px solid ${C.base.border}`, boxShadow: "0 8px 24px rgba(15,23,42,0.12)" }}
+          className="absolute z-20 mt-1 w-full rounded-xl p-2 max-h-48 overflow-y-auto"
+          style={{ background: C.base.surfaceElevated, border: `1px solid ${C.base.border}`, boxShadow: S.elevated }}
         >
           <label
-            className="flex items-center gap-2 px-2 py-1.5 rounded-md text-xs font-semibold cursor-pointer"
+            className="flex items-center gap-2 px-2 py-2 rounded-lg text-xs font-semibold cursor-pointer min-h-[36px]"
             style={{ color: C.base.textMuted }}
           >
             <input
@@ -253,7 +268,7 @@ function MultiCheckSelect({
           {options.map((o) => (
             <label
               key={o.id}
-              className="flex items-center gap-2 px-2 py-1.5 rounded-md text-sm cursor-pointer hover:bg-slate-50"
+              className="flex items-center gap-2 px-2 py-2 rounded-lg text-sm cursor-pointer cbt-row-hover min-h-[38px]"
               style={{ color: C.base.text }}
             >
               <input
@@ -273,17 +288,17 @@ function MultiCheckSelect({
             return (
               <span
                 key={id}
-                className="text-[11px] px-2 py-0.5 rounded-full flex items-center gap-1"
-                style={{ background: C.brand.bg, color: C.brand.main }}
+                className="text-[11px] px-2 py-0.5 rounded-full inline-flex items-center gap-1"
+                style={{ background: C.brand.bg, color: C.brand.dark }}
               >
                 {opt?.label ?? `#${id}`}
                 <button
                   type="button"
                   onClick={() => toggle(id)}
-                  style={{ color: C.brand.main }}
+                  style={{ color: C.brand.dark }}
                   aria-label={`Hapus ${opt?.label ?? id}`}
                 >
-                  ✕
+                  <X className="w-3 h-3" />
                 </button>
               </span>
             );
@@ -528,7 +543,7 @@ export default function UsersPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold" style={{ color: C.base.text, fontFamily: "var(--font-serif)" }}>
             Users &amp; Access
@@ -537,9 +552,15 @@ export default function UsersPage() {
             {t("{n} registered users · Role-based access control", { n: users.length })}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Btn variant="ghost" onClick={openImport}>⬆ {t("Import")}</Btn>
-          <Btn variant="primary" onClick={openAdd}>{t("+ Add User")}</Btn>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Btn variant="ghost" onClick={openImport}>
+            <Upload className="w-4 h-4" />
+            <span>{t("Import")}</span>
+          </Btn>
+          <Btn variant="primary" onClick={openAdd}>
+            <Plus className="w-4 h-4" />
+            <span>{t("Add User")}</span>
+          </Btn>
         </div>
       </div>
 
@@ -547,7 +568,10 @@ export default function UsersPage() {
       {actionError && <Notice type="error">{actionError}</Notice>}
 
       {/* Filters */}
-      <div className="rounded-xl p-4 flex flex-wrap items-center gap-3" style={{ background: C.base.surface, border: `1px solid ${C.base.border}` }}>
+      <div
+        className="cbt-card rounded-2xl p-4 flex flex-wrap items-center gap-3"
+        style={{ background: C.base.surface, border: `1px solid ${C.base.border}`, boxShadow: S.card }}
+      >
         <input
           type="text"
           placeholder={t("Search by name, username, or NISN…")}
@@ -556,10 +580,10 @@ export default function UsersPage() {
             setSearch(e.target.value);
             resetPage();
           }}
-          className="flex-1 min-w-48 px-3 py-2 rounded-lg text-sm outline-none transition-all"
-          style={{ background: C.base.surfaceMuted, border: `1px solid ${C.base.border}`, color: C.base.text }}
+          className="flex-1 min-w-[200px] px-3 py-2 rounded-xl text-sm outline-none transition-all min-h-[42px]"
+          style={{ background: C.base.surfaceMuted, border: `1px solid ${C.base.border}`, color: C.base.text, boxShadow: S.inset }}
         />
-        <div className="flex gap-1 rounded-lg p-1" style={{ background: C.base.surfaceSoft }}>
+        <div className="flex flex-wrap gap-1 rounded-xl p-1" style={{ background: C.base.surfaceSoft }}>
           {(["all", "admin", "teacher", "student"] as const).map((r) => (
             <button
               key={r}
@@ -567,18 +591,18 @@ export default function UsersPage() {
                 setRoleFilter(r);
                 resetPage();
               }}
-              className="px-3 py-1.5 rounded-md text-xs font-medium capitalize transition-all"
+              className="px-3 py-1.5 rounded-lg text-xs font-medium capitalize transition-all min-h-[34px] whitespace-nowrap"
               style={{
                 background: roleFilter === r ? C.base.surface : "transparent",
                 color: roleFilter === r ? C.base.text : C.base.textMuted,
-                boxShadow: roleFilter === r ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+                boxShadow: roleFilter === r ? S.control : "none",
               }}
             >
               {r === "all" ? t("All Roles") : t(r.charAt(0).toUpperCase() + r.slice(1))}
             </button>
           ))}
         </div>
-        <div className="flex gap-1 rounded-lg p-1" style={{ background: C.base.surfaceSoft }}>
+        <div className="flex flex-wrap gap-1 rounded-xl p-1" style={{ background: C.base.surfaceSoft }}>
           {(["all", "active", "inactive"] as const).map((s) => (
             <button
               key={s}
@@ -586,11 +610,11 @@ export default function UsersPage() {
                 setStatusFilter(s);
                 resetPage();
               }}
-              className="px-3 py-1.5 rounded-md text-xs font-medium capitalize transition-all"
+              className="px-3 py-1.5 rounded-lg text-xs font-medium capitalize transition-all min-h-[34px] whitespace-nowrap"
               style={{
                 background: statusFilter === s ? C.base.surface : "transparent",
                 color: statusFilter === s ? C.base.text : C.base.textMuted,
-                boxShadow: statusFilter === s ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+                boxShadow: statusFilter === s ? S.control : "none",
               }}
             >
               {s === "all" ? t("All Status") : t(s.charAt(0).toUpperCase() + s.slice(1))}
@@ -603,8 +627,8 @@ export default function UsersPage() {
             setClassFilter(e.target.value);
             resetPage();
           }}
-          className="min-w-36 px-3 py-2 rounded-lg text-sm outline-none transition-all"
-          style={{ background: C.base.surfaceMuted, border: `1px solid ${C.base.border}`, color: C.base.text }}
+          className="min-w-36 px-3 py-2 rounded-xl text-sm outline-none transition-all min-h-[42px]"
+          style={{ background: C.base.surfaceMuted, border: `1px solid ${C.base.border}`, color: C.base.text, boxShadow: S.inset }}
         >
           <option value="all">{t("All Classes")}</option>
           {classes.map((c) => (
@@ -619,8 +643,8 @@ export default function UsersPage() {
             // Keep the header indicator and the dropdown in sync.
             table.setSort({ key: next, dir: "asc" });
           }}
-          className="min-w-36 px-3 py-2 rounded-lg text-sm outline-none transition-all"
-          style={{ background: C.base.surfaceMuted, border: `1px solid ${C.base.border}`, color: C.base.text }}
+          className="min-w-36 px-3 py-2 rounded-xl text-sm outline-none transition-all min-h-[42px]"
+          style={{ background: C.base.surfaceMuted, border: `1px solid ${C.base.border}`, color: C.base.text, boxShadow: S.inset }}
         >
           <option value="name">{t("Sort: Name")}</option>
           <option value="role">{t("Sort: Role")}</option>
@@ -671,7 +695,7 @@ export default function UsersPage() {
               </tr>
             )}
             {table.rows.map((u) => (
-              <tr key={u.id} className="hover:bg-slate-50 transition-colors">
+              <tr key={u.id} className="cbt-row-hover transition-colors">
                 <td className="px-4 py-3.5">
                   <div className="flex items-center gap-3">
                     <div
@@ -718,14 +742,18 @@ export default function UsersPage() {
                 </td>
                 <td className="px-4 py-3.5">
                   <span
-                    className="text-xs px-2 py-1 rounded-full font-medium flex items-center gap-1.5 w-fit"
+                    className="text-xs px-2.5 py-1 rounded-full font-medium inline-flex items-center gap-1.5 w-fit whitespace-nowrap"
                     style={{ background: statusColor[u.status].bg, color: statusColor[u.status].text }}
                   >
-                    <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: statusColor[u.status].dot }} />
+                    {u.status === "active" ? (
+                      <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                    ) : (
+                      <PauseCircle className="w-3.5 h-3.5 shrink-0" />
+                    )}
                     {t(u.status.charAt(0).toUpperCase() + u.status.slice(1))}
                   </span>
                 </td>
-                <td className="px-4 py-3.5 text-xs" style={{ color: C.base.textMuted, fontFamily: "var(--font-mono)" }}>{u.lastLogin}</td>
+                <td className="px-4 py-3.5 text-xs tabular-nums whitespace-nowrap" style={{ color: C.base.textMuted, fontFamily: "var(--font-mono)" }}>{u.lastLogin}</td>
                 <td className="px-4 py-3.5">
                   <div className="flex items-center gap-2">
                     <RowAction onClick={() => openEdit(u)} color={C.brand.main}>Edit</RowAction>
@@ -890,7 +918,7 @@ export default function UsersPage() {
           title={t("Impor Pengguna Secara Massal")}
           onClose={closeImport}
           width={560}
-          overlay="rgba(15,23,42,0.5)"
+          overlay={S.overlay}
           actions={
             <>
               <Btn onClick={closeImport} disabled={importBusy} style={{ flex: 1 }}>{t("Tutup")}</Btn>
@@ -905,11 +933,13 @@ export default function UsersPage() {
           </p>
 
           <div className="flex flex-wrap gap-2">
-            <Btn variant="outline-green" onClick={() => downloadTemplate("excel")} style={{ background: C.brand.bg, color: C.brand.main, border: `1px solid ${C.brand.borderSoft}` }}>
-              ⬇ {t("Template Excel")}
+            <Btn variant="outline-green" onClick={() => downloadTemplate("excel")} style={{ background: C.brand.bg, color: C.brand.dark, border: `1px solid ${C.brand.borderSoft}` }}>
+              <Download className="w-4 h-4" />
+              <span>{t("Template Excel")}</span>
             </Btn>
             <Btn variant="outline-green" onClick={() => downloadTemplate("csv")} style={{ background: C.ok.bgLight, color: C.ok.dark, border: `1px solid ${C.ok.border}` }}>
-              ⬇ {t("Template CSV")}
+              <Download className="w-4 h-4" />
+              <span>{t("Template CSV")}</span>
             </Btn>
           </div>
 
@@ -917,21 +947,21 @@ export default function UsersPage() {
             <input ref={importFileRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleImportFile} className="hidden" id="user-import-file" />
             <label
               htmlFor="user-import-file"
-              className="flex items-center justify-center gap-2 w-full py-8 rounded-xl cursor-pointer transition-all hover:opacity-80"
-              style={{ border: `2px dashed ${C.base.dashed}`, background: C.base.surfaceMuted, color: C.base.textMuted }}
+              className="flex flex-col sm:flex-row items-center justify-center gap-2.5 w-full py-8 px-4 rounded-xl cursor-pointer transition-all hover:opacity-80 text-center"
+              style={{ border: `2px dashed ${C.base.dashed}`, background: C.base.surfaceMuted, color: C.base.textMuted, boxShadow: S.inset }}
             >
-              <span className="text-2xl">📄</span>
+              <UploadCloud className="w-6 h-6 shrink-0" style={{ color: C.brand.main }} />
               <span className="text-sm font-medium">{importFile ? importFile.name : t("Klik untuk memilih file Excel atau CSV")}</span>
             </label>
           </div>
 
-          {importError && <Notice type="error" icon="⚠">{importError}</Notice>}
+          {importError && <Notice type="error" icon={<AlertTriangle className="w-4 h-4" />}>{importError}</Notice>}
 
           {importResult && (
-            <div className="rounded-lg p-3 space-y-2" style={{ background: C.base.surfaceMuted, border: `1px solid ${C.base.border}` }}>
+            <div className="rounded-xl p-3 space-y-2" style={{ background: C.base.surfaceMuted, border: `1px solid ${C.base.border}` }}>
               <div className="flex items-center gap-2 text-sm font-medium" style={{ color: C.base.text }}>
                 <span style={{ color: importResult.imported > 0 ? C.ok.main : C.warn.main }}>
-                  {importResult.imported > 0 ? "✓" : "⚠"}
+                  {importResult.imported > 0 ? <CheckCircle2 className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
                 </span>
                 {t("{n} dari {total} pengguna berhasil diimpor.", { n: importResult.imported, total: importResult.totalParsed })}
               </div>

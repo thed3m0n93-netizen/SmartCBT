@@ -1,7 +1,20 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router";
+import {
+  AlertTriangle,
+  Check,
+  Download,
+  FileSpreadsheet,
+  Flag,
+  Printer,
+  RotateCcw,
+  Sparkles,
+  X,
+} from "lucide-react";
 import { useAuth } from "../../app/AuthContext";
 import { useI18n } from "../../i18n";
+import { C, S } from "../../styles/tokens";
+import { AiProviderInlineChip } from "../../components/AiProviderWidget";
 import {
   fetchGradingExams,
   fetchGrading,
@@ -142,26 +155,26 @@ function mapDbAnalysis(row: AnalysisRow, idx: number): ItemAnalysis {
 }
 
 const tkColor: Record<string, { bg: string; text: string }> = {
-  easy: { bg: "#FEF3C7", text: "#D97706" },
-  medium: { bg: "#EFF6FF", text: "#1D4ED8" },
-  hard: { bg: "#FEE2E2", text: "#DC2626" },
+  easy: { bg: C.warn.bg, text: C.warn.dark },
+  medium: { bg: C.brand.bg, text: C.brand.dark },
+  hard: { bg: C.danger.bgLight, text: C.danger.text },
 };
 
 const dbColor: Record<string, { bg: string; text: string }> = {
-  poor: { bg: "#FEE2E2", text: "#DC2626" },
-  acceptable: { bg: "#FEF3C7", text: "#D97706" },
-  good: { bg: "#D1FAE5", text: "#059669" },
-  excellent: { bg: "#F0FDF4", text: "#047857" },
+  poor: { bg: C.danger.bgLight, text: C.danger.text },
+  acceptable: { bg: C.warn.bg, text: C.warn.dark },
+  good: { bg: C.ok.bg, text: C.ok.dark },
+  excellent: { bg: C.ok.bgLight, text: C.ok.dark },
 };
 
 function ScoreBar({ value, max = 100, color }: { value: number; max?: number; color: string }) {
   const pct = (value / max) * 100;
   return (
-    <div className="flex items-center gap-2">
-      <div className="flex-1 h-1.5 rounded-full" style={{ background: "#e2e8f0" }}>
+    <div className="flex items-center gap-2 min-w-[80px]">
+      <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: C.base.surfaceSoft }}>
         <div className="h-full rounded-full" style={{ width: `${pct}%`, background: color }} />
       </div>
-      <span className="text-xs w-6 text-right" style={{ color: "#64748b" }}>
+      <span className="text-xs w-7 text-right tabular-nums" style={{ color: C.base.textMuted }}>
         {value}
       </span>
     </div>
@@ -461,19 +474,19 @@ export default function GradingPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold" style={{ color: "#0f172a", fontFamily: "var(--font-serif)" }}>
+          <h1 className="text-2xl font-bold" style={{ color: C.base.text, fontFamily: "var(--font-serif)" }}>
             {t("Grading & Analysis")}
           </h1>
-          <p className="text-sm mt-0.5" style={{ color: "#64748b" }}>
+          <p className="text-sm mt-0.5" style={{ color: C.base.textMuted }}>
             {t("Automated grading · Item analysis (Tingkat Kesukaran & Daya Beda)")}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <select
             value={selectedExamId}
             onChange={(e) => setSelectedExamId(e.target.value)}
-            className="px-3 py-2 rounded-lg text-sm outline-none"
-            style={{ border: "1px solid #e2e8f0", background: "#fff", color: "#0f172a" }}
+            className="px-3 py-2 rounded-xl text-base sm:text-sm outline-none min-h-[42px]"
+            style={{ border: `1px solid ${C.base.border}`, background: C.base.surface, color: C.base.text, boxShadow: S.inset }}
           >
             {examOptions.length === 0 ? (
               <option value="">{t("No exams available")}</option>
@@ -483,59 +496,76 @@ export default function GradingPage() {
               ))
             )}
           </select>
-          <button onClick={exportPdf} disabled={!selectedExamId || results.length === 0} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border transition-all hover:bg-slate-50 disabled:opacity-50" style={{ borderColor: "#e2e8f0", color: "#374151" }}>
-            {t("↓ Export PDF")}
+          <button
+            onClick={exportPdf}
+            disabled={!selectedExamId || results.length === 0}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-medium border transition-all cbt-row-hover disabled:opacity-50 min-h-[42px]"
+            style={{ borderColor: C.base.border, color: C.base.textBody, background: C.base.surface, boxShadow: S.control }}
+          >
+            <Printer className="w-4 h-4" />
+            {t("Export PDF")}
           </button>
-          <button onClick={exportCsv} disabled={!selectedExamId || results.length === 0} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border transition-all hover:bg-slate-50 disabled:opacity-50" style={{ borderColor: "#e2e8f0", color: "#374151" }}>
-            {t("↓ Export CSV")}
+          <button
+            onClick={exportCsv}
+            disabled={!selectedExamId || results.length === 0}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-medium border transition-all cbt-row-hover disabled:opacity-50 min-h-[42px]"
+            style={{ borderColor: C.base.border, color: C.base.textBody, background: C.base.surface, boxShadow: S.control }}
+          >
+            <Download className="w-4 h-4" />
+            {t("Export CSV")}
           </button>
           <button
             onClick={exportExcel}
             disabled={!selectedExamId || excelBusy}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all hover:opacity-90 disabled:opacity-50"
-            style={{ background: "#059669", color: "#fff" }}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold transition-all hover:opacity-90 disabled:opacity-50 min-h-[42px]"
+            style={{ background: C.ok.main, color: "#FFFFFF", boxShadow: S.btnSuccess }}
           >
-            {excelBusy ? t("Menyiapkan file…") : t("↓ Export Excel")}
+            <FileSpreadsheet className="w-4 h-4" />
+            {excelBusy ? t("Menyiapkan file…") : t("Export Excel")}
           </button>
         </div>
       </div>
 
       {/* Excel export error */}
       {excelError && (
-        <div className="rounded-lg px-3 py-2 text-sm" style={{ background: "#FEE2E2", color: "#B91C1C", border: "1px solid #FECACA" }}>
-          ⚠ {excelError}
+        <div
+          className="flex items-center gap-2 rounded-xl px-3.5 py-2.5 text-sm"
+          style={{ background: C.danger.bgLight, color: C.danger.text, border: `1px solid ${C.danger.border}` }}
+        >
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          <span>{excelError}</span>
         </div>
       )}
 
       {/* Stats row */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
         {[
-          { label: t("Class Average"), value: avgScore, suffix: "/100", color: avgScore >= 75 ? "#059669" : "#D97706" },
-          { label: t("Highest Score"), value: highest, suffix: "/100", color: "#1D4ED8" },
-          { label: t("Lowest Score"), value: lowest, suffix: "/100", color: "#DC2626" },
-          { label: t("Pass Rate"), value: passing, suffix: `/${results.length}`, color: results.length > 0 && passing / results.length >= 0.8 ? "#059669" : "#D97706" },
+          { label: t("Class Average"), value: avgScore, suffix: "/100", color: avgScore >= 75 ? C.ok.main : C.warn.main },
+          { label: t("Highest Score"), value: highest, suffix: "/100", color: C.brand.dark },
+          { label: t("Lowest Score"), value: lowest, suffix: "/100", color: C.danger.text },
+          { label: t("Pass Rate"), value: passing, suffix: `/${results.length}`, color: results.length > 0 && passing / results.length >= 0.8 ? C.ok.main : C.warn.main },
         ].map((s) => (
           <div
             key={s.label}
-            className="rounded-xl p-5 text-center"
-            style={{ background: "#fff", border: "1px solid #e2e8f0" }}
+            className="cbt-card rounded-2xl p-4 sm:p-5 text-center"
+            style={{ background: C.base.surface, border: `1px solid ${C.base.border}`, boxShadow: S.card }}
           >
-            <div className="text-3xl font-bold" style={{ color: s.color, fontFamily: "var(--font-serif)" }}>
+            <div className="text-3xl font-bold tabular-nums" style={{ color: s.color, fontFamily: "var(--font-serif)" }}>
               {s.value}
-              <span className="text-base font-normal" style={{ color: "#94a3b8" }}>{s.suffix}</span>
+              <span className="text-base font-normal" style={{ color: C.base.textFaint }}>{s.suffix}</span>
             </div>
-            <div className="text-xs mt-1" style={{ color: "#64748b" }}>{s.label}</div>
+            <div className="text-xs mt-1" style={{ color: C.base.textMuted }}>{s.label}</div>
           </div>
         ))}
       </div>
 
       {/* Grade distribution chart */}
-      <div className="rounded-xl p-5" style={{ background: "#fff", border: "1px solid #e2e8f0" }}>
-        <div className="text-sm font-semibold mb-4" style={{ color: "#0f172a" }}>{t("Grade Distribution")}</div>
-        <div className="flex items-end gap-4 h-28">
+      <div className="cbt-card rounded-2xl p-5" style={{ background: C.base.surface, border: `1px solid ${C.base.border}`, boxShadow: S.card }}>
+        <div className="text-sm font-semibold mb-4" style={{ color: C.base.text }}>{t("Grade Distribution")}</div>
+        <div className="flex items-end gap-3 sm:gap-4 h-28">
           {distribution.map((d) => (
             <div key={d.label} className="flex-1 flex flex-col items-center gap-1.5">
-              <div className="text-xs font-medium" style={{ color: "#0f172a" }}>{d.count}</div>
+              <div className="text-xs font-semibold tabular-nums" style={{ color: C.base.text }}>{d.count}</div>
               <div
                 className="w-full rounded-t-lg transition-all"
                 style={{
@@ -544,76 +574,79 @@ export default function GradingPage() {
                   opacity: d.count === 0 ? 0.2 : 1,
                 }}
               />
-              <div className="text-xs text-center leading-tight" style={{ color: "#64748b" }}>{d.label}</div>
+              <div className="text-[11px] sm:text-xs text-center leading-tight" style={{ color: C.base.textMuted }}>{d.label}</div>
             </div>
           ))}
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 rounded-lg p-1 self-start w-fit" style={{ background: "#f1f5f9" }}>
-        {(["results", "essay", "analysis"] as const).map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className="px-4 py-2 rounded-md text-sm font-medium capitalize transition-all"
-            style={{
-              background: activeTab === tab ? "#fff" : "transparent",
-              color: activeTab === tab ? "#0f172a" : "#64748b",
-              boxShadow: activeTab === tab ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
-            }}
-          >
-            {tab === "results" ? t("All Results") : tab === "essay" ? t("Manual Grading") : t("Item Analysis (Analis Butir)")}
-          </button>
-        ))}
+      <div className="flex gap-1 rounded-xl p-1 overflow-x-auto max-w-full w-fit" style={{ background: C.base.surfaceSoft, border: `1px solid ${C.base.border}` }}>
+        {(["results", "essay", "analysis"] as const).map((tab) => {
+          const active = activeTab === tab;
+          return (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className="px-4 py-2 rounded-lg text-xs sm:text-sm font-medium capitalize transition-all whitespace-nowrap min-h-[38px]"
+              style={{
+                background: active ? C.base.surface : "transparent",
+                color: active ? C.base.text : C.base.textMuted,
+                boxShadow: active ? S.control : "none",
+              }}
+            >
+              {tab === "results" ? t("All Results") : tab === "essay" ? t("Manual Grading") : t("Item Analysis (Analis Butir)")}
+            </button>
+          );
+        })}
       </div>
 
       {/* Results table */}
       {activeTab === "results" && (
         <div className="space-y-4">
-          <div className="rounded-xl p-4" style={{ background: "#fff", border: "1px solid #e2e8f0" }}>
+          <div className="cbt-card rounded-2xl p-4" style={{ background: C.base.surface, border: `1px solid ${C.base.border}`, boxShadow: S.card }}>
             <div className="flex flex-wrap gap-3 items-end">
-              <div className="min-w-[180px]">
-                <label className="block text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: "#64748b" }}>{t("Nama Siswa")}</label>
+              <div className="flex-1 min-w-[160px]">
+                <label className="block text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: C.base.textMuted }}>{t("Nama Siswa")}</label>
                 <input
                   value={filters.student}
                   onChange={(e) => setFilters((p) => ({ ...p, student: e.target.value }))}
                   placeholder={t("Cari nama")}
-                  className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                  style={{ border: "1px solid #e2e8f0", background: "#fff", color: "#0f172a" }}
+                  className="w-full px-3 py-2 rounded-xl text-base sm:text-sm outline-none"
+                  style={{ border: `1px solid ${C.base.border}`, background: C.base.surfaceAlt, color: C.base.text, boxShadow: S.inset }}
                 />
               </div>
-              <div className="min-w-[180px]">
-                <label className="block text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: "#64748b" }}>{t("Kelas")}</label>
+              <div className="flex-1 min-w-[140px]">
+                <label className="block text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: C.base.textMuted }}>{t("Kelas")}</label>
                 <select
                   value={filters.className}
                   onChange={(e) => setFilters((p) => ({ ...p, className: e.target.value }))}
-                  className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                  style={{ border: "1px solid #e2e8f0", background: "#fff", color: "#0f172a" }}
+                  className="w-full px-3 py-2 rounded-xl text-base sm:text-sm outline-none"
+                  style={{ border: `1px solid ${C.base.border}`, background: C.base.surfaceAlt, color: C.base.text, boxShadow: S.inset }}
                 >
                   <option value="">{t("Semua Kelas")}</option>
                   {uniqueClassNames.map((cls) => <option key={cls} value={cls}>{cls}</option>)}
                 </select>
               </div>
-              <div className="min-w-[180px]">
-                <label className="block text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: "#64748b" }}>{t("Nama Ujian")}</label>
+              <div className="flex-1 min-w-[150px]">
+                <label className="block text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: C.base.textMuted }}>{t("Nama Ujian")}</label>
                 <select
                   value={filters.examTitle}
                   onChange={(e) => setFilters((p) => ({ ...p, examTitle: e.target.value }))}
-                  className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                  style={{ border: "1px solid #e2e8f0", background: "#fff", color: "#0f172a" }}
+                  className="w-full px-3 py-2 rounded-xl text-base sm:text-sm outline-none"
+                  style={{ border: `1px solid ${C.base.border}`, background: C.base.surfaceAlt, color: C.base.text, boxShadow: S.inset }}
                 >
                   <option value="">{t("Semua Ujian")}</option>
                   {uniqueExamTitles.map((exam) => <option key={exam} value={exam}>{exam}</option>)}
                 </select>
               </div>
-              <div className="min-w-[160px]">
-                <label className="block text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: "#64748b" }}>{t("Status")}</label>
+              <div className="flex-1 min-w-[130px]">
+                <label className="block text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: C.base.textMuted }}>{t("Status")}</label>
                 <select
                   value={filters.status}
                   onChange={(e) => setFilters((p) => ({ ...p, status: e.target.value }))}
-                  className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                  style={{ border: "1px solid #e2e8f0", background: "#fff", color: "#0f172a" }}
+                  className="w-full px-3 py-2 rounded-xl text-base sm:text-sm outline-none"
+                  style={{ border: `1px solid ${C.base.border}`, background: C.base.surfaceAlt, color: C.base.text, boxShadow: S.inset }}
                 >
                   <option value="all">{t("Semua")}</option>
                   <option value="complete">{t("Selesai")}</option>
@@ -621,13 +654,13 @@ export default function GradingPage() {
                   <option value="auto_graded">{t("Auto Graded")}</option>
                 </select>
               </div>
-              <div className="min-w-[160px]">
-                <label className="block text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: "#64748b" }}>{t("Urutkan")}</label>
+              <div className="flex-1 min-w-[130px]">
+                <label className="block text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: C.base.textMuted }}>{t("Urutkan")}</label>
                 <select
                   value={sortKey}
                   onChange={(e) => setSortKey(e.target.value as "name" | "score" | "class" | "exam" | "status")}
-                  className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                  style={{ border: "1px solid #e2e8f0", background: "#fff", color: "#0f172a" }}
+                  className="w-full px-3 py-2 rounded-xl text-base sm:text-sm outline-none"
+                  style={{ border: `1px solid ${C.base.border}`, background: C.base.surfaceAlt, color: C.base.text, boxShadow: S.inset }}
                 >
                   <option value="score">{t("Skor")}</option>
                   <option value="name">{t("Nama")}</option>
@@ -638,112 +671,116 @@ export default function GradingPage() {
               </div>
               <button
                 onClick={() => setFilters({ student: "", className: "", examTitle: "", status: "all" })}
-                className="px-4 py-2 rounded-lg text-sm font-medium border transition-all hover:bg-slate-50"
-                style={{ borderColor: "#e2e8f0", color: "#374151" }}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium border transition-all cbt-row-hover min-h-[40px]"
+                style={{ borderColor: C.base.border, color: C.base.textBody, background: C.base.surface }}
               >
+                <RotateCcw className="w-3.5 h-3.5" />
                 {t("Reset Filter")}
               </button>
             </div>
           </div>
 
-          <div className="rounded-xl overflow-hidden" style={{ border: "1px solid #e2e8f0" }}>
+          <div className="cbt-card rounded-2xl overflow-hidden" style={{ border: `1px solid ${C.base.border}`, background: C.base.surface, boxShadow: S.card }}>
             {loading && (
-              <div className="py-12 text-center text-sm" style={{ color: "#94a3b8", background: "#fff" }}>
+              <div className="py-12 text-center text-sm" style={{ color: C.base.textFaint }}>
                 {t("Loading grading results…")}
               </div>
             )}
             {!loading && loadError && (
-              <div className="py-12 text-center text-sm" style={{ color: "#DC2626", background: "#fff" }}>
+              <div className="py-12 text-center text-sm" style={{ color: C.danger.text }}>
                 {t("Failed to load grading results: {err}", { err: loadError })}
               </div>
             )}
             {!loading && !loadError && filteredResults.length === 0 && (
-              <div className="py-12 text-center text-sm" style={{ color: "#94a3b8", background: "#fff" }}>
+              <div className="py-12 text-center text-sm" style={{ color: C.base.textFaint }}>
                 {t("No results yet for this exam.")}
               </div>
             )}
             {!loading && !loadError && filteredResults.length > 0 && (
-              <table className="w-full">
-                <thead>
-                  <tr style={{ background: "#F8FAFC", borderBottom: "1px solid #e2e8f0" }}>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide" style={{ color: "#64748b" }}>
-                      {t("Rank")}
-                    </th>
-                    <th
-                      className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide cursor-pointer"
-                      style={{ color: sortKey === "name" ? "#1D4ED8" : "#64748b" }}
-                      onClick={() => setSortKey("name")}
-                    >
-                      {t("Student")} ↕
-                    </th>
-                    <th
-                      className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide cursor-pointer"
-                      style={{ color: sortKey === "score" ? "#1D4ED8" : "#64748b" }}
-                      onClick={() => setSortKey("score")}
-                    >
-                      {t("Score")} ↕
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide" style={{ color: "#64748b" }}>{t("Correct / Wrong")}</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide" style={{ color: "#64748b" }}>{t("Essay")}</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide" style={{ color: "#64748b" }}>{t("Duration")}</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide" style={{ color: "#64748b" }}>{t("Status")}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y" style={{ background: "#fff", borderColor: "#f1f5f9" }}>
-                  {sorted.map((r, idx) => (
-                    <tr key={r.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-4 py-3.5 text-sm font-bold" style={{ color: idx < 3 ? ["#D97706", "#64748b", "#D97706"][idx] : "#94a3b8" }}>
-                        #{idx + 1}
-                      </td>
-                      <td className="px-4 py-3.5">
-                        <div className="text-sm font-medium" style={{ color: "#0f172a" }}>{r.name}</div>
-                        <div className="text-xs" style={{ color: "#94a3b8", fontFamily: "var(--font-mono)" }}>{r.nis}</div>
-                      </td>
-                      <td className="px-4 py-3.5">
-                        <div className="flex items-center gap-3">
-                          <span
-                            className="text-lg font-bold"
-                            style={{
-                              color: r.score >= 90 ? "#059669" : r.score >= 70 ? "#0f172a" : "#DC2626",
-                              fontFamily: "var(--font-serif)",
-                            }}
-                          >
-                            {r.score}
-                          </span>
-                          <ScoreBar value={r.score} color={r.score >= 90 ? "#059669" : r.score >= 70 ? "#1D4ED8" : "#DC2626"} />
-                        </div>
-                      </td>
-                      <td className="px-4 py-3.5">
-                        <div className="flex items-center gap-1.5 text-sm">
-                          <span style={{ color: "#059669" }}>✓ {r.correct}</span>
-                          <span style={{ color: "#e2e8f0" }}>·</span>
-                          <span style={{ color: "#DC2626" }}>✗ {r.wrong}</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3.5">
-                        <div className="text-sm" style={{ color: "#0f172a" }}>
-                          {r.essayScore}/{r.essayMax}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3.5 text-sm" style={{ color: "#64748b", fontFamily: "var(--font-mono)" }}>
-                        {r.duration}
-                      </td>
-                      <td className="px-4 py-3.5">
-                        <span
-                          className="text-xs px-2 py-1 rounded-full font-medium"
-                          style={
-                            r.status === "complete"
-                              ? { background: "#D1FAE5", color: "#065F46" }
-                              : { background: "#FEF3C7", color: "#92400E" }
-                          }
-                        >
-                          {r.status === "complete" ? t("✓ Graded") : t("⚑ Manual Needed")}
-                        </span>
-                      </td>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[680px]">
+                  <thead>
+                    <tr style={{ background: C.base.surfaceMuted, borderBottom: `1px solid ${C.base.border}` }}>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide" style={{ color: C.base.textMuted }}>
+                        {t("Rank")}
+                      </th>
+                      <th
+                        className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide cursor-pointer"
+                        style={{ color: sortKey === "name" ? C.brand.dark : C.base.textMuted }}
+                        onClick={() => setSortKey("name")}
+                      >
+                        {t("Student")} ↕
+                      </th>
+                      <th
+                        className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide cursor-pointer"
+                        style={{ color: sortKey === "score" ? C.brand.dark : C.base.textMuted }}
+                        onClick={() => setSortKey("score")}
+                      >
+                        {t("Score")} ↕
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide" style={{ color: C.base.textMuted }}>{t("Correct / Wrong")}</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide" style={{ color: C.base.textMuted }}>{t("Essay")}</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide" style={{ color: C.base.textMuted }}>{t("Duration")}</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide" style={{ color: C.base.textMuted }}>{t("Status")}</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y" style={{ background: C.base.surface, borderColor: C.base.borderLight }}>
+                    {sorted.map((r, idx) => (
+                      <tr key={r.id} className="cbt-row-hover transition-colors">
+                        <td className="px-4 py-3.5 text-sm font-bold tabular-nums" style={{ color: idx < 3 ? [C.warn.main, C.base.textMuted, C.warn.main][idx] : C.base.textFaint }}>
+                          #{idx + 1}
+                        </td>
+                        <td className="px-4 py-3.5">
+                          <div className="text-sm font-medium" style={{ color: C.base.text }}>{r.name}</div>
+                          <div className="text-xs" style={{ color: C.base.textFaint, fontFamily: "var(--font-mono)" }}>{r.nis}</div>
+                        </td>
+                        <td className="px-4 py-3.5">
+                          <div className="flex items-center gap-3">
+                            <span
+                              className="text-lg font-bold tabular-nums"
+                              style={{
+                                color: r.score >= 90 ? C.ok.main : r.score >= 70 ? C.base.text : C.danger.text,
+                                fontFamily: "var(--font-serif)",
+                              }}
+                            >
+                              {r.score}
+                            </span>
+                            <ScoreBar value={r.score} color={r.score >= 90 ? C.ok.main : r.score >= 70 ? C.brand.main : C.danger.main} />
+                          </div>
+                        </td>
+                        <td className="px-4 py-3.5">
+                          <div className="flex items-center gap-1.5 text-sm tabular-nums">
+                            <span className="inline-flex items-center gap-0.5" style={{ color: C.ok.dark }}><Check className="w-3.5 h-3.5" /> {r.correct}</span>
+                            <span style={{ color: C.base.border }}>·</span>
+                            <span className="inline-flex items-center gap-0.5" style={{ color: C.danger.text }}><X className="w-3.5 h-3.5" /> {r.wrong}</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3.5 tabular-nums">
+                          <div className="text-sm" style={{ color: C.base.text }}>
+                            {r.essayScore}/{r.essayMax}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3.5 text-sm tabular-nums" style={{ color: C.base.textMuted, fontFamily: "var(--font-mono)" }}>
+                          {r.duration}
+                        </td>
+                        <td className="px-4 py-3.5">
+                          <span
+                            className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full font-medium whitespace-nowrap"
+                            style={
+                              r.status === "complete"
+                                ? { background: C.ok.bg, color: C.ok.dark }
+                                : { background: C.warn.bg, color: C.warn.dark }
+                            }
+                          >
+                            {r.status === "complete" ? <Check className="w-3 h-3" /> : <Flag className="w-3 h-3" />}
+                            {r.status === "complete" ? t("Graded") : t("Manual Needed")}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
         </div>
@@ -752,50 +789,50 @@ export default function GradingPage() {
       {/* Essay grading */}
       {activeTab === "essay" && (
         <div className="space-y-4">
-          <div className="rounded-xl p-4" style={{ background: "#fff", border: "1px solid #e2e8f0" }}>
+          <div className="cbt-card rounded-2xl p-4" style={{ background: C.base.surface, border: `1px solid ${C.base.border}`, boxShadow: S.card }}>
             <div className="flex flex-wrap gap-3 items-end">
-              <div className="min-w-[180px]">
-                <label className="block text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: "#64748b" }}>{t("Nama Siswa")}</label>
+              <div className="flex-1 min-w-[160px]">
+                <label className="block text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: C.base.textMuted }}>{t("Nama Siswa")}</label>
                 <input
                   value={essayFilters.student}
                   onChange={(e) => setEssayFilters((p) => ({ ...p, student: e.target.value }))}
                   placeholder={t("Cari nama")}
-                  className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                  style={{ border: "1px solid #e2e8f0", background: "#fff", color: "#0f172a" }}
+                  className="w-full px-3 py-2 rounded-xl text-base sm:text-sm outline-none"
+                  style={{ border: `1px solid ${C.base.border}`, background: C.base.surfaceAlt, color: C.base.text, boxShadow: S.inset }}
                 />
               </div>
-              <div className="min-w-[180px]">
-                <label className="block text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: "#64748b" }}>{t("Kelas")}</label>
+              <div className="flex-1 min-w-[140px]">
+                <label className="block text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: C.base.textMuted }}>{t("Kelas")}</label>
                 <select
                   value={essayFilters.className}
                   onChange={(e) => setEssayFilters((p) => ({ ...p, className: e.target.value }))}
-                  className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                  style={{ border: "1px solid #e2e8f0", background: "#fff", color: "#0f172a" }}
+                  className="w-full px-3 py-2 rounded-xl text-base sm:text-sm outline-none"
+                  style={{ border: `1px solid ${C.base.border}`, background: C.base.surfaceAlt, color: C.base.text, boxShadow: S.inset }}
                 >
                   <option value="">{t("Semua Kelas")}</option>
                   {uniqueEssayClassNames.map((cls) => <option key={cls} value={cls}>{cls}</option>)}
                 </select>
               </div>
-              <div className="min-w-[160px]">
-                <label className="block text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: "#64748b" }}>{t("Status")}</label>
+              <div className="flex-1 min-w-[130px]">
+                <label className="block text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: C.base.textMuted }}>{t("Status")}</label>
                 <select
                   value={essayFilters.status}
                   onChange={(e) => setEssayFilters((p) => ({ ...p, status: e.target.value }))}
-                  className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                  style={{ border: "1px solid #e2e8f0", background: "#fff", color: "#0f172a" }}
+                  className="w-full px-3 py-2 rounded-xl text-base sm:text-sm outline-none"
+                  style={{ border: `1px solid ${C.base.border}`, background: C.base.surfaceAlt, color: C.base.text, boxShadow: S.inset }}
                 >
                   <option value="all">{t("Semua")}</option>
                   <option value="pending">{t("Belum Dinilai")}</option>
                   <option value="graded">{t("Sudah Dinilai")}</option>
                 </select>
               </div>
-              <div className="min-w-[160px]">
-                <label className="block text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: "#64748b" }}>{t("Urutkan")}</label>
+              <div className="flex-1 min-w-[130px]">
+                <label className="block text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: C.base.textMuted }}>{t("Urutkan")}</label>
                 <select
                   value={essayFilters.sort}
                   onChange={(e) => setEssayFilters((p) => ({ ...p, sort: e.target.value }))}
-                  className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                  style={{ border: "1px solid #e2e8f0", background: "#fff", color: "#0f172a" }}
+                  className="w-full px-3 py-2 rounded-xl text-base sm:text-sm outline-none"
+                  style={{ border: `1px solid ${C.base.border}`, background: C.base.surfaceAlt, color: C.base.text, boxShadow: S.inset }}
                 >
                   <option value="pending">{t("Belum Dinilai")}</option>
                   <option value="name">{t("Nama")}</option>
@@ -805,9 +842,10 @@ export default function GradingPage() {
               </div>
               <button
                 onClick={() => setEssayFilters({ student: "", className: "", status: "all", sort: "pending" })}
-                className="px-4 py-2 rounded-lg text-sm font-medium border transition-all hover:bg-slate-50"
-                style={{ borderColor: "#e2e8f0", color: "#374151" }}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium border transition-all cbt-row-hover min-h-[40px]"
+                style={{ borderColor: C.base.border, color: C.base.textBody, background: C.base.surface }}
               >
+                <RotateCcw className="w-3.5 h-3.5" />
                 {t("Reset Filter")}
               </button>
             </div>
@@ -815,11 +853,11 @@ export default function GradingPage() {
 
           {essayMsg && (
             <div
-              className="rounded-lg px-3 py-2 text-sm"
+              className="rounded-xl px-3.5 py-2.5 text-sm"
               style={{
-                background: essayMsg.type === "ok" ? "#DCFCE7" : "#FEE2E2",
-                color: essayMsg.type === "ok" ? "#166534" : "#B91C1C",
-                border: `1px solid ${essayMsg.type === "ok" ? "#86EFAC" : "#FECACA"}`,
+                background: essayMsg.type === "ok" ? C.ok.msgBg : C.danger.bgLight,
+                color: essayMsg.type === "ok" ? C.ok.msgText : C.danger.text,
+                border: `1px solid ${essayMsg.type === "ok" ? C.ok.msgBorder : C.danger.border}`,
               }}
             >
               {essayMsg.text}
@@ -828,20 +866,20 @@ export default function GradingPage() {
 
           {essays.length === 0 ? (
             <div
-              className="rounded-xl p-6 text-center text-sm"
-              style={{ background: "#F8FAFC", border: "1px solid #e2e8f0", color: "#64748b" }}
+              className="rounded-2xl p-6 text-center text-sm"
+              style={{ background: C.base.surfaceMuted, border: `1px solid ${C.base.border}`, color: C.base.textMuted }}
             >
               {t("Ujian ini tidak memiliki soal esai — semua nilai ditentukan otomatis.")}
             </div>
           ) : (
             <div
-              className="rounded-lg px-4 py-3 text-sm mb-2 flex items-start justify-between"
-              style={{ background: "#EFF6FF", border: "1px solid #BFDBFE", color: "#1E40AF" }}
+              className="rounded-xl px-4 py-3 text-sm mb-2 flex flex-wrap items-center justify-between gap-2"
+              style={{ background: C.brand.bg, border: `1px solid ${C.brand.border}`, color: C.brand.dark }}
             >
               <span>
                 <strong>{t("Penilaian Esai Manual")}</strong> — {t("{n} jawaban belum dinilai", { n: pendingEssays.length })}
               </span>
-              <span style={{ color: "#1E40AF" }}>
+              <span className="tabular-nums font-semibold" style={{ color: C.brand.dark }}>
                 {t("{a}/{b} {c}", { a: essays.length - pendingEssays.length, b: essays.length, c: t("sudah dinilai") })}
               </span>
             </div>
@@ -849,20 +887,24 @@ export default function GradingPage() {
 
           {essays.length > 0 && pendingEssays.length === 0 && (
             <div
-              className="rounded-lg px-3 py-2 text-sm"
-              style={{ background: "#DCFCE7", color: "#166534", border: "1px solid #86EFAC" }}
+              className="rounded-xl px-3.5 py-2.5 text-sm"
+              style={{ background: C.ok.msgBg, color: C.ok.msgText, border: `1px solid ${C.ok.msgBorder}` }}
             >
               {t("Semua jawaban esai sudah dinilai — skor total otomatis terukur.")}
             </div>
           )}
 
-          <div className="flex justify-end">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex-1 min-w-0">
+              <AiProviderInlineChip compact />
+            </div>
             <button
               onClick={gradeAllEssayAi}
               disabled={essayAiBatchLoading || essayAiLoadingId != null || essaySavingId != null || !selectedExamId}
-              className="px-4 py-2 rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-60"
-              style={{ background: "#7C3AED", color: "#fff" }}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-60 min-h-[42px] shrink-0"
+              style={{ background: C.purple.main, color: "#FFFFFF", boxShadow: S.control }}
             >
+              <Sparkles className="w-4 h-4" />
               {essayAiBatchLoading ? t("AI menilai semua…") : t("AI Grade Semua")}
             </button>
           </div>
@@ -875,56 +917,57 @@ export default function GradingPage() {
             return (
               <div
                 key={e.answer_id}
-                className="rounded-xl p-5"
-                style={{ background: "#fff", border: "1px solid #e2e8f0" }}
+                className="cbt-card rounded-2xl p-5"
+                style={{ background: C.base.surface, border: `1px solid ${C.base.border}`, boxShadow: S.card }}
               >
-                <div className="flex items-center justify-between mb-3">
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
                   <div>
-                    <div className="font-semibold" style={{ color: "#0f172a" }}>
-                      {e.full_name} <span style={{ color: "#94a3b8" }}>·</span>{" "}
-                      <span className="text-xs" style={{ color: "#94a3b8", fontWeight: 500 }}>
+                    <div className="font-semibold" style={{ color: C.base.text }}>
+                      {e.full_name} <span style={{ color: C.base.textFaint }}>·</span>{" "}
+                      <span className="text-xs font-medium" style={{ color: C.base.textFaint }}>
                         {e.student_number || e.username}
                       </span>
                     </div>
-                    <div className="text-xs" style={{ color: "#94a3b8" }}>
+                    <div className="text-xs" style={{ color: C.base.textFaint }}>
                       {e.submitted_at ? `${t("Dikumpulkan")} ${new Date(e.submitted_at).toLocaleString("id-ID")}` : t("Belum dikumpulkan")}
                     </div>
                   </div>
                   <span
-                    className="text-xs px-2 py-1 rounded-full"
+                    className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full font-medium tabular-nums"
                     style={{
-                      background: graded ? "#D1FAE5" : "#FEE2E2",
-                      color: graded ? "#059669" : "#B91C1C",
+                      background: graded ? C.ok.bg : C.danger.bgLight,
+                      color: graded ? C.ok.dark : C.danger.text,
                     }}
                   >
-                    {graded ? `✓ ${t("Sudah dinilai")} (${e.score_obtained} / ${e.score_weight})` : t("Belum dinilai")}
+                    {graded && <Check className="w-3 h-3" />}
+                    {graded ? `${t("Sudah dinilai")} (${e.score_obtained} / ${e.score_weight})` : t("Belum dinilai")}
                   </span>
                 </div>
-                                <div className="mb-3">
-                  <div className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: "#94a3b8" }}>
+                <div className="mb-3">
+                  <div className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: C.base.textFaint }}>
                     {t("Soal (maks {n} poin)", { n: e.score_weight })}
                   </div>
-                  <div className="text-sm rounded-lg px-3 py-2" style={{ background: "#F8FAFC", color: "#374151" }}>
+                  <div className="text-sm rounded-xl px-3.5 py-2.5" style={{ background: C.base.surfaceMuted, color: C.base.textBody, border: `1px solid ${C.base.borderLight}` }}>
                     {stripTags(e.question_content) || "—"}
                   </div>
                 </div>
 
                 <div className="mb-3">
-                  <div className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: "#94a3b8" }}>
+                  <div className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: C.base.textFaint }}>
                     {t("Jawaban Siswa")}
                   </div>
                   <textarea
                     readOnly
                     value={essayText(e.student_response)}
-                    className="w-full px-3 py-2.5 rounded-lg text-sm outline-none resize-y-none"
-                    style={{ border: "1px solid #e2e8f0", background: "#fff", color: "#0f172a", fontFamily: "inherit" }}
+                    className="w-full px-3.5 py-2.5 rounded-xl text-sm outline-none resize-none"
+                    style={{ border: `1px solid ${C.base.border}`, background: C.base.surfaceAlt, color: C.base.text, fontFamily: "inherit", boxShadow: S.inset }}
                     rows={e.score_obtained == null ? 4 : 2}
                   />
                 </div>
 
-                <div className="flex items-end justify-end gap-3">
+                <div className="flex flex-wrap items-center justify-end gap-2.5">
                   <div className="flex items-center gap-2">
-                    <label className="text-xs" style={{ color: "#94a3b8" }}>{t("Skor:")}</label>
+                    <label className="text-xs" style={{ color: C.base.textFaint }}>{t("Skor:")}</label>
                     <input
                       type="number"
                       min={0}
@@ -932,25 +975,26 @@ export default function GradingPage() {
                       step="0.5"
                       value={essayInputs[e.answer_id] ?? (graded ? String(e.score_obtained) : "")}
                       onChange={(ev) => setEssayInputs((p) => ({ ...p, [e.answer_id]: ev.target.value }))}
-                      className="w-16 px-2 py-1.5 rounded-lg text-sm text-center outline-none font-mono"
-                      style={{ border: "1px solid #e2e8f0", color: "#0f172a" }}
+                      className="w-20 px-2.5 py-2 rounded-xl text-base sm:text-sm text-center outline-none font-mono"
+                      style={{ border: `1px solid ${C.base.border}`, background: C.base.surfaceAlt, color: C.base.text, boxShadow: S.inset }}
                       disabled={essaySavingId === e.answer_id || essayAiLoadingId === e.answer_id}
                     />
-                    <span className="text-xs" style={{ color: "#94a3b8" }}>/ {e.score_weight}</span>
+                    <span className="text-xs tabular-nums" style={{ color: C.base.textFaint }}>/ {e.score_weight}</span>
                   </div>
                   <button
                     onClick={() => gradeEssayAi(e)}
                     disabled={essaySavingId === e.answer_id || essayAiLoadingId === e.answer_id}
-                    className="px-4 py-2 rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-60"
-                    style={{ background: "#7C3AED", color: "#fff" }}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium hover:opacity-90 disabled:opacity-60 min-h-[40px]"
+                    style={{ background: C.purple.main, color: "#FFFFFF", boxShadow: S.control }}
                   >
+                    <Sparkles className="w-3.5 h-3.5" />
                     {essayAiLoadingId === e.answer_id ? t("AI menilai…") : t("AI Grade")}
                   </button>
                   <button
                     onClick={() => saveEssay(e)}
                     disabled={essaySavingId === e.answer_id || !valid || !Number.isFinite(score) || essayAiLoadingId === e.answer_id}
-                    className="px-4 py-2 rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-60"
-                    style={{ background: "#1D4ED8", color: "#fff" }}
+                    className="px-4 py-2 rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-60 min-h-[40px]"
+                    style={{ background: C.brand.main, color: "#FFFFFF", boxShadow: S.btnPrimary }}
                   >
                     {essaySavingId === e.answer_id ? t("Menyimpan…") : t("Simpan Nilai")}
                   </button>
@@ -965,55 +1009,57 @@ export default function GradingPage() {
       {activeTab === "analysis" && (
         <div className="space-y-4">
           <div
-            className="rounded-lg px-4 py-3 text-sm"
-            style={{ background: "#EFF6FF", border: "1px solid #BFDBFE", color: "#1E40AF" }}
+            className="rounded-xl px-4 py-3 text-sm"
+            style={{ background: C.brand.bg, border: `1px solid ${C.brand.border}`, color: C.brand.dark }}
           >
             <strong>{t("Analis Butir Soal")}</strong> — {t("Tingkat Kesukaran (TK): Easy ≥0.7, Medium 0.3–0.69, Hard ≤0.29 · Daya Beda (DB): Poor <0.2, Acceptable 0.2–0.29, Good 0.3–0.39, Excellent ≥0.4")}
           </div>
 
-          <div className="rounded-xl overflow-hidden" style={{ border: "1px solid #e2e8f0" }}>
-            <table className="w-full">
-              <thead>
-                <tr style={{ background: "#F8FAFC", borderBottom: "1px solid #e2e8f0" }}>
-                  {[t("No."), t("Type"), t("Topic"), t("Correct"), t("TK (Difficulty)"), t("TK Category"), t("DB (Discrimination)"), t("DB Category"), t("Recommendation")].map((h) => (
-                    <th key={h} className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide" style={{ color: "#64748b" }}>
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y" style={{ background: "#fff", borderColor: "#f1f5f9" }}>
-                {itemAnalysis.map((item) => (
-                  <tr key={item.no} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-3 py-3 text-sm font-medium" style={{ color: "#0f172a" }}>{item.no}</td>
-                    <td className="px-3 py-3 text-xs" style={{ color: "#64748b" }}>{t(item.type)}</td>
-                    <td className="px-3 py-3 text-sm" style={{ color: "#0f172a" }}>{item.topic}</td>
-                    <td className="px-3 py-3 text-sm" style={{ color: "#0f172a" }}>
-                      {item.correct}/{item.total}
-                    </td>
-                    <td className="px-3 py-3 text-sm font-mono" style={{ color: "#0f172a", fontFamily: "var(--font-mono)" }}>
-                      {item.tk.toFixed(2)}
-                    </td>
-                    <td className="px-3 py-3">
-                      <span className="text-xs px-2 py-0.5 rounded-full font-medium capitalize" style={{ background: tkColor[item.tkCategory].bg, color: tkColor[item.tkCategory].text }}>
-                        {t(item.tkCategory)}
-                      </span>
-                    </td>
-                    <td className="px-3 py-3 text-sm font-mono" style={{ color: "#0f172a", fontFamily: "var(--font-mono)" }}>
-                      {item.db.toFixed(2)}
-                    </td>
-                    <td className="px-3 py-3">
-                      <span className="text-xs px-2 py-0.5 rounded-full font-medium capitalize" style={{ background: dbColor[item.dbCategory].bg, color: dbColor[item.dbCategory].text }}>
-                        {t(item.dbCategory)}
-                      </span>
-                    </td>
-                    <td className="px-3 py-3 text-xs" style={{ color: "#64748b" }}>
-                      {item.dbCategory === "poor" ? t("⚑ Revise question") : item.tkCategory === "easy" && item.dbCategory === "acceptable" ? t("Consider harder variant") : t("✓ Keep")}
-                    </td>
+          <div className="cbt-card rounded-2xl overflow-hidden" style={{ border: `1px solid ${C.base.border}`, background: C.base.surface, boxShadow: S.card }}>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[780px]">
+                <thead>
+                  <tr style={{ background: C.base.surfaceMuted, borderBottom: `1px solid ${C.base.border}` }}>
+                    {[t("No."), t("Type"), t("Topic"), t("Correct"), t("TK (Difficulty)"), t("TK Category"), t("DB (Discrimination)"), t("DB Category"), t("Recommendation")].map((h) => (
+                      <th key={h} className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide" style={{ color: C.base.textMuted }}>
+                        {h}
+                      </th>
+                    ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y" style={{ background: C.base.surface, borderColor: C.base.borderLight }}>
+                  {itemAnalysis.map((item) => (
+                    <tr key={item.no} className="cbt-row-hover transition-colors">
+                      <td className="px-3 py-3 text-sm font-medium tabular-nums" style={{ color: C.base.text }}>{item.no}</td>
+                      <td className="px-3 py-3 text-xs" style={{ color: C.base.textMuted }}>{t(item.type)}</td>
+                      <td className="px-3 py-3 text-sm" style={{ color: C.base.text }}>{item.topic}</td>
+                      <td className="px-3 py-3 text-sm tabular-nums" style={{ color: C.base.text }}>
+                        {item.correct}/{item.total}
+                      </td>
+                      <td className="px-3 py-3 text-sm font-mono tabular-nums" style={{ color: C.base.text, fontFamily: "var(--font-mono)" }}>
+                        {item.tk.toFixed(2)}
+                      </td>
+                      <td className="px-3 py-3">
+                        <span className="text-xs px-2.5 py-0.5 rounded-full font-medium capitalize" style={{ background: tkColor[item.tkCategory].bg, color: tkColor[item.tkCategory].text }}>
+                          {t(item.tkCategory)}
+                        </span>
+                      </td>
+                      <td className="px-3 py-3 text-sm font-mono tabular-nums" style={{ color: C.base.text, fontFamily: "var(--font-mono)" }}>
+                        {item.db.toFixed(2)}
+                      </td>
+                      <td className="px-3 py-3">
+                        <span className="text-xs px-2.5 py-0.5 rounded-full font-medium capitalize" style={{ background: dbColor[item.dbCategory].bg, color: dbColor[item.dbCategory].text }}>
+                          {t(item.dbCategory)}
+                        </span>
+                      </td>
+                      <td className="px-3 py-3 text-xs" style={{ color: C.base.textMuted }}>
+                        {item.dbCategory === "poor" ? t("Revise question") : item.tkCategory === "easy" && item.dbCategory === "acceptable" ? t("Consider harder variant") : t("Keep")}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}

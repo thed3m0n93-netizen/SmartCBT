@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
+import { AlertTriangle, ArrowLeft, FileText } from "lucide-react";
 import { useAuth } from "../../app/AuthContext";
 import { MODULE_CONTENT_CSS } from "../../components/RichTextEditor";
 import { fetchLearningModules, resolveAssetUrl, saveLearningProgress, type LearningModuleRow } from "../../lib/api";
 import { isMarkdownFile, MARKDOWN_LOAD_ERROR, renderMarkdown } from "../../lib/markdown";
 import { sanitizeModuleHtml } from "../../lib/sanitize";
+import { C, S } from "../../styles/tokens";
 
-const MAX_STEP_PERCENT = 25;
 const LEARNING_PROGRESS_EVENT = "smartcbt:learning-progress-updated";
 
 function getScrollPercent(element: HTMLElement | null): number {
@@ -214,19 +215,25 @@ export default function LearningModuleDetailPage() {
   const completed = !!module?.completed || readingPercent >= 99;
 
   if (loading) {
-    return <div className="py-16 text-center text-sm text-slate-500">Memuat modul...</div>;
+    return <div className="py-16 text-center text-sm" style={{ color: C.base.textMuted }}>Memuat modul...</div>;
   }
 
   if (error || !module) {
     return (
-      <div className="mx-auto max-w-lg rounded-xl border border-red-200 bg-white p-6 text-center" style={{ borderColor: "#fecaca" }}>
-        <div className="mb-2 text-3xl">⚠</div>
-        <h1 className="text-lg font-bold text-slate-900">Modul tidak dapat dibuka</h1>
-        <p className="mt-2 text-sm text-red-700">{error || "Modul tidak ditemukan."}</p>
+      <div
+        className="mx-auto max-w-lg rounded-2xl p-6 text-center"
+        style={{ background: C.base.surface, border: `1px solid ${C.danger.border}`, boxShadow: S.card }}
+      >
+        <div className="inline-flex w-11 h-11 rounded-xl items-center justify-center mb-3" style={{ background: C.danger.bg, color: C.danger.text }}>
+          <AlertTriangle size={20} />
+        </div>
+        <h1 className="text-lg font-bold" style={{ color: C.base.text }}>Modul tidak dapat dibuka</h1>
+        <p className="mt-2 text-sm" style={{ color: C.danger.text }}>{error || "Modul tidak ditemukan."}</p>
         <button
           type="button"
           onClick={() => navigate("/student/modules")}
-          className="mt-4 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white"
+          className="mt-4 rounded-xl px-4 py-2.5 text-sm font-semibold min-h-[44px]"
+          style={{ background: C.brand.main, color: "#FFFFFF" }}
         >
           Kembali ke daftar modul
         </button>
@@ -235,55 +242,69 @@ export default function LearningModuleDetailPage() {
   }
 
   return (
-    <div className="flex min-h-full flex-col bg-slate-100">
-      <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur sm:px-6">
-        <div className="flex items-center gap-3">
+    <div className="flex min-h-full flex-col" style={{ background: C.base.page }}>
+      <header
+        className="sticky top-0 z-10 border-b px-4 py-3 backdrop-blur-md sm:px-6"
+        style={{ background: C.base.surface, borderColor: C.base.border }}
+      >
+        <div className="flex items-center gap-3 max-w-4xl mx-auto">
           <button
             type="button"
             onClick={() => navigate("/student/modules")}
             aria-label="Kembali ke daftar modul"
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-lg text-slate-700"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-colors"
+            style={{ border: `1px solid ${C.base.border}`, background: C.base.surfaceSoft, color: C.base.text }}
           >
-            ←
+            <ArrowLeft size={18} />
           </button>
           <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">Modul Belajar</p>
-            <h1 className="truncate text-base font-bold text-slate-900 sm:text-lg">{module.title}</h1>
+            <p className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: C.base.textFaint }}>Modul Belajar</p>
+            <h1 className="truncate text-base font-bold sm:text-lg" style={{ color: C.base.text, fontFamily: "var(--font-serif)" }}>{module.title}</h1>
           </div>
-          <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${completed ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
-            {completed ? "Selesai" : `${readingPercent}%`}
+          <span
+            className="text-xs font-semibold tabular-nums shrink-0"
+            style={{ color: completed ? C.ok.dark : C.warn.dark }}
+          >
+            {completed ? "Selesai" : `${readingPercent}% terbaca`}
           </span>
         </div>
       </header>
 
-      <main className="flex min-h-0 flex-1 flex-col">
-        <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col bg-white sm:shadow-sm">
-          <div className="border-b border-slate-100 px-4 py-3 sm:px-6">
-            <p className="text-sm text-slate-500">{module.description || "Materi pembelajaran"}</p>
-            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-400">
+      <main className="flex min-h-0 flex-1 flex-col sm:p-4">
+        <div
+          className="mx-auto flex w-full max-w-4xl flex-1 flex-col sm:rounded-2xl overflow-hidden"
+          style={{ background: C.base.surface, border: `1px solid ${C.base.border}`, boxShadow: S.card }}
+        >
+          <div className="border-b px-4 py-3.5 sm:px-6" style={{ borderColor: C.base.borderLight }}>
+            <p className="text-sm" style={{ color: C.base.textMuted }}>{module.description || "Materi pembelajaran"}</p>
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs" style={{ color: C.base.textFaint }}>
               <span>Oleh {module.teacher_name || "Guru"}</span>
-              <span>•</span>
+              <span aria-hidden>·</span>
               <span>{module.class_name ? `${module.grade_level} ${module.class_name}` : "Semua kelas"}</span>
-              <span>•</span>
+              <span aria-hidden>·</span>
               <span>{module.estimated_minutes} menit</span>
             </div>
           </div>
 
-          {error && <div className="mx-4 mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 sm:mx-6">{error}</div>}
+          {error && (
+            <div className="mx-4 mt-4 rounded-xl px-4 py-3 text-sm sm:mx-6" style={{ background: C.danger.bgLight, border: `1px solid ${C.danger.border}`, color: C.danger.text }}>
+              {error}
+            </div>
+          )}
 
           <div
             ref={readerRef}
             onScroll={handleScroll}
             className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-8 sm:py-8"
-            style={{ scrollBehavior: "auto", maxHeight: "calc(100vh - 220px)" }}
+            style={{ scrollBehavior: "auto", maxHeight: "calc(100dvh - 230px)" }}
           >
-            <div className="mx-auto max-w-3xl text-[15px] leading-8 text-slate-700 rich-editor-surface">
+            <div className="mx-auto max-w-3xl text-[15px] leading-8 rich-editor-surface" style={{ color: C.base.textBody }}>
               {safeContent && <div dangerouslySetInnerHTML={{ __html: safeContent }} />}
-              {!safeContent && !isMarkdownModule && <p className="text-center text-slate-500">Tidak ada isi materi.</p>}
+              {!safeContent && !isMarkdownModule && <p className="text-center" style={{ color: C.base.textMuted }}>Tidak ada isi materi.</p>}
 
-              {isMarkdownModule && markdownLoading && <div className="text-sm text-slate-500">Memuat materi Markdown...</div>}
+              {isMarkdownModule && markdownLoading && <div className="text-sm" style={{ color: C.base.textMuted }}>Memuat materi Markdown...</div>}
               {isMarkdownModule && markdownError && (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                <div className="rounded-xl px-4 py-3 text-sm" style={{ background: C.warn.bg, border: `1px solid ${C.warn.border}`, color: C.warn.deep }}>
                   Materi Markdown tidak dapat ditampilkan ({markdownError}). Gunakan tautan unduh di bawah.
                 </div>
               )}
@@ -296,16 +317,21 @@ export default function LearningModuleDetailPage() {
                   href={resolveAssetUrl(module.attachment_url)}
                   target="_blank"
                   rel="noreferrer"
-                  className="mt-8 block rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-medium text-blue-700"
+                  className="mt-8 flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-medium"
+                  style={{ background: C.brand.bg, border: `1px solid ${C.brand.borderSoft}`, color: C.brand.dark }}
                 >
-                  Buka lampiran: {module.attachment_name || "dokumen"}
+                  <FileText size={16} />
+                  <span>Buka lampiran: {module.attachment_name || "dokumen"}</span>
                 </a>
               )}
             </div>
             <div className="h-12" />
           </div>
 
-          <footer className="border-t border-slate-100 bg-white px-4 py-3 text-xs text-slate-500 sm:px-6">
+          <footer
+            className="border-t px-4 py-3 text-xs sm:px-6"
+            style={{ background: C.base.surfaceMuted, borderColor: C.base.borderLight, color: C.base.textMuted }}
+          >
             <div className="flex items-center justify-between gap-3">
               <span>{saving ? "Menyimpan progres..." : completed ? "Materi selesai dibaca." : "Scroll dibatasi agar materi dibaca bertahap."}</span>
               <span>{user?.name || "Siswa"}</span>
@@ -317,3 +343,4 @@ export default function LearningModuleDetailPage() {
     </div>
   );
 }
+

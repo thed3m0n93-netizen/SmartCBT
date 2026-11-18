@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Pencil, Plus, Trash2, X } from "lucide-react";
 import { useAuth } from "../../app/AuthContext";
 import { useI18n } from "../../i18n";
 import RichTextEditor from "../../components/RichTextEditor";
@@ -17,7 +18,7 @@ import {
 } from "../../lib/api";
 import { isEmptyModuleContent } from "../../lib/sanitize";
 import { isMarkdownFile } from "../../lib/markdown";
-import { C } from "../../styles/tokens";
+import { C, S } from "../../styles/tokens";
 
 const emptyForm: LearningModulePayload = {
   title: "",
@@ -222,13 +223,24 @@ export default function LearningModulesPage() {
         <p className="text-sm mt-1" style={{ color: C.base.textMuted }}>Publikasikan materi dan kisi-kisi dengan pembacaan bertahap untuk siswa.</p>
       </header>
 
-      {message && <div className="rounded-lg px-4 py-3 text-sm" style={{ background: message.ok ? "#DCFCE7" : "#FEE2E2", color: message.ok ? "#166534" : "#B91C1C" }}>{message.text}</div>}
+      {message && (
+        <div
+          className="rounded-xl px-4 py-3 text-sm"
+          style={{
+            background: message.ok ? C.ok.msgBg : C.danger.bgLight,
+            color: message.ok ? C.ok.msgText : C.danger.text,
+            border: `1px solid ${message.ok ? C.ok.msgBorder : C.danger.border}`,
+          }}
+        >
+          {message.text}
+        </div>
+      )}
 
       {/* Add/Edit Module popup */}
       {editorOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-start justify-center p-4 overflow-y-auto"
-          style={{ background: "rgba(15,23,42,0.5)" }}
+          className="fixed inset-0 z-50 flex items-end sm:items-start justify-center sm:p-4 overflow-y-auto"
+          style={{ background: S.overlay }}
           role="dialog"
           aria-modal="true"
           aria-label={editingId ? "Edit Modul" : "Tambah Modul"}
@@ -237,9 +249,10 @@ export default function LearningModulesPage() {
           <form
             onSubmit={handleSubmit}
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-3xl my-8 rounded-xl p-5 space-y-4"
-            style={{ background: "#fff", border: "1px solid #e2e8f0", boxShadow: "0 12px 32px rgba(15,23,42,0.3)" }}
+            className="w-full sm:max-w-3xl sm:my-8 rounded-t-3xl sm:rounded-2xl p-5 sm:p-6 space-y-4 max-h-[92dvh] overflow-y-auto safe-area-bottom"
+            style={{ background: C.base.surface, border: `1px solid ${C.base.border}`, boxShadow: S.elevated }}
           >
+            <div className="sm:hidden w-10 h-1 rounded-full mx-auto mb-2" style={{ background: C.base.border }} />
             <div className="flex items-start justify-between gap-3">
               <h3 className="text-lg font-bold" style={{ color: C.base.text, fontFamily: "var(--font-serif)" }}>
                 {editingId ? t("Edit Module") : t("Add Module")}
@@ -248,32 +261,45 @@ export default function LearningModulesPage() {
                 type="button"
                 onClick={() => setEditorOpen(false)}
                 disabled={busy}
-                className="text-sm px-2 py-1 disabled:opacity-50"
+                className="w-9 h-9 rounded-lg flex items-center justify-center cbt-row-hover disabled:opacity-50"
                 style={{ color: C.base.textMuted }}
                 aria-label={t("Close")}
               >
-                ✕
+                <X className="w-4 h-4" />
               </button>
             </div>
 
             {message && (
               <div
-                className="rounded-lg px-4 py-3 text-sm"
-                style={{ background: message.ok ? "#DCFCE7" : "#FEE2E2", color: message.ok ? "#166534" : "#B91C1C" }}
+                className="rounded-xl px-4 py-3 text-sm"
+                style={{
+                  background: message.ok ? C.ok.msgBg : C.danger.bgLight,
+                  color: message.ok ? C.ok.msgText : C.danger.text,
+                  border: `1px solid ${message.ok ? C.ok.msgBorder : C.danger.border}`,
+                }}
               >
                 {message.text}
               </div>
             )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <label className="text-sm font-medium text-slate-700">Judul materi
-                <input value={form.title} onChange={(e) => setField("title", e.target.value)} placeholder="Contoh: Kisi-kisi Ujian Matematika" className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 outline-none" />
+              <label className="text-sm font-medium block" style={{ color: C.base.textBody }}>
+                Judul materi
+                <input
+                  value={form.title}
+                  onChange={(e) => setField("title", e.target.value)}
+                  placeholder="Contoh: Kisi-kisi Ujian Matematika"
+                  className="mt-1.5 w-full rounded-xl px-3.5 py-2.5 text-base sm:text-sm outline-none"
+                  style={{ background: C.base.surfaceAlt, border: `1px solid ${C.base.border}`, color: C.base.text, boxShadow: S.inset }}
+                />
               </label>
-              <label className="text-sm font-medium text-slate-700">{t("Subject")}
+              <label className="text-sm font-medium block" style={{ color: C.base.textBody }}>
+                {t("Subject")}
                 <select
                   value={form.subjectId ?? ""}
                   onChange={(e) => setField("subjectId", e.target.value ? Number(e.target.value) : null)}
-                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 outline-none bg-white"
+                  className="mt-1.5 w-full rounded-xl px-3.5 py-2.5 text-base sm:text-sm outline-none"
+                  style={{ background: C.base.surfaceAlt, border: `1px solid ${C.base.border}`, color: C.base.text, boxShadow: S.inset }}
                 >
                   <option value="">{t("No subject")}</option>
                   {subjects.map((s) => (
@@ -282,44 +308,59 @@ export default function LearningModulesPage() {
                 </select>
               </label>
             </div>
-{/* Class targets - a module is only visible to the selected classes. */}
-            <div className="text-sm font-medium text-slate-700">
+
+            {/* Class targets - a module is only visible to the selected classes. */}
+            <div className="text-sm font-medium" style={{ color: C.base.textBody }}>
               <div className="flex items-center justify-between">
                 <span>Kelas tujuan (boleh pilih beberapa)</span>
-                <span className="text-xs font-normal" style={{ color: C.base.textMuted }}>
+                <span className="text-xs font-normal tabular-nums" style={{ color: C.base.textMuted }}>
                   {form.classIds?.length ? `${form.classIds.length} kelas dipilih` : "Belum ada kelas dipilih"}
                 </span>
               </div>
-              <div className="mt-1 rounded-lg border border-slate-200 max-h-40 overflow-y-auto divide-y">
+              <div
+                className="mt-1.5 rounded-xl max-h-40 overflow-y-auto divide-y"
+                style={{ border: `1px solid ${C.base.border}`, background: C.base.surfaceAlt }}
+              >
                 {classes.length === 0 ? (
-                  <div className="px-3 py-2 text-sm text-slate-400">Belum ada kelas. Tambahkan kelas terlebih dahulu.</div>
+                  <div className="px-3 py-2 text-sm" style={{ color: C.base.textFaint }}>Belum ada kelas. Tambahkan kelas terlebih dahulu.</div>
                 ) : (
                   classes.map((item) => (
-                    <label key={item.id} className="flex items-center gap-3 px-3 py-2 hover:bg-slate-50 cursor-pointer">
+                    <label
+                      key={item.id}
+                      className="flex items-center gap-3 px-3 py-2.5 cbt-row-hover cursor-pointer"
+                      style={{ borderColor: C.base.borderLight }}
+                    >
                       <input
                         type="checkbox"
                         checked={form.classIds?.includes(item.id) ?? false}
                         onChange={() => toggleClass(item.id)}
-                        className="w-4 h-4 rounded border-slate-300"
-                        style={{ accentColor: "#1D4ED8" }}
+                        className="w-4 h-4 rounded"
+                        style={{ accentColor: C.brand.main }}
                       />
-                      <span className="text-sm text-slate-700">{item.grade_level} {item.class_name}</span>
+                      <span className="text-sm" style={{ color: C.base.text }}>{item.grade_level} {item.class_name}</span>
                     </label>
                   ))
                 )}
               </div>
-              <div className="mt-1 text-xs text-slate-400">
+              <div className="mt-1 text-xs" style={{ color: C.base.textFaint }}>
                 Wajib pilih minimal satu kelas. Modul hanya dapat diakses siswa pada kelas yang dipilih.
               </div>
             </div>
 
-            <label className="block text-sm font-medium text-slate-700">Ringkasan
-              <input value={form.description} onChange={(e) => setField("description", e.target.value)} placeholder="Ringkasan singkat yang terlihat di daftar siswa" className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 outline-none" />
+            <label className="block text-sm font-medium" style={{ color: C.base.textBody }}>
+              Ringkasan
+              <input
+                value={form.description}
+                onChange={(e) => setField("description", e.target.value)}
+                placeholder="Ringkasan singkat yang terlihat di daftar siswa"
+                className="mt-1.5 w-full rounded-xl px-3.5 py-2.5 text-base sm:text-sm outline-none"
+                style={{ background: C.base.surfaceAlt, border: `1px solid ${C.base.border}`, color: C.base.text, boxShadow: S.inset }}
+              />
             </label>
 
-            <div className="text-sm font-medium text-slate-700">
+            <div className="text-sm font-medium" style={{ color: C.base.textBody }}>
               Isi materi
-              <div className="mt-1">
+              <div className="mt-1.5">
                 <RichTextEditor
                   value={form.content}
                   onChange={(html) => setField("content", html)}
@@ -330,30 +371,51 @@ export default function LearningModulesPage() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
-              <label className="text-sm font-medium text-slate-700">Perkiraan waktu baca (menit)
-                <input type="number" min={1} max={480} value={form.estimatedMinutes} onChange={(e) => setField("estimatedMinutes", Number(e.target.value))} className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 outline-none" />
+              <label className="text-sm font-medium block" style={{ color: C.base.textBody }}>
+                Perkiraan waktu baca (menit)
+                <input
+                  type="number"
+                  min={1}
+                  max={480}
+                  value={form.estimatedMinutes}
+                  onChange={(e) => setField("estimatedMinutes", Number(e.target.value))}
+                  className="mt-1.5 w-full rounded-xl px-3.5 py-2.5 text-base sm:text-sm outline-none"
+                  style={{ background: C.base.surfaceAlt, border: `1px solid ${C.base.border}`, color: C.base.text, boxShadow: S.inset }}
+                />
               </label>
-              <label className="text-sm font-medium text-slate-700">Lampiran opsional (PDF, Word, gambar, Markdown)
-                <input ref={fileRef} type="file" accept=".pdf,.doc,.docx,.txt,.md,.markdown,.mdown,.mkd,image/*" onChange={(e) => setAttachment(e.target.files?.[0] ?? null)} className="mt-1 block w-full text-sm" />
+              <label className="text-sm font-medium block" style={{ color: C.base.textBody }}>
+                Lampiran opsional (PDF, Word, gambar, Markdown)
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept=".pdf,.doc,.docx,.txt,.md,.markdown,.mdown,.mkd,image/*"
+                  onChange={(e) => setAttachment(e.target.files?.[0] ?? null)}
+                  className="mt-1.5 block w-full text-sm"
+                  style={{ color: C.base.textMuted }}
+                />
                 {isMarkdownFile(attachment?.name, attachment?.type) && (
-                  <span className="mt-1 block text-xs font-normal text-emerald-700">
+                  <span className="mt-1 block text-xs font-normal" style={{ color: C.ok.dark }}>
                     Berkas Markdown terdeteksi — akan ditampilkan siswa seperti README.
                   </span>
                 )}
               </label>
             </div>
 
-            <div className="flex justify-end gap-2 pt-1">
+            <div className="flex justify-end gap-2 pt-2">
               <button
                 type="button"
                 onClick={() => setEditorOpen(false)}
                 disabled={busy}
-                className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium disabled:opacity-60"
-                style={{ color: "#64748B" }}
+                className="rounded-xl border px-4 py-2.5 text-sm font-medium cbt-row-hover disabled:opacity-60 min-h-[44px]"
+                style={{ borderColor: C.base.border, color: C.base.textBody, background: C.base.surface }}
               >
                 {t("Cancel")}
               </button>
-              <button disabled={busy} className="rounded-lg px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60" style={{ background: "#1D4ED8" }}>
+              <button
+                disabled={busy}
+                className="rounded-xl px-5 py-2.5 text-sm font-semibold disabled:opacity-60 min-h-[44px]"
+                style={{ background: C.brand.main, color: "#FFFFFF", boxShadow: S.btnPrimary }}
+              >
                 {busy ? "Menyimpan..." : editingId ? t("Save Changes") : t("Publish Module")}
               </button>
             </div>
@@ -362,48 +424,59 @@ export default function LearningModulesPage() {
       )}
 
       <section className="space-y-3">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-semibold" style={{ color: C.base.text }}>Modul yang diterbitkan</h2>
           <button
             onClick={openCreate}
-            className="rounded-lg px-4 py-2.5 text-sm font-semibold text-white hover:opacity-90"
-            style={{ background: "#1D4ED8" }}
+            className="inline-flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-sm font-semibold hover:opacity-90 min-h-[44px]"
+            style={{ background: C.brand.main, color: "#FFFFFF", boxShadow: S.btnPrimary }}
           >
-            + {t("Add Module")}
+            <Plus className="w-4 h-4" />
+            {t("Add Module")}
           </button>
         </div>
-        <div className="flex flex-wrap items-center gap-3 rounded-xl p-3" style={{ background: C.base.surface, border: `1px solid ${C.base.border}` }}>
+        <div className="cbt-card flex flex-wrap items-center gap-3 rounded-2xl p-3.5" style={{ background: C.base.surface, border: `1px solid ${C.base.border}`, boxShadow: S.card }}>
           <input
             type="search"
             value={moduleSearch}
             onChange={(event) => setModuleSearch(event.target.value)}
             placeholder="Cari judul, ringkasan, mapel, atau kelas..."
             aria-label="Cari modul"
-            className="min-w-[220px] flex-1 rounded-lg px-3 py-2 text-sm outline-none"
-            style={{ background: C.base.surfaceMuted, border: `1px solid ${C.base.border}`, color: C.base.text }}
+            className="min-w-[200px] flex-1 rounded-xl px-3.5 py-2 text-base sm:text-sm outline-none"
+            style={{ background: C.base.surfaceMuted, border: `1px solid ${C.base.border}`, color: C.base.text, boxShadow: S.inset }}
           />
-          <select value={moduleClassFilter} onChange={(event) => setModuleClassFilter(event.target.value)} aria-label="Filter kelas" className="min-w-[150px] rounded-lg px-3 py-2 text-sm outline-none" style={{ background: C.base.surface, border: `1px solid ${C.base.border}`, color: C.base.text }}>
+          <select value={moduleClassFilter} onChange={(event) => setModuleClassFilter(event.target.value)} aria-label="Filter kelas" className="min-w-[140px] flex-1 sm:flex-none rounded-xl px-3 py-2 text-base sm:text-sm outline-none" style={{ background: C.base.surfaceAlt, border: `1px solid ${C.base.border}`, color: C.base.text, boxShadow: S.inset }}>
             <option value="all">Semua kelas</option>
             {classes.map((item) => <option key={item.id} value={item.id}>{item.grade_level} {item.class_name}</option>)}
           </select>
-          <select value={moduleSubjectFilter} onChange={(event) => setModuleSubjectFilter(event.target.value)} aria-label="Filter mata pelajaran" className="min-w-[160px] rounded-lg px-3 py-2 text-sm outline-none" style={{ background: C.base.surface, border: `1px solid ${C.base.border}`, color: C.base.text }}>
+          <select value={moduleSubjectFilter} onChange={(event) => setModuleSubjectFilter(event.target.value)} aria-label="Filter mata pelajaran" className="min-w-[150px] flex-1 sm:flex-none rounded-xl px-3 py-2 text-base sm:text-sm outline-none" style={{ background: C.base.surfaceAlt, border: `1px solid ${C.base.border}`, color: C.base.text, boxShadow: S.inset }}>
             <option value="all">Semua mapel</option>
             {subjects.map((item) => <option key={item.id} value={item.id}>{item.subject_name}</option>)}
           </select>
-          <select value={modulePublishFilter} onChange={(event) => setModulePublishFilter(event.target.value)} aria-label="Filter status modul" className="min-w-[140px] rounded-lg px-3 py-2 text-sm outline-none" style={{ background: C.base.surface, border: `1px solid ${C.base.border}`, color: C.base.text }}>
+          <select value={modulePublishFilter} onChange={(event) => setModulePublishFilter(event.target.value)} aria-label="Filter status modul" className="min-w-[130px] flex-1 sm:flex-none rounded-xl px-3 py-2 text-base sm:text-sm outline-none" style={{ background: C.base.surfaceAlt, border: `1px solid ${C.base.border}`, color: C.base.text, boxShadow: S.inset }}>
             <option value="all">Semua status</option>
             <option value="published">Diterbitkan</option>
             <option value="draft">Draft</option>
           </select>
-          <select value={moduleSort} onChange={(event) => setModuleSort(event.target.value)} aria-label="Urutkan modul" className="min-w-[160px] rounded-lg px-3 py-2 text-sm outline-none" style={{ background: C.base.surface, border: `1px solid ${C.base.border}`, color: C.base.text }}>
+          <select value={moduleSort} onChange={(event) => setModuleSort(event.target.value)} aria-label="Urutkan modul" className="min-w-[150px] flex-1 sm:flex-none rounded-xl px-3 py-2 text-base sm:text-sm outline-none" style={{ background: C.base.surfaceAlt, border: `1px solid ${C.base.border}`, color: C.base.text, boxShadow: S.inset }}>
             <option value="newest">Terbaru</option>
             <option value="oldest">Terlama</option>
             <option value="title">Judul A-Z</option>
             <option value="completed">Siswa selesai terbanyak</option>
           </select>
-          <span className="w-full text-xs sm:w-auto" style={{ color: C.base.textMuted }}>{filteredModules.length} modul</span>
+          <span className="w-full text-xs sm:w-auto tabular-nums" style={{ color: C.base.textMuted }}>{filteredModules.length} modul</span>
         </div>
-        {loading ? <div className="text-sm text-slate-500">Memuat...</div> : modules.length === 0 ? <div className="rounded-xl bg-white p-6 text-sm text-slate-500">Belum ada modul.</div> : filteredModules.length === 0 ? <div className="rounded-xl bg-white p-6 text-sm text-slate-500">Tidak ada modul yang cocok dengan filter.</div> : filteredModules.map((module) => {
+        {loading ? (
+          <div className="text-sm py-8 text-center" style={{ color: C.base.textMuted }}>Memuat...</div>
+        ) : modules.length === 0 ? (
+          <div className="cbt-card rounded-2xl p-6 text-sm" style={{ background: C.base.surface, border: `1px solid ${C.base.border}`, color: C.base.textMuted }}>
+            Belum ada modul.
+          </div>
+        ) : filteredModules.length === 0 ? (
+          <div className="cbt-card rounded-2xl p-6 text-sm" style={{ background: C.base.surface, border: `1px solid ${C.base.border}`, color: C.base.textMuted }}>
+            Tidak ada modul yang cocok dengan filter.
+          </div>
+        ) : filteredModules.map((module) => {
           const assigned = module.assigned_classes ?? [];
           const classLabel = assigned.length > 0
             ? assigned.map((c) => `${c.grade_level ?? ""} ${c.class_name ?? ""}`.trim()).join(", ")
@@ -411,24 +484,47 @@ export default function LearningModulesPage() {
               ? `${module.grade_level ?? ""} ${module.class_name}`.trim()
               : "Semua kelas";
           return (
-          <article key={module.id} className="rounded-xl bg-white p-4 flex flex-col md:flex-row md:items-center gap-4" style={{ border: "1px solid #e2e8f0" }}>
-            <div className="flex-1">
-              <h3 className="font-semibold text-slate-900">{module.title}</h3>
-              <p className="text-sm text-slate-500 mt-1">{module.description || "Tanpa ringkasan"}</p>
-              <div className="text-xs text-slate-400 mt-2">
-                {classLabel} · {module.completed_count ?? 0} siswa selesai {module.attachment_name ? `· Lampiran: ${module.attachment_name}` : ""}
-              </div>
-              {module.subject_name ? (
-                <span className="inline-block mt-2 text-xs font-medium px-2 py-0.5 rounded-full" style={{ background: "#EFF6FF", color: "#1D4ED8" }}>
-                  {module.subject_name}
+          <article
+            key={module.id}
+            className="cbt-card cbt-card-hover rounded-2xl p-4 sm:p-5 flex flex-col md:flex-row md:items-center gap-4"
+            style={{ background: C.base.surface, border: `1px solid ${C.base.border}`, boxShadow: S.card }}
+          >
+            <div className="flex-1 min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                {module.subject_name && (
+                  <span className="text-xs font-semibold" style={{ color: C.brand.dark }}>
+                    {module.subject_name}
+                  </span>
+                )}
+                {module.subject_name && <span style={{ color: C.base.textFaint }}>·</span>}
+                <span className="text-xs tabular-nums" style={{ color: C.base.textMuted }}>
+                  {module.completed_count ?? 0} siswa selesai
                 </span>
-              ) : null}
+              </div>
+              <h3 className="font-semibold text-base mt-0.5" style={{ color: C.base.text }}>{module.title}</h3>
+              <p className="text-sm mt-1" style={{ color: C.base.textMuted }}>{module.description || "Tanpa ringkasan"}</p>
+              <div className="text-xs mt-2" style={{ color: C.base.textFaint }}>
+                {classLabel}
+                {module.attachment_name ? ` · Lampiran: ${module.attachment_name}` : ""}
+              </div>
             </div>
-            <div className="flex gap-2">
-              <button onClick={() => openEdit(module)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+            <div className="flex gap-2 shrink-0">
+              <button
+                onClick={() => openEdit(module)}
+                className="inline-flex items-center gap-1.5 rounded-xl border px-3.5 py-2 text-sm font-medium cbt-row-hover min-h-[42px]"
+                style={{ borderColor: C.base.border, color: C.base.textBody, background: C.base.surface, boxShadow: S.control }}
+              >
+                <Pencil className="w-3.5 h-3.5" />
                 {t("Edit")}
               </button>
-              <button onClick={() => handleDelete(module)} className="rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-600">Hapus</button>
+              <button
+                onClick={() => handleDelete(module)}
+                className="inline-flex items-center gap-1.5 rounded-xl border px-3.5 py-2 text-sm font-medium cbt-row-hover min-h-[42px]"
+                style={{ borderColor: C.danger.border, color: C.danger.text, background: C.danger.bgLight }}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Hapus
+              </button>
             </div>
           </article>
           );
