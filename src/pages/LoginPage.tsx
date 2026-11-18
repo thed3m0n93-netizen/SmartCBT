@@ -6,6 +6,7 @@ import { useI18n } from "../i18n";
 import { C, S } from "../styles/tokens";
 import LanguageSwitcher from "../components/LanguageSwitcher";
 import ThemeToggle from "../components/ThemeToggle";
+import PWAInstallButton from "../components/PWAInstallButton";
 import { fetchSettings, type SchoolSettings } from "../lib/api";
 
 const DEFAULT_SUPER_ADMIN = {
@@ -263,6 +264,7 @@ export default function LoginPage() {
           </div>
 
           <div className="flex items-center gap-2">
+            <PWAInstallButton variant="header" />
             <ThemeToggle />
             <LanguageSwitcher />
           </div>

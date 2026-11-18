@@ -848,6 +848,11 @@ const id: Dictionary = {
   "Offline — answers are queued and will sync automatically":
     "Offline — jawaban diantre dan akan tersinkron otomatis",
   "Install App": "Pasang Aplikasi",
+  "Installing…": "Memasang…",
+  "Install SmartCBT to Home Screen": "Pasang SmartCBT ke Layar Utama",
+  "Install on iPhone / iPad": "Pasang di iPhone / iPad",
+  "Tap the Share button in Safari's toolbar.": "Ketuk tombol Bagikan (Share) di bilah alat Safari.",
+  "Scroll down and select Add to Home Screen.": "Gulir ke bawah lalu pilih Tambah ke Layar Utama (Add to Home Screen).",
   Install: "Pasang",
   Dismiss: "Tutup",
   Close: "Tutup",

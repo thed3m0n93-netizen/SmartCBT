@@ -1,26 +1,39 @@
-/* SmartCBT — PWA service worker (v2).
+/* SmartCBT — PWA service worker (v3).
  * Strategy:
  *  - App shell (/, /student/dashboard, /login, /setup): network-first with cache
  *    fallback so an installed app opens offline into a useful page.
  *  - Static GET assets: stale-while-revalidate (fast on repeat visits).
- *  - NEVER intercept /api/* (exam answers/timers must hit the live server)
- *    and never cache non-GET requests.
- *
- *  Works on ALL pages because:
- *  - The fetch listener handles every same-origin GET navigation (req.mode === "navigate").
- *  - Each visited page is cached at runtime on first load, then served from cache offline.
- *  - If a page has never been visited and the network is down, the root "/" is the fallback.
+ *  - NEVER intercept /api/*, /game-socket.io/*, or Vite dev-mode HMR paths
+ *    (/src/*, /@vite/*, /@react-refresh, /node_modules/*).
  */
-const CACHE = "smartcbt-shell-v2";
+const CACHE = "smartcbt-shell-v3";
 const SHELL = [
   "/",
   "/student/dashboard",
   "/login",
   "/setup",
   "/manifest.webmanifest",
+  "/pwa-192x192.png",
+  "/pwa-512x512.png",
+  "/apple-touch-icon.png",
   "/icon.svg",
   "/icon-maskable.svg",
 ];
+
+function isDevModulePath(url) {
+  const p = url.pathname;
+  return (
+    p.startsWith("/@vite") ||
+    p.startsWith("/@react-refresh") ||
+    p.startsWith("/@fs/") ||
+    p.startsWith("/@id/") ||
+    p.startsWith("/src/") ||
+    p.startsWith("/node_modules/") ||
+    p.startsWith("/.figma/") ||
+    url.searchParams.has("t") ||
+    url.searchParams.has("v")
+  );
+}
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -42,7 +55,8 @@ self.addEventListener("fetch", (event) => {
   if (req.method !== "GET") return;
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
-  if (url.pathname.startsWith("/api/")) return;
+  if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/game-socket.io/")) return;
+  if (isDevModulePath(url)) return;
 
   // Navigations: network-first, fall back to cached shell, then to "/".
   if (req.mode === "navigate") {

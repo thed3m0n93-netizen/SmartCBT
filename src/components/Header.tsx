@@ -6,6 +6,7 @@ import { C, S, alpha } from "../styles/tokens";
 import LanguageSwitcher from "./LanguageSwitcher";
 import ThemeToggle from "./ThemeToggle";
 import { AiProviderHeaderSwitcher } from "./AiProviderWidget";
+import PWAInstallButton from "./PWAInstallButton";
 
 const breadcrumbs: Record<string, string> = {
   "/admin/dashboard": "Dashboard",
@@ -100,6 +101,7 @@ export default function Header({ onMenu }: { onMenu?: () => void }) {
         {(user?.role === "admin" || user?.role === "teacher") && (
           <AiProviderHeaderSwitcher />
         )}
+        <PWAInstallButton variant="header" />
         <ThemeToggle />
         <LanguageSwitcher />
         {user?.institution && (

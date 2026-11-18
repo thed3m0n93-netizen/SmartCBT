@@ -1,10 +1,10 @@
-import { Smartphone, X } from "lucide-react";
+import { Download, Smartphone, X } from "lucide-react";
 import { usePwaInstall } from "../hooks/usePwa";
 import { useI18n } from "../i18n";
 
 export default function PwaInstallBanner({ compact = false }: { compact?: boolean }) {
   const { t } = useI18n();
-  const { canInstall, showIosHint, dismissed, dismiss, promptInstall, isIosDevice } = usePwaInstall();
+  const { canInstall, isInstalling, showIosHint, dismissed, dismiss, promptInstall, isIosDevice } = usePwaInstall();
 
   if (dismissed) return null;
   if (!canInstall && !showIosHint) return null;
@@ -42,11 +42,13 @@ export default function PwaInstallBanner({ compact = false }: { compact?: boolea
       {canInstall && (
         <button
           type="button"
-          onClick={promptInstall}
-          className="px-3.5 py-2 rounded-xl text-xs font-semibold shrink-0 hover:opacity-95 active:scale-95 min-h-[40px]"
+          onClick={() => void promptInstall()}
+          disabled={isInstalling}
+          className="px-3.5 py-2 rounded-xl text-xs font-semibold shrink-0 hover:opacity-95 active:scale-95 min-h-[40px] inline-flex items-center gap-1.5 disabled:opacity-60"
           style={{ background: "#FFFFFF", color: "#1D4ED8" }}
         >
-          {t("Install")}
+          <Download className="w-3.5 h-3.5 shrink-0" />
+          <span>{isInstalling ? t("Installing…") : t("Install App")}</span>
         </button>
       )}
       <button
