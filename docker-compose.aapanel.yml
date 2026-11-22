@@ -48,6 +48,16 @@ services:
       SETUP_AUTH_FORCE_DEFAULT: "true"
       # Jika true, database akan di-install dan di-seed otomatis saat backend boot.
       SETUP_AUTO_SEED: "true"
+      # AI Provider API Keys (isi di .env / Add Compose Environment aaPanel saat deploy)
+      GEMINI_API_KEY: "${GEMINI_API_KEY:-}"
+      NVIDIA_API_KEY: "${NVIDIA_API_KEY:-}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      DEEPSEEK_API_KEY: "${DEEPSEEK_API_KEY:-}"
+      GROQ_API_KEY: "${GROQ_API_KEY:-}"
+      MISTRAL_API_KEY: "${MISTRAL_API_KEY:-}"
+      GLM_API_KEY: "${GLM_API_KEY:-}"
+      OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"
     volumes:
       - uploads-data:/app/uploads
       - server-config:/app/server/dist

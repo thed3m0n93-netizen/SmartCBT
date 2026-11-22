@@ -4,7 +4,8 @@
  * These functions run in the browser and call the /api/setup* endpoints
  * served by the Vite dev-server middleware (see src/lib/server/setup.ts).
  */
-import { ApiErrorImpl } from "./api";
+import { ApiErrorImpl, type AiModelsFetchResult, type AiTestResult } from "./api";
+import { setCachedFetchedModels } from "./ai-providers";
 import { withSetupToken } from "./setupAuth";
 
 export interface DbProbeInfo {
@@ -107,4 +108,33 @@ export async function installDatabase(reset: boolean): Promise<SetupResult> {
  */
 export async function updateDatabase(): Promise<SetupResult> {
   return api<SetupResult>("/setup/update", { method: "POST" });
+}
+
+/** Fetch live AI models from `/setup` using the setup token. */
+export async function fetchSetupAiModels(payload?: {
+  provider?: string;
+  baseUrl?: string;
+  apiKey?: string;
+}): Promise<AiModelsFetchResult> {
+  const res = await api<AiModelsFetchResult>("/setup/ai/models", {
+    method: "POST",
+    body: JSON.stringify(payload ?? {}),
+  });
+  if (res.success && Array.isArray(res.models) && res.models.length > 0) {
+    setCachedFetchedModels(res.provider, res.models);
+  }
+  return res;
+}
+
+/** Test AI provider readiness from `/setup` using the setup token. */
+export async function testSetupAiProvider(payload?: {
+  provider?: string;
+  model?: string;
+  baseUrl?: string;
+  apiKey?: string;
+}): Promise<AiTestResult> {
+  return api<AiTestResult>("/setup/ai/test", {
+    method: "POST",
+    body: JSON.stringify(payload ?? {}),
+  });
 }

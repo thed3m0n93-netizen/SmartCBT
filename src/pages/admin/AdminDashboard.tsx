@@ -517,7 +517,7 @@ export default function AdminDashboard() {
                           : healthData.ai.ok
                             ? "warn"
                             : "down"
-                        : healthData.ai.ok && getAiProvider(healthData.ai.provider).hasBuiltInApiKey
+                        : healthData.ai.ok && (healthData.ai.configured ?? false)
                           ? "ok"
                           : "warn"
                     }

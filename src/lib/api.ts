@@ -14,6 +14,7 @@
  */
 
 import { withSetupToken } from "./setupAuth";
+import { setCachedFetchedModels } from "./ai-providers";
 
 // ── Base URL & transport ──────────────────────────────────────────────
 
@@ -2141,7 +2142,31 @@ export interface AiConfigSnapshot {
   baseUrl: string;
   hasCustomApiKey: boolean;
   hasBuiltInApiKey: boolean;
+  keySource?: "env" | "database" | "none";
   isReady: boolean;
+}
+
+export interface AiModelsFetchResult {
+  success: boolean;
+  provider: string;
+  baseUrl: string;
+  models: string[];
+  count: number;
+  latencyMs: number;
+}
+
+export interface AiTestResult {
+  ok: boolean;
+  configured: boolean;
+  reachable: boolean;
+  keySource: "input" | "database" | "env" | "none";
+  provider: string;
+  model: string;
+  baseUrl: string;
+  latencyMs: number;
+  reply?: string;
+  message?: string;
+  error?: string;
 }
 
 const AI_CONFIG_EVENT = "smartcbt:ai-config-changed";
@@ -2179,6 +2204,29 @@ export async function updateAiConfig(payload: {
   const res = await apiPut<{ success: boolean; config: AiConfigSnapshot }>("/api/ai/config", payload);
   emitAiConfigChanged(res.config);
   return res;
+}
+
+/** Fetch live language models from the provider's base URL (e.g. NVIDIA NIM `/v1/models`). */
+export async function fetchAiProviderModels(payload?: {
+  provider?: string;
+  baseUrl?: string;
+  apiKey?: string;
+}): Promise<AiModelsFetchResult> {
+  const res = await apiPost<AiModelsFetchResult>("/api/ai/models", payload ?? {});
+  if (res.success && Array.isArray(res.models) && res.models.length > 0) {
+    setCachedFetchedModels(res.provider, res.models);
+  }
+  return res;
+}
+
+/** Run a live readiness check against the configured/selected AI provider. */
+export function testAiProviderConnection(payload?: {
+  provider?: string;
+  model?: string;
+  baseUrl?: string;
+  apiKey?: string;
+}): Promise<AiTestResult> {
+  return apiPost<AiTestResult>("/api/ai/test", payload ?? {});
 }
 
 // ── School branding (logo / background / favicon) ─────────────────────
@@ -2401,6 +2449,7 @@ export interface SystemHealthData {
   ai: {
     ok: boolean;
     checked: boolean;
+    configured?: boolean;
     provider: string;
     model: string;
     baseUrl: string;

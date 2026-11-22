@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
-import { AlertTriangle, Cpu, Lock, RefreshCw, Settings } from "lucide-react";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { Activity, AlertCircle, AlertTriangle, CheckCircle2, Cpu, Lock, RefreshCw, Settings } from "lucide-react";
 import { useNavigate } from "react-router";
 import DatabaseConfigForm from "../components/DatabaseConfigForm";
 import LanguageSwitcher from "../components/LanguageSwitcher";
@@ -14,7 +14,9 @@ import {
 } from "../lib/dbConfigApi";
 import {
   fetchSetupStatus,
+  fetchSetupAiModels,
   installDatabase,
+  testSetupAiProvider,
   updateDatabase,
   type SetupResult,
   type SetupStatus,
@@ -22,6 +24,7 @@ import {
 import {
   fetchSettings,
   updateSettings,
+  type AiTestResult,
   type SchoolSettings,
 } from "../lib/api";
 import {
@@ -30,6 +33,9 @@ import {
   defaultModelForProvider,
   describeEffectiveBaseUrl,
   getAiProvider,
+  getEffectiveProviderModels,
+  isNvidiaProvider,
+  subscribeAiModelsFetched,
   type AiProviderInfo,
 } from "../lib/ai-providers";
 import {
@@ -214,10 +220,6 @@ const DEMO_ACCOUNTS = [
   { role: "Guru", username: "guru_matematika", password: "Teacher@123", color: "#10b981" },
   { role: "Siswa", username: "siswa_andi", password: "Student@123", color: "#60a5fa" },
 ];
-
-function providerModels(p: AiProviderInfo): string[] | null {
-  return p.models.length ? p.models : null;
-}
 
 function InstallDatabasePanel({
   status,
@@ -641,14 +643,39 @@ export default function DatabaseSetupPage() {
   const [schoolName, setSchoolName] = useState("SMK TEKNOLOGI");
   const [aiProvider, setAiProvider] = useState(DEFAULT_AI_PROVIDER_ID);
   const aiProviderInfo = getAiProvider(aiProvider);
+  const isNvidia = isNvidiaProvider(aiProviderInfo.id);
   const [aiModel, setAiModel] = useState(() => defaultModelForProvider(DEFAULT_AI_PROVIDER_ID));
   const [aiApiKey, setAiApiKey] = useState("");
   const [aiSaving, setAiSaving] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiSuccess, setAiSuccess] = useState<string | null>(null);
   const [aiBaseUrl, setAiBaseUrl] = useState("");
+  const [aiModelsVersion, setAiModelsVersion] = useState(0);
+  const [aiModelFilter, setAiModelFilter] = useState("");
+  const [fetchingModels, setFetchingModels] = useState(false);
+  const [fetchModelsNote, setFetchModelsNote] = useState<string | null>(null);
+  const [fetchModelsError, setFetchModelsError] = useState<string | null>(null);
+  const [testingAi, setTestingAi] = useState(false);
+  const [aiTestResult, setAiTestResult] = useState<AiTestResult | null>(null);
 
-  const modelOptions = providerModels(aiProviderInfo);
+  useEffect(() => subscribeAiModelsFetched(() => setAiModelsVersion((v) => v + 1)), []);
+
+  const modelOptions = useMemo(() => {
+    void aiModelsVersion;
+    const list = getEffectiveProviderModels(aiProviderInfo.id);
+    if (list.length === 0) return null;
+    if (aiModel && !list.includes(aiModel)) return [aiModel, ...list];
+    return list;
+  }, [aiModel, aiModelsVersion, aiProviderInfo.id]);
+  const filteredModelOptions = useMemo(() => {
+    if (!modelOptions) return null;
+    const q = aiModelFilter.trim().toLowerCase();
+    if (!q) return modelOptions;
+    const matched = modelOptions.filter((m) => m.toLowerCase().includes(q));
+    if (aiModel && !matched.includes(aiModel)) return [aiModel, ...matched];
+    return matched;
+  }, [aiModel, aiModelFilter, modelOptions]);
+
   const effectiveBaseUrl = describeEffectiveBaseUrl(aiProvider, aiBaseUrl);
   const staleBaseUrl =
     !aiProviderInfo.selfHosted && aiBaseUrl.trim() && aiBaseUrl.trim() !== effectiveBaseUrl.url
@@ -658,14 +685,71 @@ export default function DatabaseSetupPage() {
   const handleAiProviderChange = (provider: string) => {
     const next = getAiProvider(provider);
     setAiProvider(provider);
-    const opts = providerModels(next);
-    if (opts) {
+    setAiModelFilter("");
+    setFetchModelsNote(null);
+    setFetchModelsError(null);
+    setAiTestResult(null);
+    const opts = getEffectiveProviderModels(next.id);
+    if (opts.length > 0) {
       setAiModel(opts.includes(aiModel) ? aiModel : next.defaultModel);
     } else {
       setAiModel(next.defaultModel);
     }
     if (next.selfHosted && !aiBaseUrl.trim()) {
       setAiBaseUrl(next.defaultBaseUrl);
+    }
+  };
+
+  const handleFetchNvidiaModels = async () => {
+    setFetchingModels(true);
+    setFetchModelsError(null);
+    setFetchModelsNote(null);
+    try {
+      const res = await fetchSetupAiModels({
+        provider: aiProvider,
+        baseUrl: effectiveBaseUrl.url,
+        ...(aiApiKey.trim() ? { apiKey: aiApiKey.trim() } : {}),
+      });
+      setAiModelsVersion((v) => v + 1);
+      setFetchModelsNote(
+        t("{n} model berhasil diambil dari {url} ({ms} ms).", {
+          n: res.count,
+          url: res.baseUrl,
+          ms: res.latencyMs,
+        }),
+      );
+    } catch (err: any) {
+      setFetchModelsError(err?.message || t("Gagal mengambil daftar model dari base URL."));
+    } finally {
+      setFetchingModels(false);
+    }
+  };
+
+  const handleTestAiConnection = async () => {
+    setTestingAi(true);
+    setAiTestResult(null);
+    try {
+      const res = await testSetupAiProvider({
+        provider: aiProvider,
+        model: aiModel,
+        baseUrl: effectiveBaseUrl.url,
+        ...(aiApiKey.trim() ? { apiKey: aiApiKey.trim() } : {}),
+      });
+      setAiTestResult(res);
+    } catch (err: any) {
+      setAiTestResult({
+        ok: false,
+        configured: false,
+        reachable: false,
+        keySource: "none",
+        provider: aiProvider,
+        model: aiModel,
+        baseUrl: effectiveBaseUrl.url,
+        latencyMs: 0,
+        error: err?.message || t("Gagal menguji koneksi provider AI."),
+      });
+    } finally {
+      setTestingAi(false);
     }
   };
 
@@ -924,29 +1008,80 @@ export default function DatabaseSetupPage() {
                   <label className="block text-sm font-medium mb-1.5" style={{ color: C.base.textBody }}>
                     {t("Model AI")}
                   </label>
-                  {modelOptions ? (
-                    <select
-                      value={modelOptions.includes(aiModel) ? aiModel : aiProviderInfo.defaultModel}
-                      onChange={(e) => setAiModel(e.target.value)}
-                      className="w-full px-3 py-2.5 rounded-xl text-sm outline-none min-h-[44px]"
-                      style={aiFieldStyle}
-                    >
-                      {modelOptions.map((model) => (
-                        <option key={model} value={model}>
-                          {model}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <input
-                      type="text"
-                      value={aiModel}
-                      onChange={(e) => setAiModel(e.target.value)}
-                      placeholder={aiProviderInfo.defaultModel}
-                      className="w-full px-3 py-2.5 rounded-xl text-sm outline-none min-h-[44px]"
-                      style={aiFieldStyle}
-                    />
-                  )}
+                  <div className="space-y-2">
+                    {modelOptions && modelOptions.length > 12 && (
+                      <input
+                        type="text"
+                        value={aiModelFilter}
+                        onChange={(e) => setAiModelFilter(e.target.value)}
+                        placeholder={t("Cari model...")}
+                        className="w-full px-3 py-2 rounded-xl text-sm outline-none min-h-[40px]"
+                        style={aiFieldStyle}
+                      />
+                    )}
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      {filteredModelOptions ? (
+                        <select
+                          value={filteredModelOptions.includes(aiModel) ? aiModel : aiProviderInfo.defaultModel}
+                          onChange={(e) => {
+                            setAiModel(e.target.value);
+                            setAiTestResult(null);
+                          }}
+                          className="flex-1 min-w-0 px-3 py-2.5 rounded-xl text-sm outline-none min-h-[44px]"
+                          style={aiFieldStyle}
+                        >
+                          {filteredModelOptions.map((model) => (
+                            <option key={model} value={model}>
+                              {model}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          type="text"
+                          value={aiModel}
+                          onChange={(e) => {
+                            setAiModel(e.target.value);
+                            setAiTestResult(null);
+                          }}
+                          placeholder={aiProviderInfo.defaultModel}
+                          className="flex-1 min-w-0 px-3 py-2.5 rounded-xl text-sm outline-none min-h-[44px]"
+                          style={aiFieldStyle}
+                        />
+                      )}
+                      {isNvidia && (
+                        <button
+                          type="button"
+                          disabled={fetchingModels || aiSaving}
+                          onClick={handleFetchNvidiaModels}
+                          className="px-3.5 py-2.5 rounded-xl text-xs font-semibold inline-flex items-center justify-center gap-1.5 min-h-[44px] cbt-row-hover disabled:opacity-60"
+                          style={{
+                            background: C.base.surfaceMuted,
+                            border: `1px solid ${C.base.border}`,
+                            color: C.brand.dark,
+                          }}
+                        >
+                          <RefreshCw className={`w-3.5 h-3.5 ${fetchingModels ? "animate-spin" : ""}`} />
+                          <span>{fetchingModels ? t("Mengambil…") : t("Fetch Model")}</span>
+                        </button>
+                      )}
+                    </div>
+                    {modelOptions && modelOptions.length > 1 && (
+                      <div className="text-xs" style={{ color: C.base.textFaint }}>
+                        {t("{n} pilihan model tersedia", { n: modelOptions.length })}
+                      </div>
+                    )}
+                    {fetchModelsNote && (
+                      <div className="text-xs" style={{ color: C.ok.dark }}>
+                        {fetchModelsNote}
+                      </div>
+                    )}
+                    {fetchModelsError && (
+                      <div className="text-xs" style={{ color: C.danger.text }}>
+                        {fetchModelsError}
+                      </div>
+                    )}
+                  </div>
                 </div>
                 {aiProviderInfo.id === "gemini" ? (
                   <div>
@@ -972,10 +1107,13 @@ export default function DatabaseSetupPage() {
                     <input
                       type="password"
                       value={aiApiKey}
-                      onChange={(e) => setAiApiKey(e.target.value)}
+                      onChange={(e) => {
+                        setAiApiKey(e.target.value);
+                        setAiTestResult(null);
+                      }}
                       placeholder={
                         aiProviderInfo.hasBuiltInApiKey
-                          ? t("Kosongkan untuk memakai API key bawaan")
+                          ? t("Kosongkan untuk memakai env server (.env / Compose)")
                           : t("Masukkan token API AI")
                       }
                       className="w-full px-3 py-2.5 rounded-xl text-sm outline-none min-h-[44px]"
@@ -983,7 +1121,7 @@ export default function DatabaseSetupPage() {
                     />
                     {aiProviderInfo.hasBuiltInApiKey && (
                       <div className="text-xs mt-1.5" style={{ color: C.base.textFaint }}>
-                        {t("API key bawaan sudah terpasang untuk provider ini — boleh dikosongkan.")}
+                        {t("Mendukung environment server (Docker Compose / .env) — kosongkan jika variabel env sudah diset.")}
                       </div>
                     )}
                   </div>
@@ -1021,6 +1159,34 @@ export default function DatabaseSetupPage() {
                 </div>
               </>
             )}
+            {aiTestResult && (
+              <div
+                className="rounded-xl px-3.5 py-2.5 text-xs flex items-start gap-2"
+                style={{
+                  background: aiTestResult.ok ? C.ok.msgBg : C.danger.bgLight,
+                  color: aiTestResult.ok ? C.ok.msgText : C.danger.text,
+                  border: `1px solid ${aiTestResult.ok ? C.ok.msgBorder : C.danger.border}`,
+                }}
+              >
+                {aiTestResult.ok ? (
+                  <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                )}
+                <div className="min-w-0">
+                  <div className="font-semibold">
+                    {aiTestResult.ok
+                      ? `${t("API Siap Digunakan")} · ${aiTestResult.latencyMs} ms`
+                      : t("Test API Gagal")}
+                  </div>
+                  <div className="text-[11px] opacity-90 break-words">
+                    {aiTestResult.ok
+                      ? `${aiTestResult.model} · ${t("Sumber key")}: ${aiTestResult.keySource}${aiTestResult.reply ? ` · "${aiTestResult.reply}"` : ""}`
+                      : aiTestResult.error}
+                  </div>
+                </div>
+              </div>
+            )}
             {aiError && (
               <div
                 className="rounded-xl px-3.5 py-2.5 text-sm"
@@ -1037,7 +1203,25 @@ export default function DatabaseSetupPage() {
                 {aiSuccess}
               </div>
             )}
-            <div className="flex justify-end">
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={handleTestAiConnection}
+                disabled={testingAi || aiSaving}
+                className="px-4 py-2.5 rounded-xl text-sm font-semibold inline-flex items-center gap-1.5 transition-all disabled:opacity-60 min-h-[42px]"
+                style={{
+                  background: C.base.surfaceMuted,
+                  border: `1px solid ${C.base.border}`,
+                  color: C.base.textBody,
+                }}
+              >
+                {testingAi ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" style={{ color: C.brand.main }} />
+                ) : (
+                  <Activity className="w-4 h-4" style={{ color: C.brand.main }} />
+                )}
+                <span>{testingAi ? t("Menguji Koneksi…") : t("Test API")}</span>
+              </button>
               <button
                 type="button"
                 onClick={saveAiAgentConfig}

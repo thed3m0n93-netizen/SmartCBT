@@ -40,16 +40,12 @@ export interface AiProviderInfo {
   /** TRUE when the provider runs on a self-hosted / custom endpoint. */
   selfHosted?: boolean;
   /**
-   * TRUE when the app ships a built-in API key for this provider.
+   * TRUE when the provider supports instant server-env configuration (e.g. via
+   * `GEMINI_API_KEY` or `NVIDIA_API_KEY` in Docker Compose / `.env`).
    *
-   * The provider then works **without** the school filling in the API key
-   * form: the server falls back to its built-in key, so an existing (possibly
-   * stale) saved key still wins but an empty one is no longer a blocker.
-   *
-   * SECURITY NOTE: only a *flag* lives here — the secret itself is kept in the
-   * server-only module `src/lib/server/ai-keys.ts` so it never reaches the
-   * browser bundle. Replace the built-in keys with per-school keys (or the
-   * provider's `apiKeyEnv` variable) before a real deployment.
+   * SECURITY NOTE: only a *flag* and env var name live here — secrets are
+   * never hardcoded in source control and are read only on the server via
+   * `src/lib/server/ai-keys.ts`.
    */
   hasBuiltInApiKey?: boolean;
   /** Categorizes instant built-in providers vs user-configured placeholder slots. */
@@ -88,7 +84,7 @@ export const AI_PROVIDERS: AiProviderInfo[] = [
     hasBuiltInApiKey: true,
     category: "instant",
     isPlaceholder: false,
-    badge: "Default · Bawaan",
+    badge: "Default · Env Server",
     defaultModel: "gemini-4-hydrogen",
     models: [
       "gemini-4-hydrogen",
@@ -96,7 +92,7 @@ export const AI_PROVIDERS: AiProviderInfo[] = [
       "gemini-4-neon",
       "gemini-4-carbon",
     ],
-    note: "Provider bawaan SmartCBT menggunakan SDK @google/genai (Gemini 4 Hydrogen) melalui GEMINI_API_KEY server.",
+    note: "Provider bawaan SmartCBT menggunakan SDK @google/genai (Gemini 4 Hydrogen) melalui variabel server GEMINI_API_KEY.",
   },
   {
     id: "nvidia-mistral-large",
@@ -108,7 +104,7 @@ export const AI_PROVIDERS: AiProviderInfo[] = [
     hasBuiltInApiKey: true,
     category: "instant",
     isPlaceholder: false,
-    badge: "Instan · Siap Pakai",
+    badge: "Instan · Env / Key",
     defaultModel: "mistralai/mistral-large-4-1t-a52b",
     models: ["mistralai/mistral-large-4-1t-a52b"],
     defaultParams: {
@@ -119,7 +115,7 @@ export const AI_PROVIDERS: AiProviderInfo[] = [
       reasoningEffort: "high",
       maxTokens: 4096,
     },
-    note: "Akses instan NVIDIA NIM (Mistral Large 4 1T) — siap pakai langsung untuk Generate Soal & AI Grading.",
+    note: "Akses instan NVIDIA NIM (Mistral Large 4 1T) — membaca NVIDIA_API_KEY dari Docker Compose / .env server (atau isi di Pengaturan).",
   },
   {
     id: "nvidia",
@@ -131,7 +127,7 @@ export const AI_PROVIDERS: AiProviderInfo[] = [
     hasBuiltInApiKey: true,
     category: "instant",
     isPlaceholder: false,
-    badge: "Instan · Siap Pakai",
+    badge: "Instan · Env / Key",
     defaultModel: "z-ai/glm-5.3-flash",
     models: [
       "z-ai/glm-5.3-flash",
@@ -142,7 +138,7 @@ export const AI_PROVIDERS: AiProviderInfo[] = [
       "nvidia/nemotron-3.5-lightning-30b-a3b",
       "stepfun-ai/step-5-preview",
     ],
-    note: "OpenAI-compatible via NVIDIA NIM. API key bawaan sudah terpasang — siap pakai langsung.",
+    note: "OpenAI-compatible via NVIDIA NIM — membaca NVIDIA_API_KEY dari Docker Compose / .env server (atau isi di Pengaturan).",
   },
   {
     id: "nvidia-gpt-oss",
@@ -154,10 +150,10 @@ export const AI_PROVIDERS: AiProviderInfo[] = [
     hasBuiltInApiKey: true,
     category: "instant",
     isPlaceholder: false,
-    badge: "Instan · Siap Pakai",
+    badge: "Instan · Env / Key",
     defaultModel: "openai/gpt-oss-20b",
     models: ["openai/gpt-oss-20b"],
-    note: "OpenAI gpt-oss-20b via NVIDIA NIM. API key bawaan sudah terpasang.",
+    note: "OpenAI gpt-oss-20b via NVIDIA NIM — membaca NVIDIA_API_KEY dari Docker Compose / .env server.",
   },
   {
     id: "nvidia-gemma",
@@ -169,14 +165,14 @@ export const AI_PROVIDERS: AiProviderInfo[] = [
     hasBuiltInApiKey: true,
     category: "instant",
     isPlaceholder: false,
-    badge: "Instan · Siap Pakai",
+    badge: "Instan · Env / Key",
     defaultModel: "google/diffusiongemma-26b-a4b-it",
     models: [
       "google/diffusiongemma-26b-a4b-it",
       "nvidia/nemotron-3.5-lightning-30b-a3b",
       "openai/gpt-oss-20b",
     ],
-    note: "Google Gemma via NVIDIA NIM. API key bawaan sudah terpasang.",
+    note: "Google Gemma via NVIDIA NIM — membaca NVIDIA_API_KEY dari Docker Compose / .env server.",
   },
   {
     id: "openai",
@@ -184,12 +180,13 @@ export const AI_PROVIDERS: AiProviderInfo[] = [
     protocol: "openai",
     defaultBaseUrl: "https://api.openai.com/v1",
     requiresApiKey: true,
+    apiKeyEnv: "OPENAI_API_KEY",
     category: "placeholder",
     isPlaceholder: true,
     badge: "Placeholder · API Key",
     defaultModel: "gpt-4o-mini",
     models: ["gpt-4o-mini", "gpt-4o", "gpt-4.1", "gpt-4.1-mini", "o4-mini"],
-    note: "Placeholder — masukkan API key dari platform.openai.com untuk mengaktifkan.",
+    note: "Placeholder — isi OPENAI_API_KEY di Docker Compose / .env atau API key di Pengaturan.",
   },
   {
     id: "anthropic",
@@ -197,12 +194,13 @@ export const AI_PROVIDERS: AiProviderInfo[] = [
     protocol: "anthropic",
     defaultBaseUrl: "https://api.anthropic.com/v1",
     requiresApiKey: true,
+    apiKeyEnv: "ANTHROPIC_API_KEY",
     category: "placeholder",
     isPlaceholder: true,
     badge: "Placeholder · API Key",
     defaultModel: "claude-sonnet-4-5",
     models: ["claude-sonnet-4-5", "claude-opus-4-1", "claude-haiku-4-5", "claude-3-5-haiku-latest"],
-    note: "Placeholder — masukkan API key dari console.anthropic.com untuk mengaktifkan.",
+    note: "Placeholder — isi ANTHROPIC_API_KEY di Docker Compose / .env atau API key di Pengaturan.",
   },
   {
     id: "deepseek",
@@ -210,12 +208,13 @@ export const AI_PROVIDERS: AiProviderInfo[] = [
     protocol: "openai",
     defaultBaseUrl: "https://api.deepseek.com/v1",
     requiresApiKey: true,
+    apiKeyEnv: "DEEPSEEK_API_KEY",
     category: "placeholder",
     isPlaceholder: true,
     badge: "Placeholder · API Key",
     defaultModel: "deepseek-chat",
     models: ["deepseek-chat", "deepseek-reasoner"],
-    note: "Placeholder — OpenAI-compatible. API key dari platform.deepseek.com.",
+    note: "Placeholder — isi DEEPSEEK_API_KEY di Docker Compose / .env atau API key di Pengaturan.",
   },
   {
     id: "groq",
@@ -223,12 +222,13 @@ export const AI_PROVIDERS: AiProviderInfo[] = [
     protocol: "openai",
     defaultBaseUrl: "https://api.groq.com/openai/v1",
     requiresApiKey: true,
+    apiKeyEnv: "GROQ_API_KEY",
     category: "placeholder",
     isPlaceholder: true,
     badge: "Placeholder · API Key",
     defaultModel: "llama-3.3-70b-versatile",
     models: ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "qwen/qwen3-32b", "gemma2-9b-it"],
-    note: "Placeholder — OpenAI-compatible. API key dari console.groq.com.",
+    note: "Placeholder — isi GROQ_API_KEY di Docker Compose / .env atau API key di Pengaturan.",
   },
   {
     id: "mistral",
@@ -236,12 +236,13 @@ export const AI_PROVIDERS: AiProviderInfo[] = [
     protocol: "openai",
     defaultBaseUrl: "https://api.mistral.ai/v1",
     requiresApiKey: true,
+    apiKeyEnv: "MISTRAL_API_KEY",
     category: "placeholder",
     isPlaceholder: true,
     badge: "Placeholder · API Key",
     defaultModel: "mistral-large-latest",
     models: ["mistral-large-latest", "mistral-medium-latest", "mistral-small-latest", "open-mistral-nemo"],
-    note: "Placeholder — OpenAI-compatible. API key dari console.mistral.ai.",
+    note: "Placeholder — isi MISTRAL_API_KEY di Docker Compose / .env atau API key di Pengaturan.",
   },
   {
     id: "glm",
@@ -249,12 +250,13 @@ export const AI_PROVIDERS: AiProviderInfo[] = [
     protocol: "openai",
     defaultBaseUrl: "https://open.bigmodel.cn/api/paas/v4",
     requiresApiKey: true,
+    apiKeyEnv: "GLM_API_KEY",
     category: "placeholder",
     isPlaceholder: true,
     badge: "Placeholder · API Key",
     defaultModel: "glm-4-flash",
     models: ["glm-4-flash", "glm-4-air", "glm-4-plus", "glm-4.5"],
-    note: "Placeholder — OpenAI-compatible. API key dari open.bigmodel.cn (.cn) atau z.ai.",
+    note: "Placeholder — isi GLM_API_KEY di Docker Compose / .env atau API key di Pengaturan.",
   },
   {
     id: "openrouter",
@@ -262,6 +264,7 @@ export const AI_PROVIDERS: AiProviderInfo[] = [
     protocol: "openai",
     defaultBaseUrl: "https://openrouter.ai/api/v1",
     requiresApiKey: true,
+    apiKeyEnv: "OPENROUTER_API_KEY",
     category: "placeholder",
     isPlaceholder: true,
     badge: "Placeholder · API Key",
@@ -274,7 +277,7 @@ export const AI_PROVIDERS: AiProviderInfo[] = [
       "qwen/qwen-2.5-72b-instruct",
       "meta-llama/llama-3.3-70b-instruct",
     ],
-    note: "Placeholder — satu API key untuk ratusan model lewat openrouter.ai.",
+    note: "Placeholder — isi OPENROUTER_API_KEY di Docker Compose / .env atau API key di Pengaturan.",
   },
   {
     id: "ollama",
@@ -413,11 +416,14 @@ export function resolveAiApiKey(
   return env;
 }
 
-/** Standard error message when a key-requiring provider has no key stored. */
+/** Standard error message when a key-requiring provider has no key stored or in env. */
 export function aiProviderRequiresKeyError(providerId: string): string {
   const provider = getAiProvider(providerId);
   if (provider.id === "gemini") {
-    return "GEMINI_API_KEY belum tersedia di server. Tambahkan GEMINI_API_KEY pada Settings > Secrets atau file .env server.";
+    return "GEMINI_API_KEY belum tersedia di server. Tambahkan GEMINI_API_KEY pada Docker Compose, file .env, atau Settings > Secrets.";
+  }
+  if (provider.apiKeyEnv) {
+    return `Provider ${provider.label} memerlukan API key. Tambahkan ${provider.apiKeyEnv} pada Docker Compose / .env server, atau simpan API key melalui Pengaturan → AI Agent.`;
   }
   return `Provider ${provider.label} memerlukan API key. Buka Pengaturan → AI Agent untuk menyimpannya.`;
 }
@@ -435,3 +441,72 @@ export function defaultModelForProvider(providerId: string): string {
 export function defaultBaseUrlForProvider(providerId: string): string {
   return getAiProvider(providerId).defaultBaseUrl.replace(/\/+$/, "");
 }
+
+/** TRUE for any NVIDIA NIM provider entry in the catalog. */
+export function isNvidiaProvider(providerId: string | null | undefined): boolean {
+  return String(providerId ?? "").trim().toLowerCase().startsWith("nvidia");
+}
+
+const AI_FETCHED_MODELS_KEY = "smartcbt:ai_fetched_models_v1";
+const AI_MODELS_FETCHED_EVENT = "smartcbt:ai-models-fetched";
+
+function readFetchedModelsMap(): Record<string, string[]> {
+  if (typeof window === "undefined" || !window.localStorage) return {};
+  try {
+    const raw = window.localStorage.getItem(AI_FETCHED_MODELS_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, string[]>) : {};
+  } catch {
+    return {};
+  }
+}
+
+/** Read cached live-fetched model IDs for a provider (browser-only, non-secret). */
+export function getCachedFetchedModels(providerId: string): string[] {
+  const key = String(providerId ?? "").trim().toLowerCase();
+  if (!key) return [];
+  const map = readFetchedModelsMap();
+  // NVIDIA NIM endpoints share the same `/v1/models` base URL across presets.
+  const entries = isNvidiaProvider(key)
+    ? (Array.isArray(map[key]) && map[key].length > 0 ? map[key] : map["nvidia"] ?? [])
+    : map[key] ?? [];
+  return Array.isArray(entries) ? entries.filter((v): v is string => typeof v === "string" && v.trim().length > 0) : [];
+}
+
+/** Save fetched model IDs to localStorage and notify open pickers. */
+export function setCachedFetchedModels(providerId: string, models: string[]): string[] {
+  const key = String(providerId ?? "").trim().toLowerCase();
+  const clean = Array.from(new Set(models.map((m) => String(m ?? "").trim()).filter(Boolean)));
+  if (typeof window !== "undefined" && window.localStorage && key) {
+    try {
+      const map = readFetchedModelsMap();
+      map[key] = clean;
+      if (isNvidiaProvider(key)) {
+        map["nvidia"] = clean;
+      }
+      window.localStorage.setItem(AI_FETCHED_MODELS_KEY, JSON.stringify(map));
+    } catch {
+      /* ignore quota / privacy mode failures */
+    }
+    window.dispatchEvent(new CustomEvent(AI_MODELS_FETCHED_EVENT, { detail: { provider: key, models: clean } }));
+  }
+  return clean;
+}
+
+/** Subscribe to live-fetched model list updates across UI pickers. */
+export function subscribeAiModelsFetched(listener: () => void): () => void {
+  if (typeof window === "undefined") return () => {};
+  const handler = () => listener();
+  window.addEventListener(AI_MODELS_FETCHED_EVENT, handler);
+  return () => window.removeEventListener(AI_MODELS_FETCHED_EVENT, handler);
+}
+
+/** Merge curated catalog models with any live-fetched models for a provider. */
+export function getEffectiveProviderModels(providerId: string): string[] {
+  const descriptor = getAiProvider(providerId);
+  const fetched = getCachedFetchedModels(descriptor.id);
+  if (fetched.length === 0) return descriptor.models;
+  return Array.from(new Set([...descriptor.models, ...fetched]));
+}
+

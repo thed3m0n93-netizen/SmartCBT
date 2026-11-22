@@ -71,6 +71,9 @@ Copy `.env.docker` to `.env` and adjust:
 | `PGPASSWORD` | `smartcbt123` | Database password |
 | `PGDATABASE` | `db_smartcbt` | Database name |
 | `PGSSL` | `false` | Enable SSL for DB connection |
+| `GEMINI_API_KEY` | `""` | Server API key for default Google Gemini provider |
+| `NVIDIA_API_KEY` | `""` | Server API key for NVIDIA NIM instant providers |
+| `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `DEEPSEEK_API_KEY` / `GROQ_API_KEY` / `MISTRAL_API_KEY` / `GLM_API_KEY` / `OPENROUTER_API_KEY` | `""` | Optional server API keys for additional AI providers |
 
 ## Useful Commands
 

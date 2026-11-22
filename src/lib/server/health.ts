@@ -17,7 +17,7 @@ import { addRoute, json, query } from "./utils.js";
 import { getAllActiveSessions, getSessionStats } from "./auth-session.js";
 import { clients as sseClients } from "./sse.js";
 import { loadAiConfig, DEFAULT_AI_BASE_URL, DEFAULT_AI_MODEL } from "./aiagent.js";
-import { DEFAULT_AI_PROVIDER_ID } from "../ai-providers.js";
+import { DEFAULT_AI_PROVIDER_ID, getAiProvider } from "../ai-providers.js";
 
 function ms(start: number): number {
   return Math.max(0, Math.round(performance.now() - start));
@@ -177,12 +177,14 @@ async function checkAi() {
   let provider = DEFAULT_AI_PROVIDER_ID;
   let model = DEFAULT_AI_MODEL;
   let baseUrl = DEFAULT_AI_BASE_URL;
+  let configured = false;
 
   try {
     const config = await loadAiConfig();
     provider = config.provider || DEFAULT_AI_PROVIDER_ID;
     model = config.model || DEFAULT_AI_MODEL;
     baseUrl = config.baseUrl || DEFAULT_AI_BASE_URL;
+    configured = Boolean(config.apiKey) || !getAiProvider(provider).requiresApiKey;
   } catch (err: any) {
     result.error = err?.message || "failed to read AI settings";
     result.latencyMs = ms(started);
@@ -192,13 +194,16 @@ async function checkAi() {
   result.provider = provider;
   result.model = model;
   result.baseUrl = baseUrl;
+  result.configured = configured;
 
   // Only Ollama exposes an unauthenticated, side-effect-free discovery
   // endpoint — remote SaaS providers would need a real (billable) request.
   if (provider !== "ollama") {
     result.checked = false;
-    result.note = "provider does not support a free availability probe";
-    result.ok = true;
+    result.note = configured
+      ? "provider configured via server env / database"
+      : "API key belum diset di Docker Compose / .env atau Pengaturan";
+    result.ok = configured;
     result.latencyMs = ms(started);
     return result;
   }

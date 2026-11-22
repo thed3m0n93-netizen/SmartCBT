@@ -1,12 +1,18 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { Activity, AlertCircle, CheckCircle2, RefreshCw } from "lucide-react";
 import { useI18n } from "../../i18n";
 import {
   fetchSettings,
   updateSettings,
+  fetchAiConfig,
+  fetchAiProviderModels,
+  testAiProviderConnection,
   uploadBranding,
   removeBranding,
   resolveAssetUrl,
   isCrossOriginAsset,
+  type AiConfigSnapshot,
+  type AiTestResult,
   type SchoolSettings,
   type BrandingKind,
 } from "../../lib/api";
@@ -18,6 +24,9 @@ import {
   defaultModelForProvider,
   describeEffectiveBaseUrl,
   getAiProvider,
+  getEffectiveProviderModels,
+  isNvidiaProvider,
+  subscribeAiModelsFetched,
   type AiProviderInfo,
 } from "../../lib/ai-providers";
 
@@ -174,15 +183,42 @@ export default function SettingsPage() {
   const [aiModel, setAiModel] = useState<string>(() => defaultModelForProvider(DEFAULT_AI_PROVIDER_ID));
   const [aiApiKey, setAiApiKey] = useState<string>("");
   const [aiBaseUrl, setAiBaseUrl] = useState<string>("");
+  const [aiSnapshot, setAiSnapshot] = useState<AiConfigSnapshot | null>(null);
+  const [aiModelsVersion, setAiModelsVersion] = useState(0);
+  const [aiModelFilter, setAiModelFilter] = useState("");
+  const [fetchingModels, setFetchingModels] = useState(false);
+  const [fetchModelsNote, setFetchModelsNote] = useState<string | null>(null);
+  const [fetchModelsError, setFetchModelsError] = useState<string | null>(null);
+  const [testingAi, setTestingAi] = useState(false);
+  const [aiTestResult, setAiTestResult] = useState<AiTestResult | null>(null);
 
   const aiProviderInfo: AiProviderInfo = getAiProvider(aiProvider);
-  const aiModelOptions = aiProviderInfo.models.length ? aiProviderInfo.models : null;
+  const isNvidia = isNvidiaProvider(aiProviderInfo.id);
+  const aiModelOptions = useMemo(() => {
+    void aiModelsVersion;
+    const list = getEffectiveProviderModels(aiProviderInfo.id);
+    if (list.length === 0) return null;
+    if (aiModel && !list.includes(aiModel)) return [aiModel, ...list];
+    return list;
+  }, [aiModel, aiModelsVersion, aiProviderInfo.id]);
+  const filteredAiModelOptions = useMemo(() => {
+    if (!aiModelOptions) return null;
+    const q = aiModelFilter.trim().toLowerCase();
+    if (!q) return aiModelOptions;
+    const matched = aiModelOptions.filter((m) => m.toLowerCase().includes(q));
+    if (aiModel && !matched.includes(aiModel)) return [aiModel, ...matched];
+    return matched;
+  }, [aiModel, aiModelFilter, aiModelOptions]);
   const effectiveAiBaseUrl = describeEffectiveBaseUrl(aiProvider, aiBaseUrl);
 
-  /** TRUE when the provider works without the school typing a key. */
+  /** TRUE when the provider supports instant server-env configuration. */
   const aiHasBuiltInKey = !!aiProviderInfo.hasBuiltInApiKey;
 
   useEffect(() => {
+    const unsub = subscribeAiModelsFetched(() => setAiModelsVersion((v) => v + 1));
+    fetchAiConfig()
+      .then(setAiSnapshot)
+      .catch(() => undefined);
     fetchSettings()
       .then((s) => {
         setForm({ ...DEFAULTS, ...s });
@@ -195,6 +231,7 @@ export default function SettingsPage() {
       })
       .catch((err) => setError(err?.message || "Gagal memuat pengaturan"))
       .finally(() => setLoading(false));
+    return unsub;
   }, []);
 
   const handleChange = (key: keyof SchoolSettings, value: string) => {
@@ -211,8 +248,12 @@ export default function SettingsPage() {
     const next = getAiProvider(provider);
     setAiProvider(provider);
     setAiModel(next.defaultModel);
+    setAiModelFilter("");
+    setFetchModelsNote(null);
+    setFetchModelsError(null);
+    setAiTestResult(null);
     // Clear leftover key from the previous provider so it never overrides
-    // built-in NVIDIA NIM keys or triggers a mismatch on another provider.
+    // env server keys or triggers a mismatch on another provider.
     if (provider !== aiProvider) {
       setAiApiKey("");
     }
@@ -221,6 +262,60 @@ export default function SettingsPage() {
     setAiBaseUrl(next.selfHosted ? next.defaultBaseUrl : "");
     setSuccess(null);
     setError(null);
+  };
+
+  const handleFetchNvidiaModels = async () => {
+    setFetchingModels(true);
+    setFetchModelsError(null);
+    setFetchModelsNote(null);
+    try {
+      const res = await fetchAiProviderModels({
+        provider: aiProvider,
+        baseUrl: effectiveAiBaseUrl.url,
+        ...(aiApiKey.trim() ? { apiKey: aiApiKey.trim() } : {}),
+      });
+      setAiModelsVersion((v) => v + 1);
+      setFetchModelsNote(
+        t("{n} model berhasil diambil dari {url} ({ms} ms).", {
+          n: res.count,
+          url: res.baseUrl,
+          ms: res.latencyMs,
+        }),
+      );
+    } catch (err: any) {
+      setFetchModelsError(err?.message || t("Gagal mengambil daftar model dari base URL."));
+    } finally {
+      setFetchingModels(false);
+    }
+  };
+
+  const handleTestAiConnection = async () => {
+    setTestingAi(true);
+    setAiTestResult(null);
+    try {
+      const res = await testAiProviderConnection({
+        provider: aiProvider,
+        model: aiModel,
+        baseUrl: effectiveAiBaseUrl.url,
+        ...(aiApiKey.trim() ? { apiKey: aiApiKey.trim() } : {}),
+      });
+      setAiTestResult(res);
+      fetchAiConfig().then(setAiSnapshot).catch(() => undefined);
+    } catch (err: any) {
+      setAiTestResult({
+        ok: false,
+        configured: false,
+        reachable: false,
+        keySource: "none",
+        provider: aiProvider,
+        model: aiModel,
+        baseUrl: effectiveAiBaseUrl.url,
+        latencyMs: 0,
+        error: err?.message || t("Gagal menguji koneksi provider AI."),
+      });
+    } finally {
+      setTestingAi(false);
+    }
   };
 
   const setSlotState = (kind: BrandingKind, next: BrandingState) =>
@@ -549,29 +644,81 @@ export default function SettingsPage() {
 
         {/* Model */}
         <Field label={t("Model AI")}>
-          {aiModelOptions ? (
-            <select
-              value={aiModelOptions.includes(aiModel) ? aiModel : aiProviderInfo.defaultModel}
-              onChange={(e) => setAiModel(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
-              style={fieldInput}
-            >
-              {aiModelOptions.map((model) => (
-                <option key={model} value={model}>
-                  {model}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <input
-              type="text"
-              value={aiModel}
-              onChange={(e) => setAiModel(e.target.value)}
-              placeholder={aiProviderInfo.defaultModel}
-              className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
-              style={fieldInput}
-            />
-          )}
+          <div className="space-y-2">
+            {aiModelOptions && aiModelOptions.length > 12 && (
+              <input
+                type="text"
+                value={aiModelFilter}
+                onChange={(e) => setAiModelFilter(e.target.value)}
+                placeholder={t("Cari model...")}
+                className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                style={fieldInput}
+              />
+            )}
+            <div className="flex flex-col sm:flex-row gap-2">
+              {filteredAiModelOptions ? (
+                <select
+                  value={filteredAiModelOptions.includes(aiModel) ? aiModel : aiProviderInfo.defaultModel}
+                  onChange={(e) => {
+                    setAiModel(e.target.value);
+                    setAiTestResult(null);
+                  }}
+                  className="flex-1 min-w-0 px-3 py-2.5 rounded-lg text-sm outline-none"
+                  style={fieldInput}
+                >
+                  {filteredAiModelOptions.map((model) => (
+                    <option key={model} value={model}>
+                      {model}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={aiModel}
+                  onChange={(e) => {
+                    setAiModel(e.target.value);
+                    setAiTestResult(null);
+                  }}
+                  placeholder={aiProviderInfo.defaultModel}
+                  className="flex-1 min-w-0 px-3 py-2.5 rounded-lg text-sm outline-none"
+                  style={fieldInput}
+                />
+              )}
+
+              {isNvidia && (
+                <button
+                  type="button"
+                  disabled={fetchingModels || saving}
+                  onClick={handleFetchNvidiaModels}
+                  className="px-3.5 py-2.5 rounded-lg text-xs font-semibold inline-flex items-center justify-center gap-1.5 shrink-0 cbt-row-hover disabled:opacity-60"
+                  style={{
+                    background: C.base.surfaceMuted,
+                    border: `1px solid ${C.base.border}`,
+                    color: C.brand.dark,
+                  }}
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${fetchingModels ? "animate-spin" : ""}`} />
+                  <span>{fetchingModels ? t("Mengambil…") : t("Fetch Model")}</span>
+                </button>
+              )}
+            </div>
+            {aiModelOptions && aiModelOptions.length > 1 && (
+              <p className="text-xs" style={{ color: C.base.textFaint }}>
+                {t("{n} pilihan model tersedia", { n: aiModelOptions.length })}
+              </p>
+            )}
+            {fetchModelsNote && (
+              <p className="text-xs" style={{ color: C.ok.dark }}>
+                {fetchModelsNote}
+              </p>
+            )}
+            {fetchModelsError && (
+              <p className="text-xs" style={{ color: C.danger.text }}>
+                {fetchModelsError}
+              </p>
+            )}
+          </div>
         </Field>
 
         {/* API key — hidden for Gemini (managed via server GEMINI_API_KEY) */}
@@ -593,17 +740,20 @@ export default function SettingsPage() {
             label={t("Token API AI")}
             hint={
               aiHasBuiltInKey
-                ? t("API key bawaan sudah terpasang untuk provider ini — boleh dikosongkan.")
+                ? t("Mendukung environment server (Docker Compose / .env) — kosongkan jika variabel env sudah diset.")
                 : undefined
             }
           >
             <input
               type="password"
               value={aiApiKey}
-              onChange={(e) => setAiApiKey(e.target.value)}
+              onChange={(e) => {
+                setAiApiKey(e.target.value);
+                setAiTestResult(null);
+              }}
               placeholder={
                 aiHasBuiltInKey
-                  ? t("Kosongkan untuk memakai API key bawaan")
+                  ? t("Kosongkan untuk memakai env server (.env / Compose)")
                   : t("Masukkan token API AI")
               }
               className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
@@ -638,6 +788,87 @@ export default function SettingsPage() {
             </div>
           </Field>
         )}
+
+        {/* Status Kesiapan & Test API */}
+        <div
+          className="rounded-xl p-3.5 space-y-2.5"
+          style={{ background: C.base.surfaceMuted, border: `1px solid ${C.base.borderLight}` }}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="text-xs">
+              <span className="font-semibold" style={{ color: C.base.text }}>
+                {t("Status Kesiapan AI")}:{" "}
+              </span>
+              <span
+                className="font-semibold"
+                style={{
+                  color: aiApiKey.trim() || (aiSnapshot?.provider === aiProvider && aiSnapshot.isReady) || !aiProviderInfo.requiresApiKey
+                    ? C.ok.dark
+                    : C.warn.dark,
+                }}
+              >
+                {aiApiKey.trim()
+                  ? t("Key terisi di form (siap diuji)")
+                  : aiSnapshot?.provider === aiProvider
+                    ? aiSnapshot.isReady
+                      ? aiSnapshot.keySource === "env"
+                        ? t("Siap · Env Server")
+                        : aiSnapshot.keySource === "database"
+                          ? t("Siap · Key Tersimpan")
+                          : t("Siap Dipakai")
+                      : t("Belum siap — API key belum diset")
+                    : t("Klik Test API untuk verifikasi")}
+              </span>
+            </div>
+            <button
+              type="button"
+              disabled={testingAi || saving}
+              onClick={handleTestAiConnection}
+              className="px-3 py-2 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 cbt-row-hover disabled:opacity-60"
+              style={{
+                background: C.base.surface,
+                border: `1px solid ${C.base.border}`,
+                color: C.base.textBody,
+              }}
+            >
+              {testingAi ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" style={{ color: C.brand.main }} />
+              ) : (
+                <Activity className="w-3.5 h-3.5" style={{ color: C.brand.main }} />
+              )}
+              <span>{testingAi ? t("Menguji Koneksi…") : t("Test API")}</span>
+            </button>
+          </div>
+
+          {aiTestResult && (
+            <div
+              className="px-3 py-2 rounded-lg text-xs flex items-start gap-2"
+              style={{
+                background: aiTestResult.ok ? C.ok.msgBg : C.danger.bgLight,
+                color: aiTestResult.ok ? C.ok.msgText : C.danger.text,
+                border: `1px solid ${aiTestResult.ok ? C.ok.msgBorder : C.danger.border}`,
+              }}
+            >
+              {aiTestResult.ok ? (
+                <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+              ) : (
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              )}
+              <div className="min-w-0">
+                <div className="font-semibold">
+                  {aiTestResult.ok
+                    ? `${t("API Siap Digunakan")} · ${aiTestResult.latencyMs} ms`
+                    : t("Test API Gagal")}
+                </div>
+                <div className="text-[11px] opacity-90 break-words">
+                  {aiTestResult.ok
+                    ? `${aiTestResult.model} · ${t("Sumber key")}: ${aiTestResult.keySource}${aiTestResult.reply ? ` · "${aiTestResult.reply}"` : ""}`
+                    : aiTestResult.error}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="rounded-xl p-6 space-y-5" style={{ background: C.base.surface, border: `1px solid ${C.base.border}` }}>

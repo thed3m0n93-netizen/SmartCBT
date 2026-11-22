@@ -1,14 +1,18 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import {
+  Activity,
+  AlertCircle,
   BookOpenCheck,
   Check,
+  CheckCircle2,
   ChevronDown,
   ChevronUp,
   Cpu,
   FileCheck2,
   KeyRound,
   Layers,
+  RefreshCw,
   Server,
   SlidersHorizontal,
   Sparkles,
@@ -19,15 +23,21 @@ import { useI18n } from "../i18n";
 import {
   DEFAULT_AI_PROVIDER_ID,
   getAiProvider,
+  getEffectiveProviderModels,
   getInstantAiProviders,
   getPlaceholderAiProviders,
+  isNvidiaProvider,
+  subscribeAiModelsFetched,
   type AiProviderInfo,
 } from "../lib/ai-providers";
 import {
   fetchAiConfig,
+  fetchAiProviderModels,
   subscribeAiConfigChanged,
+  testAiProviderConnection,
   updateAiConfig,
   type AiConfigSnapshot,
+  type AiTestResult,
 } from "../lib/api";
 import { C, R, S } from "../styles/tokens";
 
@@ -56,6 +66,13 @@ function shortProviderTitle(info: AiProviderInfo): string {
   }
 }
 
+function readinessLabel(config: AiConfigSnapshot, t: (k: string) => string): string {
+  if (!config.isReady) return t("Perlu Key");
+  if (config.keySource === "env") return t("Siap · Env Server");
+  if (config.keySource === "database") return t("Siap · Key Tersimpan");
+  return t("Siap Dipakai");
+}
+
 export function useAiProviderState() {
   const defaultInfo = getAiProvider(DEFAULT_AI_PROVIDER_ID);
   const [config, setConfig] = useState<AiConfigSnapshot>({
@@ -64,11 +81,18 @@ export function useAiProviderState() {
     baseUrl: defaultInfo.defaultBaseUrl,
     hasCustomApiKey: false,
     hasBuiltInApiKey: !!defaultInfo.hasBuiltInApiKey,
-    isReady: !!defaultInfo.hasBuiltInApiKey || !defaultInfo.requiresApiKey,
+    keySource: "none",
+    isReady: !defaultInfo.requiresApiKey,
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [modelsVersion, setModelsVersion] = useState(0);
+  const [fetchingModels, setFetchingModels] = useState(false);
+  const [fetchMessage, setFetchMessage] = useState<string | null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<AiTestResult | null>(null);
 
   const reload = useCallback(async () => {
     try {
@@ -84,13 +108,23 @@ export function useAiProviderState() {
 
   useEffect(() => {
     void reload();
-    return subscribeAiConfigChanged((snap) => {
+    const unsubConfig = subscribeAiConfigChanged((snap) => {
+      setTestResult(null);
+      setFetchMessage(null);
+      setFetchError(null);
       if (snap) {
         setConfig(snap);
       } else {
         void reload();
       }
     });
+    const unsubModels = subscribeAiModelsFetched(() => {
+      setModelsVersion((v) => v + 1);
+    });
+    return () => {
+      unsubConfig();
+      unsubModels();
+    };
   }, [reload]);
 
   const switchProvider = useCallback(
@@ -103,6 +137,7 @@ export function useAiProviderState() {
     }): Promise<boolean> => {
       setSaving(true);
       setError(null);
+      setTestResult(null);
       try {
         const res = await updateAiConfig(opts);
         setConfig(res.config);
@@ -117,15 +152,92 @@ export function useAiProviderState() {
     [],
   );
 
+  const fetchModels = useCallback(
+    async (opts?: { provider?: string; baseUrl?: string; apiKey?: string }) => {
+      setFetchingModels(true);
+      setFetchError(null);
+      setFetchMessage(null);
+      try {
+        const res = await fetchAiProviderModels({
+          provider: opts?.provider ?? config.provider,
+          baseUrl: opts?.baseUrl ?? config.baseUrl,
+          ...(opts?.apiKey ? { apiKey: opts.apiKey } : {}),
+        });
+        setModelsVersion((v) => v + 1);
+        setFetchMessage(`${res.count} model dimuat dari ${res.baseUrl} (${res.latencyMs} ms).`);
+        return res;
+      } catch (err: any) {
+        setFetchError(err?.message || "Gagal mengambil daftar model dari base URL.");
+        return null;
+      } finally {
+        setFetchingModels(false);
+      }
+    },
+    [config.baseUrl, config.provider],
+  );
+
+  const runApiTest = useCallback(
+    async (opts?: { provider?: string; model?: string; baseUrl?: string; apiKey?: string }) => {
+      setTesting(true);
+      setTestResult(null);
+      try {
+        const res = await testAiProviderConnection({
+          provider: opts?.provider ?? config.provider,
+          model: opts?.model ?? config.model,
+          baseUrl: opts?.baseUrl ?? config.baseUrl,
+          ...(opts?.apiKey ? { apiKey: opts.apiKey } : {}),
+        });
+        setTestResult(res);
+        void reload();
+        return res;
+      } catch (err: any) {
+        const fallback: AiTestResult = {
+          ok: false,
+          configured: config.isReady,
+          reachable: false,
+          keySource: config.keySource ?? "none",
+          provider: opts?.provider ?? config.provider,
+          model: opts?.model ?? config.model,
+          baseUrl: opts?.baseUrl ?? config.baseUrl,
+          latencyMs: 0,
+          error: err?.message || "Gagal menguji koneksi provider AI.",
+        };
+        setTestResult(fallback);
+        return fallback;
+      } finally {
+        setTesting(false);
+      }
+    },
+    [config.baseUrl, config.isReady, config.keySource, config.model, config.provider, reload],
+  );
+
+  const descriptor = getAiProvider(config.provider);
+  const availableModels = useMemo(() => {
+    void modelsVersion;
+    const list = getEffectiveProviderModels(descriptor.id);
+    if (config.model && !list.includes(config.model) && descriptor.models.length > 0) {
+      return [config.model, ...list];
+    }
+    return list;
+  }, [config.model, descriptor.id, descriptor.models.length, modelsVersion]);
+
   return {
     config,
-    descriptor: getAiProvider(config.provider),
+    descriptor,
+    availableModels,
     loading,
     saving,
     error,
+    fetchingModels,
+    fetchMessage,
+    fetchError,
+    testing,
+    testResult,
     clearError: () => setError(null),
     reload,
     switchProvider,
+    fetchModels,
+    runApiTest,
   };
 }
 
@@ -319,13 +431,37 @@ function PlaceholderConfigBox({
 export function AiProviderHeaderSwitcher() {
   const { t } = useI18n();
   const navigate = useNavigate();
-  const { config, descriptor, saving, error, clearError, switchProvider } = useAiProviderState();
+  const {
+    config,
+    descriptor,
+    availableModels,
+    saving,
+    error,
+    fetchingModels,
+    fetchMessage,
+    fetchError,
+    testing,
+    testResult,
+    clearError,
+    switchProvider,
+    fetchModels,
+    runApiTest,
+  } = useAiProviderState();
   const [open, setOpen] = useState(false);
   const [editingPlaceholder, setEditingPlaceholder] = useState<AiProviderInfo | null>(null);
+  const [modelFilter, setModelFilter] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
 
   const instantProviders = getInstantAiProviders();
   const placeholderProviders = getPlaceholderAiProviders();
+  const isNvidia = isNvidiaProvider(descriptor.id);
+  const filteredModels = useMemo(() => {
+    const q = modelFilter.trim().toLowerCase();
+    if (!q) return availableModels;
+    const matched = availableModels.filter((m) => m.toLowerCase().includes(q));
+    if (config.model && !matched.includes(config.model)) return [config.model, ...matched];
+    return matched;
+  }, [availableModels, config.model, modelFilter]);
 
   useEffect(() => {
     if (!open) return;
@@ -347,8 +483,9 @@ export function AiProviderHeaderSwitcher() {
 
   const handleSelectInstant = async (p: AiProviderInfo) => {
     setEditingPlaceholder(null);
+    setModelFilter("");
     const ok = await switchProvider({ provider: p.id, model: p.defaultModel });
-    if (ok && p.models.length <= 1) {
+    if (ok && p.models.length <= 1 && !isNvidiaProvider(p.id)) {
       setOpen(false);
     }
   };
@@ -383,7 +520,7 @@ export function AiProviderHeaderSwitcher() {
           className="hidden lg:inline text-[11px] font-medium"
           style={{ color: config.isReady ? C.ok.dark : C.warn.dark }}
         >
-          · {config.isReady ? t("Siap") : t("Perlu Key")}
+          · {readinessLabel(config, t)}
         </span>
         <ChevronDown className="w-3.5 h-3.5 shrink-0 opacity-70" />
       </button>
@@ -396,7 +533,7 @@ export function AiProviderHeaderSwitcher() {
             onClick={() => setOpen(false)}
           />
           <div
-            className="fixed inset-x-3 bottom-3 sm:inset-auto sm:right-0 sm:top-full sm:mt-2 z-50 sm:w-[410px] rounded-2xl overflow-hidden flex flex-col max-h-[82vh]"
+            className="fixed inset-x-3 bottom-3 sm:inset-auto sm:right-0 sm:top-full sm:mt-2 z-50 sm:w-[430px] rounded-2xl overflow-hidden flex flex-col max-h-[84vh]"
             style={{
               background: C.base.surface,
               border: `1px solid ${C.base.border}`,
@@ -409,22 +546,49 @@ export function AiProviderHeaderSwitcher() {
               style={{ background: C.base.surfaceMuted, borderColor: C.base.borderLight }}
             >
               <div className="min-w-0">
-                <div className="text-xs font-semibold tracking-tight" style={{ color: C.base.text }}>
-                  {t("Provider AI & Layanan Instan")}
+                <div className="text-xs font-semibold tracking-tight flex items-center gap-1.5" style={{ color: C.base.text }}>
+                  <span>{t("Provider AI & Layanan Instan")}</span>
+                  <span
+                    className="text-[11px] font-semibold"
+                    style={{ color: config.isReady ? C.ok.dark : C.warn.dark }}
+                  >
+                    · {readinessLabel(config, t)}
+                  </span>
                 </div>
                 <div className="text-[11px] truncate" style={{ color: C.base.textMuted }}>
                   {descriptor.label} · {config.model}
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setOpen(false)}
-                className="w-8 h-8 rounded-lg flex items-center justify-center cbt-row-hover shrink-0"
-                style={{ color: C.base.textMuted }}
-                aria-label={t("Tutup")}
-              >
-                <X className="w-4 h-4" />
-              </button>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  disabled={testing || saving}
+                  onClick={() => void runApiTest()}
+                  className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold inline-flex items-center gap-1 min-h-[32px] cbt-row-hover disabled:opacity-60"
+                  style={{
+                    background: C.base.surface,
+                    border: `1px solid ${C.base.border}`,
+                    color: C.base.textBody,
+                  }}
+                  title={t("Uji koneksi dan kesiapan provider AI aktif")}
+                >
+                  {testing ? (
+                    <RefreshCw className="w-3 h-3 animate-spin" style={{ color: C.brand.main }} />
+                  ) : (
+                    <Activity className="w-3 h-3" style={{ color: C.brand.main }} />
+                  )}
+                  <span>{testing ? t("Menguji…") : t("Test API")}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOpen(false)}
+                  className="w-8 h-8 rounded-lg flex items-center justify-center cbt-row-hover shrink-0"
+                  style={{ color: C.base.textMuted }}
+                  aria-label={t("Tutup")}
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
             </div>
 
             <div className="p-3.5 space-y-3.5 overflow-y-auto">
@@ -437,14 +601,76 @@ export function AiProviderHeaderSwitcher() {
                 </div>
               )}
 
-              {/* Active model selector when active provider has multiple models */}
-              {descriptor.models.length > 1 && (
-                <div>
-                  <label className="block text-[11px] font-semibold mb-1" style={{ color: C.base.textMuted }}>
-                    {t("Model Aktif")}
-                  </label>
+              {testResult && (
+                <div
+                  className="px-3 py-2 rounded-lg text-xs flex items-start gap-2"
+                  style={{
+                    background: testResult.ok ? C.ok.msgBg : C.danger.bgLight,
+                    color: testResult.ok ? C.ok.msgText : C.danger.text,
+                    border: `1px solid ${testResult.ok ? C.ok.msgBorder : C.danger.border}`,
+                  }}
+                >
+                  {testResult.ok ? (
+                    <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  )}
+                  <div className="min-w-0">
+                    <div className="font-semibold">
+                      {testResult.ok
+                        ? `${t("API Siap")} (${testResult.latencyMs} ms)`
+                        : t("Koneksi API Gagal")}
+                    </div>
+                    <div className="text-[11px] opacity-90 break-words">
+                      {testResult.ok
+                        ? `${testResult.model}${testResult.reply ? ` · "${testResult.reply}"` : ""}`
+                        : testResult.error}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Active model selector (always shown for NVIDIA NIM so Fetch Model is always 1-click away) */}
+              {(availableModels.length > 1 || isNvidia) && (
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <label className="block text-[11px] font-semibold" style={{ color: C.base.textMuted }}>
+                      {t("Model Aktif")}
+                      {availableModels.length > 1 ? ` (${availableModels.length})` : ""}
+                    </label>
+                    {isNvidia && (
+                      <button
+                        type="button"
+                        disabled={fetchingModels || saving}
+                        onClick={() => void fetchModels()}
+                        className="px-2 py-1 rounded-lg text-[11px] font-semibold inline-flex items-center gap-1 cbt-row-hover disabled:opacity-60"
+                        style={{
+                          background: C.base.surfaceMuted,
+                          border: `1px solid ${C.base.border}`,
+                          color: C.brand.dark,
+                        }}
+                      >
+                        <RefreshCw className={`w-3 h-3 ${fetchingModels ? "animate-spin" : ""}`} />
+                        <span>{fetchingModels ? t("Mengambil…") : t("Fetch Model")}</span>
+                      </button>
+                    )}
+                  </div>
+                  {availableModels.length > 12 && (
+                    <input
+                      type="text"
+                      value={modelFilter}
+                      onChange={(e) => setModelFilter(e.target.value)}
+                      placeholder={t("Cari model NVIDIA NIM...")}
+                      className="w-full px-2.5 py-1.5 rounded-lg text-base sm:text-xs outline-none"
+                      style={{
+                        background: C.base.surface,
+                        border: `1px solid ${C.base.border}`,
+                        color: C.base.text,
+                      }}
+                    />
+                  )}
                   <select
-                    value={descriptor.models.includes(config.model) ? config.model : descriptor.defaultModel}
+                    value={filteredModels.includes(config.model) ? config.model : descriptor.defaultModel}
                     disabled={saving}
                     onChange={(e) => void switchProvider({ provider: descriptor.id, model: e.target.value })}
                     className="w-full px-3 py-2 rounded-xl text-base sm:text-xs outline-none min-h-[40px]"
@@ -454,12 +680,22 @@ export function AiProviderHeaderSwitcher() {
                       color: C.base.text,
                     }}
                   >
-                    {descriptor.models.map((m) => (
+                    {filteredModels.map((m) => (
                       <option key={m} value={m}>
                         {m}
                       </option>
                     ))}
                   </select>
+                  {fetchMessage && (
+                    <div className="text-[11px]" style={{ color: C.ok.dark }}>
+                      {fetchMessage}
+                    </div>
+                  )}
+                  {fetchError && (
+                    <div className="text-[11px]" style={{ color: C.danger.text }}>
+                      {fetchError}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -470,7 +706,7 @@ export function AiProviderHeaderSwitcher() {
                     {t("Akses Instan · Siap Pakai")}
                   </span>
                   <span className="text-[11px]" style={{ color: C.base.textFaint }}>
-                    {t("Tanpa isi API key")}
+                    {t("Via env server / Compose")}
                   </span>
                 </div>
                 <div className="space-y-1.5">
@@ -641,8 +877,23 @@ export function AiProviderHeaderSwitcher() {
  */
 export function AiProviderInlineChip({ compact = false }: { compact?: boolean }) {
   const { t } = useI18n();
-  const { config, descriptor, saving, error, switchProvider } = useAiProviderState();
+  const {
+    config,
+    descriptor,
+    availableModels,
+    saving,
+    error,
+    fetchingModels,
+    fetchMessage,
+    fetchError,
+    testing,
+    testResult,
+    switchProvider,
+    fetchModels,
+    runApiTest,
+  } = useAiProviderState();
   const [selectedPlaceholder, setSelectedPlaceholder] = useState<AiProviderInfo | null>(null);
+  const isNvidia = isNvidiaProvider(descriptor.id);
 
   const handleSelectChange = async (providerId: string) => {
     const next = getAiProvider(providerId);
@@ -677,7 +928,7 @@ export function AiProviderInlineChip({ compact = false }: { compact?: boolean })
                 className="text-[11px] font-medium"
                 style={{ color: config.isReady ? C.ok.dark : C.warn.dark }}
               >
-                · {config.isReady ? t("Siap Pakai") : t("Placeholder — butuh API Key")}
+                · {readinessLabel(config, t)}
               </span>
             </div>
             <div className="text-[11px] truncate" style={{ color: C.base.textMuted, fontFamily: "var(--font-mono)" }}>
@@ -686,7 +937,7 @@ export function AiProviderInlineChip({ compact = false }: { compact?: boolean })
           </div>
         </div>
 
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto min-w-0">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto min-w-0 flex-wrap">
           <select
             value={config.provider}
             disabled={saving}
@@ -715,32 +966,109 @@ export function AiProviderInlineChip({ compact = false }: { compact?: boolean })
             </optgroup>
           </select>
 
-          {descriptor.models.length > 1 && (
+          {(availableModels.length > 1 || isNvidia) && (
             <select
-              value={descriptor.models.includes(config.model) ? config.model : descriptor.defaultModel}
+              value={availableModels.includes(config.model) ? config.model : descriptor.defaultModel}
               disabled={saving}
               onChange={(e) => void switchProvider({ provider: descriptor.id, model: e.target.value })}
               aria-label={t("Pilih Model AI")}
-              className="w-full sm:w-auto max-w-full min-w-0 px-2.5 py-1.5 rounded-lg text-base sm:text-xs outline-none min-h-[40px] sm:min-h-[38px]"
+              className="w-full sm:w-auto max-w-[240px] min-w-0 px-2.5 py-1.5 rounded-lg text-base sm:text-xs outline-none min-h-[40px] sm:min-h-[38px]"
               style={{
                 background: C.base.surface,
                 border: `1px solid ${C.base.border}`,
                 color: C.base.text,
               }}
             >
-              {descriptor.models.map((m) => (
+              {availableModels.map((m) => (
                 <option key={m} value={m}>
                   {m}
                 </option>
               ))}
             </select>
           )}
+
+          {isNvidia && (
+            <button
+              type="button"
+              disabled={fetchingModels || saving}
+              onClick={() => void fetchModels()}
+              className="px-2.5 py-1.5 rounded-lg text-xs font-semibold inline-flex items-center justify-center gap-1.5 min-h-[40px] sm:min-h-[38px] cbt-row-hover disabled:opacity-60"
+              style={{
+                background: C.base.surface,
+                border: `1px solid ${C.base.border}`,
+                color: C.brand.dark,
+              }}
+              title={t("Ambil semua model bahasa dari base URL NVIDIA NIM")}
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${fetchingModels ? "animate-spin" : ""}`} />
+              <span>{fetchingModels ? t("Mengambil…") : t("Fetch Model")}</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            disabled={testing || saving}
+            onClick={() => void runApiTest()}
+            className="px-2.5 py-1.5 rounded-lg text-xs font-semibold inline-flex items-center justify-center gap-1.5 min-h-[40px] sm:min-h-[38px] cbt-row-hover disabled:opacity-60"
+            style={{
+              background: C.base.surface,
+              border: `1px solid ${C.base.border}`,
+              color: C.base.textBody,
+            }}
+            title={t("Uji koneksi dan kesiapan provider AI aktif")}
+          >
+            {testing ? (
+              <RefreshCw className="w-3.5 h-3.5 animate-spin" style={{ color: C.brand.main }} />
+            ) : (
+              <Activity className="w-3.5 h-3.5" style={{ color: C.brand.main }} />
+            )}
+            <span>{testing ? t("Menguji…") : t("Test API")}</span>
+          </button>
         </div>
       </div>
 
       {error && (
         <div className="text-xs" style={{ color: C.danger.text }}>
           {error}
+        </div>
+      )}
+
+      {fetchMessage && (
+        <div className="text-[11px]" style={{ color: C.ok.dark }}>
+          {fetchMessage}
+        </div>
+      )}
+
+      {fetchError && (
+        <div className="text-[11px]" style={{ color: C.danger.text }}>
+          {fetchError}
+        </div>
+      )}
+
+      {testResult && (
+        <div
+          className="px-3 py-2 rounded-lg text-xs flex items-start gap-2"
+          style={{
+            background: testResult.ok ? C.ok.msgBg : C.danger.bgLight,
+            color: testResult.ok ? C.ok.msgText : C.danger.text,
+            border: `1px solid ${testResult.ok ? C.ok.msgBorder : C.danger.border}`,
+          }}
+        >
+          {testResult.ok ? (
+            <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+          ) : (
+            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+          )}
+          <div className="min-w-0">
+            <span className="font-semibold">
+              {testResult.ok ? `${t("API Siap")} (${testResult.latencyMs} ms)` : t("Koneksi API Gagal")}:
+            </span>{" "}
+            <span className="break-words">
+              {testResult.ok
+                ? `${testResult.model}${testResult.reply ? ` · "${testResult.reply}"` : ""}`
+                : testResult.error}
+            </span>
+          </div>
         </div>
       )}
 
@@ -772,17 +1100,41 @@ export function AiProviderPanel({
 }) {
   const { t } = useI18n();
   const navigate = useNavigate();
-  const { config, descriptor, saving, error, switchProvider } = useAiProviderState();
+  const {
+    config,
+    descriptor,
+    availableModels,
+    saving,
+    error,
+    fetchingModels,
+    fetchMessage,
+    fetchError,
+    testing,
+    testResult,
+    switchProvider,
+    fetchModels,
+    runApiTest,
+  } = useAiProviderState();
   const [expanded, setExpanded] = useState(!compact);
   const [editingPlaceholder, setEditingPlaceholder] = useState<AiProviderInfo | null>(null);
   const [savedNotice, setSavedNotice] = useState<string | null>(null);
+  const [modelFilter, setModelFilter] = useState("");
 
   const instantProviders = getInstantAiProviders();
   const placeholderProviders = getPlaceholderAiProviders();
+  const isNvidia = isNvidiaProvider(descriptor.id);
+  const filteredModels = useMemo(() => {
+    const q = modelFilter.trim().toLowerCase();
+    if (!q) return availableModels;
+    const matched = availableModels.filter((m) => m.toLowerCase().includes(q));
+    if (config.model && !matched.includes(config.model)) return [config.model, ...matched];
+    return matched;
+  }, [availableModels, config.model, modelFilter]);
 
   const activateInstant = async (p: AiProviderInfo) => {
     setEditingPlaceholder(null);
     setSavedNotice(null);
+    setModelFilter("");
     const ok = await switchProvider({ provider: p.id, model: p.defaultModel });
     if (ok) {
       setSavedNotice(`${p.label} aktif.`);
@@ -830,7 +1182,7 @@ export function AiProviderPanel({
                 className="text-xs font-medium"
                 style={{ color: config.isReady ? C.ok.dark : C.warn.dark }}
               >
-                · {config.isReady ? t("Siap Dipakai") : t("Placeholder")}
+                · {readinessLabel(config, t)}
               </span>
             </div>
             <div className="text-xs truncate mt-0.5" style={{ color: C.base.textMuted }}>
@@ -841,6 +1193,27 @@ export function AiProviderPanel({
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            disabled={testing || saving}
+            onClick={() => void runApiTest()}
+            className="px-3 py-2 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 min-h-[38px] cbt-row-hover disabled:opacity-60"
+            style={{
+              background: C.base.surface,
+              border: `1px solid ${C.base.border}`,
+              color: C.base.textBody,
+              boxShadow: S.control,
+            }}
+            title={t("Uji koneksi dan kesiapan provider AI aktif")}
+          >
+            {testing ? (
+              <RefreshCw className="w-3.5 h-3.5 animate-spin" style={{ color: C.brand.main }} />
+            ) : (
+              <Activity className="w-3.5 h-3.5" style={{ color: C.brand.main }} />
+            )}
+            {testing ? t("Menguji…") : t("Test API")}
+          </button>
+
           {onOpenAiGenerate ? (
             <button
               type="button"
@@ -906,6 +1279,35 @@ export function AiProviderPanel({
         </div>
       </div>
 
+      {testResult && (
+        <div
+          className="mx-4 sm:mx-5 mt-3 px-3.5 py-2.5 rounded-xl text-xs flex items-start gap-2"
+          style={{
+            background: testResult.ok ? C.ok.msgBg : C.danger.bgLight,
+            color: testResult.ok ? C.ok.msgText : C.danger.text,
+            border: `1px solid ${testResult.ok ? C.ok.msgBorder : C.danger.border}`,
+          }}
+        >
+          {testResult.ok ? (
+            <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+          ) : (
+            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+          )}
+          <div className="min-w-0">
+            <div className="font-semibold">
+              {testResult.ok
+                ? `${t("API Siap Digunakan")} · ${testResult.latencyMs} ms`
+                : t("Test API Gagal")}
+            </div>
+            <div className="text-[11px] opacity-90 break-words">
+              {testResult.ok
+                ? `${testResult.model} (${testResult.baseUrl})${testResult.reply ? ` · "${testResult.reply}"` : ""}`
+                : testResult.error}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Expandable body */}
       {expanded && (
         <div className="p-4 sm:p-5 space-y-4">
@@ -930,7 +1332,7 @@ export function AiProviderPanel({
             </div>
           )}
 
-          {/* Section 1: Instant NVIDIA NIM */}
+          {/* Section 1: Instant Server-Env Providers */}
           <div>
             <div className="flex items-center justify-between gap-2 mb-2.5">
               <div className="flex items-center gap-2">
@@ -940,7 +1342,7 @@ export function AiProviderPanel({
                 </span>
               </div>
               <span className="text-xs" style={{ color: C.base.textMuted }}>
-                {t("Langsung aktif tanpa setup manual")}
+                {t("Langsung aktif via env server / Compose")}
               </span>
             </div>
 
@@ -994,33 +1396,80 @@ export function AiProviderPanel({
             </div>
           </div>
 
-          {/* Model picker for multi-model active provider */}
-          {descriptor.models.length > 1 && (
+          {/* Model picker & NVIDIA Fetch Model */}
+          {(availableModels.length > 1 || isNvidia) && (
             <div
-              className="flex flex-wrap items-center justify-between gap-3 px-3.5 py-2.5 rounded-xl"
+              className="space-y-2.5 px-3.5 py-3 rounded-xl"
               style={{ background: C.base.surfaceMuted, border: `1px solid ${C.base.borderLight}` }}
             >
-              <div className="flex items-center gap-2 text-xs font-medium" style={{ color: C.base.textBody }}>
-                <Layers className="w-3.5 h-3.5" style={{ color: C.brand.main }} />
-                <span>{t("Pilih Model pada")} {shortProviderTitle(descriptor)}:</span>
+              <div className="flex flex-wrap items-center justify-between gap-2.5">
+                <div className="flex items-center gap-2 text-xs font-medium" style={{ color: C.base.textBody }}>
+                  <Layers className="w-3.5 h-3.5" style={{ color: C.brand.main }} />
+                  <span>
+                    {t("Pilih Model pada")} {shortProviderTitle(descriptor)}
+                    {availableModels.length > 1 ? ` (${availableModels.length})` : ""}:
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                  {availableModels.length > 12 && (
+                    <input
+                      type="text"
+                      value={modelFilter}
+                      onChange={(e) => setModelFilter(e.target.value)}
+                      placeholder={t("Cari model...")}
+                      className="px-2.5 py-1.5 rounded-lg text-base sm:text-xs outline-none min-h-[38px] flex-1 sm:w-44"
+                      style={{
+                        background: C.base.surface,
+                        border: `1px solid ${C.base.border}`,
+                        color: C.base.text,
+                      }}
+                    />
+                  )}
+                  <select
+                    value={filteredModels.includes(config.model) ? config.model : descriptor.defaultModel}
+                    disabled={saving}
+                    onChange={(e) => void switchProvider({ provider: descriptor.id, model: e.target.value })}
+                    className="px-3 py-1.5 rounded-lg text-base sm:text-xs font-medium outline-none min-h-[38px] max-w-full"
+                    style={{
+                      background: C.base.surface,
+                      border: `1px solid ${C.base.border}`,
+                      color: C.base.text,
+                    }}
+                  >
+                    {filteredModels.map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </select>
+                  {isNvidia && (
+                    <button
+                      type="button"
+                      disabled={fetchingModels || saving}
+                      onClick={() => void fetchModels()}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 min-h-[38px] cbt-row-hover disabled:opacity-60"
+                      style={{
+                        background: C.base.surface,
+                        border: `1px solid ${C.base.border}`,
+                        color: C.brand.dark,
+                      }}
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${fetchingModels ? "animate-spin" : ""}`} />
+                      <span>{fetchingModels ? t("Mengambil…") : t("Fetch Model")}</span>
+                    </button>
+                  )}
+                </div>
               </div>
-              <select
-                value={descriptor.models.includes(config.model) ? config.model : descriptor.defaultModel}
-                disabled={saving}
-                onChange={(e) => void switchProvider({ provider: descriptor.id, model: e.target.value })}
-                className="px-3 py-1.5 rounded-lg text-base sm:text-xs font-medium outline-none min-h-[38px]"
-                style={{
-                  background: C.base.surface,
-                  border: `1px solid ${C.base.border}`,
-                  color: C.base.text,
-                }}
-              >
-                {descriptor.models.map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))}
-              </select>
+              {fetchMessage && (
+                <div className="text-xs" style={{ color: C.ok.dark }}>
+                  {fetchMessage}
+                </div>
+              )}
+              {fetchError && (
+                <div className="text-xs" style={{ color: C.danger.text }}>
+                  {fetchError}
+                </div>
+              )}
             </div>
           )}
 

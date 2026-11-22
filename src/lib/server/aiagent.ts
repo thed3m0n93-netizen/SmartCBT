@@ -930,32 +930,381 @@ async function upsertSettingKey(key: string, value: string): Promise<void> {
   }
 }
 
-async function readSafeAiConfigSnapshot() {
-  const providerRow = await queryOne<{ value: string }>(`SELECT value FROM settings WHERE key = 'ai_provider'`, []);
-  const modelRow = await queryOne<{ value: string }>(`SELECT value FROM settings WHERE key = 'ai_model'`, []);
-  const keyRow = await queryOne<{ value: string }>(`SELECT value FROM settings WHERE key = 'ai_api_key'`, []);
-  const baseUrlRow = await queryOne<{ value: string }>(`SELECT value FROM settings WHERE key = 'ai_base_url'`, []);
+async function loadAiConfigWithKeySource(): Promise<{
+  provider: string;
+  model: string;
+  apiKey: string;
+  baseUrl: string;
+  hasCustomApiKey: boolean;
+  hasBuiltInApiKey: boolean;
+  keySource: "database" | "env" | "none";
+}> {
+  let providerRow: { value: string } | null = null;
+  let modelRow: { value: string } | null = null;
+  let keyRow: { value: string } | null = null;
+  let baseUrlRow: { value: string } | null = null;
+  try {
+    providerRow = await queryOne<{ value: string }>(`SELECT value FROM settings WHERE key = 'ai_provider'`, []);
+    modelRow = await queryOne<{ value: string }>(`SELECT value FROM settings WHERE key = 'ai_model'`, []);
+    keyRow = await queryOne<{ value: string }>(`SELECT value FROM settings WHERE key = 'ai_api_key'`, []);
+    baseUrlRow = await queryOne<{ value: string }>(`SELECT value FROM settings WHERE key = 'ai_base_url'`, []);
+  } catch {
+    /* On /setup before database installation, settings table may not exist yet. */
+  }
 
-  const rawProvider = (providerRow?.value || DEFAULT_AI_PROVIDER_ID).trim();
-  const descriptor = getAiProvider(rawProvider);
+  const descriptor = getAiProvider((providerRow?.value || DEFAULT_AI_PROVIDER_ID).trim());
   const provider = descriptor.id;
   const model = (modelRow?.value || descriptor.defaultModel).trim();
   const baseUrl = resolveAiBaseUrl(provider, baseUrlRow?.value);
-  const hasCustomApiKey = Boolean(keyRow?.value?.trim());
+  const customKey = String(keyRow?.value ?? "").trim();
   const builtInKey = getBuiltInAiApiKey(provider);
   const envKey = descriptor.apiKeyEnv ? String(process.env[descriptor.apiKeyEnv] ?? "").trim() : "";
+  const resolvedKey = resolveAiApiKey(provider, customKey, builtInKey);
+  const hasCustomApiKey = Boolean(customKey);
   const hasBuiltInApiKey = Boolean(builtInKey || envKey);
-  const resolvedKey = resolveAiApiKey(provider, keyRow?.value, builtInKey);
-  const isReady = Boolean(resolvedKey) || !descriptor.requiresApiKey;
+  const keySource: "database" | "env" | "none" = hasCustomApiKey
+    ? "database"
+    : hasBuiltInApiKey
+      ? "env"
+      : "none";
 
   return {
     provider,
     model,
+    apiKey: resolvedKey,
     baseUrl,
     hasCustomApiKey,
     hasBuiltInApiKey,
+    keySource,
+  };
+}
+
+async function readSafeAiConfigSnapshot() {
+  const cfg = await loadAiConfigWithKeySource();
+  const descriptor = getAiProvider(cfg.provider);
+  const isReady = Boolean(cfg.apiKey) || !descriptor.requiresApiKey;
+
+  return {
+    provider: cfg.provider,
+    model: cfg.model,
+    baseUrl: cfg.baseUrl,
+    hasCustomApiKey: cfg.hasCustomApiKey,
+    hasBuiltInApiKey: cfg.hasBuiltInApiKey,
+    keySource: cfg.keySource,
     isReady,
   };
+}
+
+async function resolveTargetAiFromBody(body: any) {
+  const active = await loadAiConfigWithKeySource();
+  const requestedProvider = typeof body?.provider === "string" && body.provider.trim()
+    ? body.provider.trim().toLowerCase()
+    : active.provider;
+  const descriptor = getAiProvider(requestedProvider);
+  const sameAsActive = descriptor.id === active.provider;
+
+  const incomingKey = typeof body?.apiKey === "string" ? body.apiKey.trim() : "";
+  const dbKey = sameAsActive && active.hasCustomApiKey ? active.apiKey : "";
+  const envKey = getBuiltInAiApiKey(descriptor.id);
+  const resolvedKey = resolveAiApiKey(descriptor.id, incomingKey || dbKey, envKey);
+  const keySource: "input" | "database" | "env" | "none" = incomingKey
+    ? "input"
+    : dbKey
+      ? "database"
+      : envKey || (descriptor.apiKeyEnv && process.env[descriptor.apiKeyEnv])
+        ? "env"
+        : "none";
+
+  const requestedBaseUrl = typeof body?.baseUrl === "string" ? body.baseUrl.trim() : "";
+  const baseUrl = resolveAiBaseUrl(
+    descriptor.id,
+    requestedBaseUrl || (sameAsActive ? active.baseUrl : descriptor.defaultBaseUrl),
+  );
+  const requestedModel = typeof body?.model === "string" ? body.model.trim() : "";
+  const model = requestedModel || (sameAsActive ? active.model : descriptor.defaultModel) || descriptor.defaultModel;
+
+  return { descriptor, baseUrl, model, apiKey: resolvedKey, keySource };
+}
+
+async function handleFetchAiModels(_req: any, res: any, body: any) {
+  const target = await resolveTargetAiFromBody(body);
+  const { descriptor, baseUrl, apiKey } = target;
+  const started = Date.now();
+
+  try {
+    let models: string[] = [];
+
+    if (descriptor.protocol === "openai") {
+      const headers: Record<string, string> = { Accept: "application/json" };
+      if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+
+      const resp = await fetch(`${baseUrl}/models`, {
+        method: "GET",
+        headers,
+        signal: AbortSignal.timeout(15000),
+      });
+      const data = await resp.json().catch(() => null);
+      if (!resp.ok) {
+        const detail =
+          data?.error?.message ||
+          data?.message ||
+          (typeof data?.error === "string" ? data.error : "");
+        if ((resp.status === 401 || resp.status === 403) && !apiKey) {
+          return json(res, { error: aiProviderRequiresKeyError(descriptor.id) }, 400);
+        }
+        return json(
+          res,
+          { error: detail || `Gagal mengambil daftar model (${resp.status})` },
+          400,
+        );
+      }
+
+      const rawList = Array.isArray(data?.data)
+        ? data.data
+        : Array.isArray(data?.models)
+          ? data.models
+          : [];
+      const extracted = rawList
+        .map((item: any) => String(item?.id ?? item?.name ?? "").trim())
+        .filter(Boolean);
+      models = Array.from(new Set<string>(extracted)).sort((a, b) => a.localeCompare(b));
+    } else if (descriptor.protocol === "ollama") {
+      const resp = await fetch(`${baseUrl}/api/tags`, {
+        method: "GET",
+        signal: AbortSignal.timeout(10000),
+      });
+      const data = await resp.json().catch(() => null);
+      if (!resp.ok) {
+        return json(res, { error: data?.error || `Gagal terhubung ke Ollama (HTTP ${resp.status})` }, 400);
+      }
+      const rawList = Array.isArray(data?.models) ? data.models : [];
+      models = Array.from(
+        new Set<string>(
+          rawList
+            .map((item: any) => String(item?.name ?? item?.model ?? "").trim())
+            .filter(Boolean),
+        ),
+      );
+    } else if (descriptor.protocol === "anthropic") {
+      if (!apiKey) {
+        return json(res, { error: aiProviderRequiresKeyError(descriptor.id) }, 400);
+      }
+      const resp = await fetch(`${baseUrl}/models`, {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+        },
+        signal: AbortSignal.timeout(15000),
+      });
+      const data = await resp.json().catch(() => null);
+      if (!resp.ok) {
+        return json(res, { error: data?.error?.message || `HTTP ${resp.status}` }, 400);
+      }
+      const rawList = Array.isArray(data?.data) ? data.data : [];
+      models = Array.from(
+        new Set<string>(rawList.map((item: any) => String(item?.id ?? "").trim()).filter(Boolean)),
+      );
+    } else {
+      // Gemini
+      if (!apiKey) {
+        return json(res, { error: aiProviderRequiresKeyError(descriptor.id) }, 400);
+      }
+      const resp = await fetch(`${baseUrl}/models?key=${encodeURIComponent(apiKey)}`, {
+        method: "GET",
+        signal: AbortSignal.timeout(15000),
+      });
+      const data = await resp.json().catch(() => null);
+      if (!resp.ok) {
+        return json(res, { error: data?.error?.message || `HTTP ${resp.status}` }, 400);
+      }
+      const rawList = Array.isArray(data?.models) ? data.models : [];
+      models = Array.from(
+        new Set<string>(
+          rawList
+            .map((item: any) => String(item?.name ?? "").replace(/^models\//, "").trim())
+            .filter(Boolean),
+        ),
+      );
+    }
+
+    return json(res, {
+      success: true,
+      provider: descriptor.id,
+      baseUrl,
+      models,
+      count: models.length,
+      latencyMs: Date.now() - started,
+    });
+  } catch (err: any) {
+    const timedOut = err?.name === "TimeoutError" || /timeout|abort/i.test(String(err?.message || ""));
+    return json(
+      res,
+      {
+        error: timedOut
+          ? "Timeout saat mengambil daftar model dari server AI."
+          : err?.message || "Gagal mengambil daftar model dari base URL.",
+      },
+      400,
+    );
+  }
+}
+
+async function handleTestAiProvider(_req: any, res: any, body: any) {
+  const target = await resolveTargetAiFromBody(body);
+  const { descriptor, baseUrl, model, apiKey, keySource } = target;
+  const started = Date.now();
+
+  if (descriptor.requiresApiKey && !apiKey) {
+    return json(res, {
+      ok: false,
+      configured: false,
+      reachable: false,
+      keySource,
+      provider: descriptor.id,
+      model,
+      baseUrl,
+      latencyMs: 0,
+      error: aiProviderRequiresKeyError(descriptor.id),
+    });
+  }
+
+  try {
+    let reply = "";
+
+    if (descriptor.protocol === "gemini") {
+      const ai = new GoogleGenAI({
+        apiKey,
+        httpOptions: {
+          headers: {
+            "User-Agent": "aistudio-build",
+          },
+        },
+      });
+      const response = await Promise.race([
+        ai.models.generateContent({
+          model,
+          contents: "Reply with: OK",
+        }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("Timeout saat menghubungi Google Gemini API (25s).")), 25000),
+        ),
+      ]);
+      reply = String(response?.text ?? "").trim();
+    } else if (descriptor.protocol === "anthropic") {
+      const resp = await fetch(`${baseUrl}/messages`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model,
+          max_tokens: 16,
+          messages: [{ role: "user", content: "Reply with: OK" }],
+        }),
+        signal: AbortSignal.timeout(25000),
+      });
+      const data = await resp.json().catch(() => null);
+      if (!resp.ok) {
+        throw new Error(data?.error?.message || `Anthropic HTTP ${resp.status}`);
+      }
+      const blocks = Array.isArray(data?.content) ? data.content : [];
+      reply = blocks
+        .filter((b: { type?: string }) => b?.type === "text")
+        .map((b: { text?: string }) => b.text || "")
+        .join("")
+        .trim();
+    } else if (descriptor.protocol === "ollama") {
+      const resp = await fetch(`${baseUrl}/api/tags`, {
+        method: "GET",
+        signal: AbortSignal.timeout(10000),
+      });
+      const data = await resp.json().catch(() => null);
+      if (!resp.ok) {
+        throw new Error(data?.error || `Ollama HTTP ${resp.status}`);
+      }
+      const rawList: Array<{ name?: string; model?: string }> = Array.isArray(data?.models) ? data.models : [];
+      const wanted = model.toLowerCase();
+      const found = rawList.some((m) => {
+        const n = String(m?.name ?? m?.model ?? "").toLowerCase();
+        return n === wanted || n.split(":")[0] === wanted.split(":")[0];
+      });
+      if (!found) {
+        throw new Error(`Server Ollama terhubung, tetapi model "${model}" belum tersedia (${rawList.length} model terpasang).`);
+      }
+      reply = `${rawList.length} model tersedia`;
+    } else {
+      // OpenAI-compatible (NVIDIA NIM, OpenAI, DeepSeek, Groq, Mistral, GLM, OpenRouter, custom)
+      const resp = await fetch(`${baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+        },
+        body: JSON.stringify({
+          model,
+          max_tokens: 16,
+          temperature: 0,
+          stream: false,
+          messages: [{ role: "user", content: "Reply with: OK" }],
+        }),
+        signal: AbortSignal.timeout(25000),
+      });
+      const data = await resp.json().catch(() => null);
+      if (!resp.ok) {
+        const detail =
+          data?.error?.message ||
+          data?.message ||
+          (typeof data?.error === "string" ? data.error : "");
+        throw new Error(detail || `${descriptor.label} HTTP ${resp.status}`);
+      }
+      const msg = data?.choices?.[0]?.message;
+      reply = String(msg?.content || msg?.reasoning_content || msg?.reasoning || "OK").trim();
+    }
+
+    const latencyMs = Date.now() - started;
+    return json(res, {
+      ok: true,
+      configured: true,
+      reachable: true,
+      keySource,
+      provider: descriptor.id,
+      model,
+      baseUrl,
+      latencyMs,
+      reply: reply.slice(0, 80),
+      message: `API siap digunakan (${latencyMs} ms).`,
+    });
+  } catch (err: any) {
+    const latencyMs = Date.now() - started;
+    let rawMessage = String(err?.message || "");
+    if (rawMessage.trim().startsWith("{")) {
+      try {
+        const parsed = JSON.parse(rawMessage);
+        rawMessage = String(parsed?.error?.message || parsed?.message || rawMessage);
+      } catch {
+        /* keep original message */
+      }
+    }
+    const timedOut = err?.name === "TimeoutError" || /timeout|abort/i.test(rawMessage);
+    return json(res, {
+      ok: false,
+      configured: true,
+      reachable: false,
+      keySource,
+      provider: descriptor.id,
+      model,
+      baseUrl,
+      latencyMs,
+      error: timedOut
+        ? `Timeout menghubungi ${descriptor.label} (${latencyMs} ms).`
+        : rawMessage || `Gagal menguji koneksi ${descriptor.label}.`,
+    });
+  }
 }
 
 // GET /api/ai/config — safe AI provider state for teachers & admins (never returns secrets)
@@ -993,13 +1342,13 @@ addRoute("PUT", /^\/api\/ai\/config$/, async (req: AuthenticatedRequest, res, bo
 
   // Key handling:
   //   • If caller provides an explicit non-empty custom `apiKey`, store it.
-  //   • If switching providers, clearing explicitly, or selecting an instant
-  //     built-in provider without a new custom key, clear stale `ai_api_key`
-  //     so a leftover key from another provider never overrides built-in auth.
+  //   • If switching providers, clearing explicitly, or a runtime server env
+  //     key is configured for the selected provider, clear stale `ai_api_key`
+  //     so a leftover key from another provider never overrides server env auth.
   const incomingKey = typeof body?.apiKey === "string" ? body.apiKey.trim() : "";
   if (incomingKey) {
     await upsertSettingKey("ai_api_key", incomingKey);
-  } else if (body?.clearApiKey === true || providerChanged || descriptor.hasBuiltInApiKey) {
+  } else if (body?.clearApiKey === true || providerChanged || Boolean(getBuiltInAiApiKey(descriptor.id))) {
     await upsertSettingKey("ai_api_key", "");
   }
 
@@ -1014,4 +1363,26 @@ addRoute("PUT", /^\/api\/ai\/config$/, async (req: AuthenticatedRequest, res, bo
   });
   json(res, { success: true, config: snapshot });
 });
+
+// POST /api/ai/models — fetch live model catalog from provider base URL (staff)
+addRoute("POST", /^\/api\/ai\/models$/, async (req: AuthenticatedRequest, res, body) => {
+  if (!requireStaff(req, res)) return;
+  return handleFetchAiModels(req, res, body);
+});
+
+// POST /api/ai/test — test provider API readiness & latency (staff)
+addRoute("POST", /^\/api\/ai\/test$/, async (req: AuthenticatedRequest, res, body) => {
+  if (!requireStaff(req, res)) return;
+  return handleTestAiProvider(req, res, body);
+});
+
+// POST /api/setup/ai/models & /api/setup/ai/test — gated by setup password middleware in index.ts
+addRoute("POST", /^\/api\/setup\/ai\/models$/, async (req, res, body) => {
+  return handleFetchAiModels(req, res, body);
+});
+
+addRoute("POST", /^\/api\/setup\/ai\/test$/, async (req, res, body) => {
+  return handleTestAiProvider(req, res, body);
+});
+
 
