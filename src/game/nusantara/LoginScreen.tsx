@@ -1,13 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { School, Users } from 'lucide-react';
 import { drawCharacterSprite } from './isoRenderer';
-import type { PlayerRole } from './schoolMap';
+import type { HairStyle, PlayerRole } from './schoolMap';
 
 interface LoginScreenProps {
   /** Build 142 — nama pemain dikunci dari akun yang login (read-only). */
   accountName: string;
   onJoin: (config: {
     role: PlayerRole;
+    hairStyle: HairStyle;
     hairColor: string;
     skinColor: string;
   }) => void;
@@ -22,6 +23,12 @@ const ROLES: { value: PlayerRole; label: string; uniform: string }[] = [
   { value: 'guru', label: 'Guru', uniform: 'Seragam Batik' },
 ];
 
+const CHARACTER_STYLES: { value: HairStyle; label: string; desc: string }[] = [
+  { value: 'short', label: 'Rambut Pendek', desc: 'Celana seragam' },
+  { value: 'long', label: 'Rambut Panjang', desc: 'Perempuan · Rok' },
+  { value: 'hijab', label: 'Berkerudung', desc: 'Perempuan · Hijab' },
+];
+
 const HAIR_COLORS = [
   { hex: '#1e293b', label: 'Hitam' },
   { hex: '#451a03', label: 'Cokelat Tua' },
@@ -29,6 +36,17 @@ const HAIR_COLORS = [
   { hex: '#ca8a04', label: 'Pirang' },
   { hex: '#be185d', label: 'Merah Muda' },
   { hex: '#0284c7', label: 'Biru' },
+];
+
+const HIJAB_COLORS = [
+  { hex: '#f8fafc', label: 'Putih Sekolah' },
+  { hex: '#1e293b', label: 'Hitam' },
+  { hex: '#1e3a8a', label: 'Biru Dongker' },
+  { hex: '#78350f', label: 'Cokelat Pramuka' },
+  { hex: '#059669', label: 'Hijau Sage' },
+  { hex: '#9f1239', label: 'Maroon' },
+  { hex: '#be185d', label: 'Dusty Pink' },
+  { hex: '#fde68a', label: 'Krem' },
 ];
 
 const SKIN_COLORS = [
@@ -46,9 +64,19 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 }) => {
   const name = accountName.slice(0, 14);
   const [role, setRole] = useState<PlayerRole>('sma');
+  const [hairStyle, setHairStyle] = useState<HairStyle>('short');
   const [hairColor, setHairColor] = useState('#1e293b');
   const [skinColor, setSkinColor] = useState('#f6d198');
   const previewRef = useRef<HTMLCanvasElement | null>(null);
+
+  const handleSelectStyle = (nextStyle: HairStyle) => {
+    setHairStyle(nextStyle);
+    if (nextStyle === 'hijab' && !HIJAB_COLORS.some((c) => c.hex === hairColor)) {
+      setHairColor('#f8fafc');
+    } else if (nextStyle !== 'hijab' && !HAIR_COLORS.some((c) => c.hex === hairColor)) {
+      setHairColor('#1e293b');
+    }
+  };
 
   useEffect(() => {
     let raf = 0;
@@ -64,6 +92,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               id: 'preview',
               name: name.trim() || 'Siswa',
               role,
+              hairStyle,
               hairColor,
               skinColor,
               dir: 's',
@@ -73,7 +102,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               walkPhase: time / 140,
             },
             canvas.width / 2,
-            canvas.height - 20,
+            canvas.height - 16,
             true,
             undefined,
             undefined,
@@ -86,23 +115,26 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     };
     raf = requestAnimationFrame(renderPreview);
     return () => cancelAnimationFrame(raf);
-  }, [name, role, hairColor, skinColor]);
+  }, [name, role, hairStyle, hairColor, skinColor]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (connecting) return;
     onJoin({
       role,
+      hairStyle,
       hairColor,
       skinColor,
     });
   };
 
+  const colorOptions = hairStyle === 'hijab' ? HIJAB_COLORS : HAIR_COLORS;
+
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/65 backdrop-blur-sm p-4">
-      <div className="w-full max-w-xl bg-slate-900 border border-slate-700/80 rounded-xl shadow-2xl overflow-hidden">
-        <div className="p-6 sm:p-8">
-          <div className="flex items-start justify-between gap-4 pb-5 border-b border-slate-800">
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/65 backdrop-blur-sm p-4 overflow-y-auto">
+      <div className="w-full max-w-xl bg-slate-900 border border-slate-700/80 rounded-xl shadow-2xl overflow-hidden my-auto">
+        <div className="p-5 sm:p-7">
+          <div className="flex items-start justify-between gap-4 pb-4 border-b border-slate-800">
             <div>
               <div className="flex items-center gap-2 text-xs font-medium text-sky-400 mb-1">
                 <School className="w-4 h-4" />
@@ -111,7 +143,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-50 text-balance">
                 Nusantara High
               </h1>
-              <p className="text-sm text-slate-400 mt-1">
+              <p className="text-xs sm:text-sm text-slate-400 mt-1">
                 Jelajahi kelas, perpustakaan, kantin, dan lapangan basket bersama pemain lain secara real-time.
               </p>
             </div>
@@ -121,19 +153,42 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             </div>
           </div>
 
-          <form onSubmit={handleSubmit} className="mt-5 space-y-4">
+          <form onSubmit={handleSubmit} className="mt-4 space-y-4">
             <div>
               <span className="block text-sm font-medium text-slate-200 mb-1.5">
                 Masuk sebagai
               </span>
-              <div className="flex items-center gap-2 w-full min-h-[44px] px-3.5 rounded-lg bg-slate-950/70 border border-slate-700 text-slate-100 text-sm">
+              <div className="flex items-center gap-2 w-full min-h-[42px] px-3.5 rounded-lg bg-slate-950/70 border border-slate-700 text-slate-100 text-sm">
                 <School className="w-4 h-4 text-sky-400 shrink-0" />
                 <span className="font-semibold truncate">{name}</span>
                 <span className="ml-auto text-[11px] text-slate-500 shrink-0">terkunci dari akun</span>
               </div>
-              <p className="text-[11px] text-slate-500 mt-1.5">
-                Nama, kelas, dan progres mengikuti akun SmartCBT kamu — tidak bisa diubah dari sini.
-              </p>
+            </div>
+
+            <div>
+              <span className="block text-sm font-medium text-slate-200 mb-1.5">
+                Gaya Karakter
+              </span>
+              <div className="grid grid-cols-3 gap-2">
+                {CHARACTER_STYLES.map((st) => {
+                  const active = hairStyle === st.value;
+                  return (
+                    <button
+                      key={st.value}
+                      type="button"
+                      onClick={() => handleSelectStyle(st.value)}
+                      className={`text-left px-2.5 py-2 rounded-lg border transition-colors min-h-[44px] ${
+                        active
+                          ? 'bg-emerald-500/15 border-emerald-400 text-slate-50'
+                          : 'bg-slate-950/60 border-slate-800 text-slate-300 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="text-xs sm:text-sm font-semibold leading-tight">{st.label}</div>
+                      <div className="text-[11px] text-slate-400 mt-0.5 truncate">{st.desc}</div>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             <div>
@@ -148,7 +203,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                       key={r.value}
                       type="button"
                       onClick={() => setRole(r.value)}
-                      className={`text-left px-3 py-2.5 rounded-lg border transition-colors min-h-[44px] ${
+                      className={`text-left px-3 py-2 rounded-lg border transition-colors min-h-[42px] ${
                         active
                           ? 'bg-sky-500/15 border-sky-500 text-slate-50'
                           : 'bg-slate-950/60 border-slate-800 text-slate-300 hover:border-slate-700'
@@ -165,15 +220,15 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <span className="block text-sm font-medium text-slate-200 mb-1.5">
-                  Warna Rambut
+                  {hairStyle === 'hijab' ? 'Warna Kerudung' : 'Warna Rambut'}
                 </span>
                 <div className="flex flex-wrap gap-2">
-                  {HAIR_COLORS.map((c) => (
+                  {colorOptions.map((c) => (
                     <button
                       key={c.hex}
                       type="button"
                       title={c.label}
-                      aria-label={`Rambut ${c.label}`}
+                      aria-label={`${hairStyle === 'hijab' ? 'Kerudung' : 'Rambut'} ${c.label}`}
                       onClick={() => setHairColor(c.hex)}
                       className={`w-8 h-8 rounded-md border-2 transition-transform ${
                         hairColor === c.hex

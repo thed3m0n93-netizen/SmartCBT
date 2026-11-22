@@ -720,6 +720,7 @@ CREATE INDEX IF NOT EXISTS idx_news_author     ON news (author_id);`,
     wy         DOUBLE PRECISION NULL,
     dir        VARCHAR(1)   NOT NULL DEFAULT 'n',
     uniform    VARCHAR(8)   NOT NULL DEFAULT 'sma',
+    hair_style VARCHAR(12)  NOT NULL DEFAULT 'short',
     hair_color VARCHAR(16)  NOT NULL DEFAULT '#1e293b',
     skin_color VARCHAR(16)  NOT NULL DEFAULT '#f6d198',
     updated_at TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
@@ -1298,6 +1299,7 @@ CREATE INDEX idx_asf_submission            ON assignment_submission_files (submi
     wy         DOUBLE       NULL,
     dir        VARCHAR(1)   NOT NULL DEFAULT 'n',
     uniform    VARCHAR(8)   NOT NULL DEFAULT 'sma',
+    hair_style VARCHAR(12)  NOT NULL DEFAULT 'short',
     hair_color VARCHAR(16)  NOT NULL DEFAULT '#1e293b',
     skin_color VARCHAR(16)  NOT NULL DEFAULT '#f6d198',
     updated_at TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -1420,6 +1422,7 @@ export const COLUMN_MIGRATIONS: ColumnMigration[] = [
   // Learning-module subject (mata pelajaran). Nullable so modules created
   // before this column keep working and stay visible to their students.
   { label: "learning_modules.subject_id", table: "learning_modules", column: "subject_id", pg: "BIGINT NULL", mysql: "BIGINT NULL" },
+  { label: "game_nusantara_state.hair_style", table: "game_nusantara_state", column: "hair_style", pg: "VARCHAR(12) NOT NULL DEFAULT 'short'", mysql: "VARCHAR(12) NOT NULL DEFAULT 'short'" },
 ];
 
 /**

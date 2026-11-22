@@ -31,12 +31,14 @@ export type ObjectType =
   | 'gate';
 
 export type PlayerRole = 'sma' | 'smp' | 'osis' | 'guru';
+export type HairStyle = 'short' | 'long' | 'hijab';
 export type Direction = 'n' | 's' | 'e' | 'w';
 
 export interface PlayerState {
   id: string;
   name: string;
   role: PlayerRole;
+  hairStyle: HairStyle;
   hairColor: string;
   skinColor: string;
   wx: number;

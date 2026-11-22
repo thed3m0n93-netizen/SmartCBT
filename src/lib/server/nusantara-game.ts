@@ -1,31 +1,11 @@
 /**
- * SmartCBT — Nusantara High game server (build 141, lobby kelas + akun build 142).
+ * SmartCBT — Nusantara High game server (modularized & strict class-room isolation).
  *
- * Port logika multiplayer template "Nusantara High — Isometric School MMO"
- * (server.ts aslinya Express + Socket.IO berdiri sendiri) menjadi modul yang
- * MENEMPEL di http.Server SmartCBT yang sudah ada — tidak ada proses ketiga:
- *
- *   - path Socket.IO khusus `/game-socket.io` supaya tidak bertabrakan dengan
- *     dispatcher `/api/*`; handler request SmartCBT melewati path ini (lihat
- *     standalone.ts & vite.config.ts).
- *   - handshake WAJIB membawa token login SmartCBT (socket.handshake.auth.token)
- *     yang diverifikasi lewat `getSession()` — lobi sekolah tidak terbuka untuk
- *     anonim di origin publik.
- *
- * Build 142 — game menjadi bagian resmi akun & kelas:
- *   1. IDENTITAS DARI AKUN. Nama pemain SELALU dari sesi login (payload.name
- *      klien diabaikan); payload hanya boleh membawa kosmetik (seragam & warna).
- *   2. LOBI PER KELAS. Setiap koneksi dipetakan ke room Socket.IO
- *      `class:<class_id>` (siswa tanpa kelas → `class:none`; guru/admin →
- *      `staff`). SEMUA broadcast (gerak, join/leave, chat, emote, efek dunia)
- *      di-scope ke room — siswa kelas 10 dan 11 yang online bersamaan tidak
- *      pernah melihat avatar satu sama lain.
- *   3. PROGRES PERSISTEN PER AKUN. Tabel baru `game_nusantara_state`
- *      (xp, money, posisi, kosmetik) dimuat saat join dan disimpan saat
- *      disconnect + flush berkala — keluar-masuk game tidak kehilangan XP.
- *
- * state pemain tetap in-memory → deployment multi-instance butuh shared
- * layer (dicatat di FEATURES, sama seperti sesi login & SSE).
+ * Modules:
+ *  - `nusantara-rooms.ts` — Pure class-room resolution & in-memory room registry.
+ *  - `nusantara-store.ts` — SQL repository (`game_nusantara_state`, `student_profiles`).
+ *  - `nusantara-game.ts`  — Socket.IO gateway, room-scoped event dispatcher,
+ *                           world schedule/payday loops, and health route.
  */
 
 import type { Server as HttpServer } from "node:http";
@@ -33,14 +13,25 @@ import type { Server as HttpsServer } from "node:https";
 import type { Http2Server, Http2SecureServer } from "node:http2";
 import { Server, type Socket } from "socket.io";
 import { getSession } from "./auth-session.js";
-import { addRoute, json, query, queryOne, type AuthenticatedRequest } from "./utils.js";
-import { getDbType, isMySqlLike } from "../db.js";
+import { addRoute, json, type AuthenticatedRequest } from "./utils.js";
+import {
+  NusantaraRoomRegistry,
+  resolveLobbyDescriptor,
+  type LobbyDescriptor,
+  type StudentClassProfileRow,
+} from "./nusantara-rooms.js";
+import {
+  fetchStudentClassProfile,
+  loadGameState,
+  saveGameState,
+} from "./nusantara-store.js";
 import {
   MAP_SIZE,
   QUIZ_BANK,
   SCHEDULES,
   buildSchoolMap,
   type Direction,
+  type HairStyle,
   type PlayerRole,
   type PlayerState,
 } from "../../game/nusantara/schoolMap.js";
@@ -48,16 +39,7 @@ import {
 export const GAME_SOCKET_PATH = "/game-socket.io";
 
 const schoolMap = buildSchoolMap();
-const players = new Map<string, PlayerState>();
-/** socket.id → identitas akun + room lobi kelas. */
-interface ConnectionMeta {
-  userId: string;
-  role: string;
-  room: string;
-  classLabel: string;
-}
-const meta = new Map<string, ConnectionMeta>();
-const actionCooldowns = new Map<string, number>();
+const registry = new NusantaraRoomRegistry();
 
 let scheduleIndex = 0;
 let scheduleTimer = SCHEDULES[0].duration;
@@ -65,100 +47,10 @@ let scheduleTimer = SCHEDULES[0].duration;
 let attached: Server | null = null;
 let loopsStarted = false;
 
-/* ── Tabel persistensi progres (self-heal, pola news.ts) ────────────────── */
-
-let gameTableReady: Promise<void> | null = null;
-
-function ensureGameTable(): Promise<void> {
-  if (!gameTableReady) {
-    gameTableReady = (async () => {
-      const mysql = isMySqlLike(getDbType());
-      const ddl = mysql
-        ? `CREATE TABLE IF NOT EXISTS game_nusantara_state (
-             user_id    CHAR(36)     NOT NULL,
-             class_id   BIGINT       NULL,
-             xp         INT          NOT NULL DEFAULT 0,
-             money      INT          NOT NULL DEFAULT 10000,
-             wx         DOUBLE       NULL,
-             wy         DOUBLE       NULL,
-             dir        VARCHAR(1)   NOT NULL DEFAULT 'n',
-             uniform    VARCHAR(8)   NOT NULL DEFAULT 'sma',
-             hair_color VARCHAR(16)  NOT NULL DEFAULT '#1e293b',
-             skin_color VARCHAR(16)  NOT NULL DEFAULT '#f6d198',
-             updated_at TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-             PRIMARY KEY (user_id),
-             CONSTRAINT fk_gns_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-           )`
-        : `CREATE TABLE IF NOT EXISTS game_nusantara_state (
-             user_id    UUID        NOT NULL,
-             class_id   BIGINT      NULL,
-             xp         INT         NOT NULL DEFAULT 0,
-             money      INT         NOT NULL DEFAULT 10000,
-             wx         DOUBLE PRECISION NULL,
-             wy         DOUBLE PRECISION NULL,
-             dir        VARCHAR(1)  NOT NULL DEFAULT 'n',
-             uniform    VARCHAR(8)  NOT NULL DEFAULT 'sma',
-             hair_color VARCHAR(16) NOT NULL DEFAULT '#1e293b',
-             skin_color VARCHAR(16) NOT NULL DEFAULT '#f6d198',
-             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-             CONSTRAINT pk_game_nusantara_state PRIMARY KEY (user_id),
-             CONSTRAINT fk_gns_user FOREIGN KEY (user_id)
-                 REFERENCES users(id) ON DELETE CASCADE
-           )`;
-      await query(ddl, []);
-    })().catch((err) => {
-      gameTableReady = null;
-      throw err;
-    });
-  }
-  return gameTableReady;
-}
-
-interface GameStateRow {
-  xp: number | string;
-  money: number | string;
-  wx: number | string | null;
-  wy: number | string | null;
-  dir: string | null;
-  uniform: string | null;
-  hair_color: string | null;
-  skin_color: string | null;
-}
-
-async function loadGameState(userId: string): Promise<GameStateRow | null> {
-  try {
-    await ensureGameTable();
-    return await queryOne<GameStateRow>(
-      `SELECT xp, money, wx, wy, dir, uniform, hair_color, skin_color
-       FROM game_nusantara_state WHERE user_id = $1`,
-      [userId]
-    );
-  } catch (err) {
-    console.error("[nusantara] load game state failed:", err);
-    return null;
-  }
-}
-
-/** UPSERT progres — ON CONFLICT diterjemahkan db.ts ke ON DUPLICATE KEY (MySQL). */
-async function saveGameState(userId: string, p: PlayerState): Promise<void> {
-  try {
-    await ensureGameTable();
-    await query(
-      `INSERT INTO game_nusantara_state (user_id, xp, money, wx, wy, dir, uniform, hair_color, skin_color, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
-       ON CONFLICT (user_id) DO UPDATE SET
-         xp = EXCLUDED.xp, money = EXCLUDED.money, wx = EXCLUDED.wx,
-         wy = EXCLUDED.wy, dir = EXCLUDED.dir, uniform = EXCLUDED.uniform,
-         hair_color = EXCLUDED.hair_color, skin_color = EXCLUDED.skin_color,
-         updated_at = NOW()`,
-      [userId, p.xp, p.money, p.wx, p.wy, p.dir, p.role, p.hairColor, p.skinColor]
-    );
-  } catch (err) {
-    console.error("[nusantara] save game state failed:", err);
-  }
-}
-
-/* ── Lobi / room ─────────────────────────────────────────────────────────── */
+const VALID_UNIFORMS: PlayerRole[] = ["sma", "smp", "osis", "guru"];
+const VALID_HAIR_STYLES: HairStyle[] = ["short", "long", "hijab"];
+const VALID_DIRS: Direction[] = ["n", "s", "e", "w"];
+const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
 
 function isWalkableServer(wx: number, wy: number): boolean {
   const gx = Math.floor(wx);
@@ -167,64 +59,65 @@ function isWalkableServer(wx: number, wy: number): boolean {
   return !schoolMap.solid[gy][gx];
 }
 
-/** Snapshot pemain DI DALAM room saja — ini inti isolasi antar kelas. */
-function snapshotRoom(room: string): Record<string, PlayerState> {
-  const out: Record<string, PlayerState> = {};
-  meta.forEach((m, socketId) => {
-    if (m.room !== room) return;
-    const p = players.get(socketId);
-    if (p) out[socketId] = p;
-  });
-  return out;
+async function resolveAuthoritativeLobby(user: {
+  id: string;
+  role: string;
+}): Promise<LobbyDescriptor> {
+  if (user.role === "teacher" || user.role === "admin" || user.role === "super_admin") {
+    return resolveLobbyDescriptor(user, null);
+  }
+  const profile: StudentClassProfileRow | null = await fetchStudentClassProfile(user.id);
+  return resolveLobbyDescriptor(user, profile);
+}
+
+/** Ensures a socket leaves all rooms other than its own private socket.id room. */
+async function leaveNonSelfRooms(socket: Socket): Promise<void> {
+  const staleRooms = Array.from(socket.rooms).filter((r) => r !== socket.id);
+  for (const room of staleRooms) {
+    await socket.leave(room);
+  }
+}
+
+/** Room-scoped broadcast helper so no player event ever leaks globally. */
+function emitToRoom(io: Server, room: string, event: string, payload: unknown): void {
+  io.to(room).emit(event, payload);
+}
+
+function emitToRoomExceptSender(
+  socket: Socket,
+  room: string,
+  event: string,
+  payload: unknown
+): void {
+  if (!socket.rooms.has(room)) return;
+  socket.to(room).emit(event, payload);
 }
 
 /**
- * Room lobi siswa: kelas dari student_profiles. Tanpa kelas → `class:none`
- * (tetap terisolasi dari kelas mana pun, tidak hilang). Staff → `staff`.
+ * Evicts any pre-existing live socket belonging to the same userId before
+ * registering a fresh connection, preventing duplicate ghost avatars when
+ * a student opens a new tab or reconnects.
  */
-async function resolveLobby(user: {
-  id: string;
-  role: string;
-}): Promise<{ room: string; label: string; classId: number | string | null }> {
-  if (user.role === "teacher" || user.role === "admin" || user.role === "super_admin") {
-    return { room: "staff", label: "Ruang Guru", classId: null };
+function evictPreviousUserSockets(io: Server, userId: string, currentSocketId: string): void {
+  const existingIds = registry.findSocketsByUserId(userId);
+  for (const oldSocketId of existingIds) {
+    if (oldSocketId === currentSocketId) continue;
+    const removed = registry.removePlayer(oldSocketId);
+    if (removed) {
+      emitToRoom(io, removed.meta.room, "playerLeft", oldSocketId);
+      void saveGameState(removed.meta.userId, removed.player, removed.meta.classId);
+    }
+    const oldSocket = io.sockets.sockets.get(oldSocketId);
+    if (oldSocket) {
+      oldSocket.emit("joinError", {
+        message: "Sesi game dibuka di tab atau perangkat lain.",
+      });
+      oldSocket.disconnect(true);
+    }
   }
-  let row: { class_id: number | string | null; class_name: string | null; grade_level: string | null } | null = null;
-  try {
-    row = await queryOne(
-      `SELECT sp.class_id, c.class_name, c.grade_level
-       FROM student_profiles sp
-       LEFT JOIN classes c ON c.id = sp.class_id
-       WHERE sp.user_id = $1`,
-      [user.id]
-    );
-  } catch (err) {
-    console.error("[nusantara] resolve class failed:", err);
-  }
-  if (row?.class_id != null) {
-    const label = `${row.grade_level ?? ""} ${row.class_name ?? ""}`.trim() || `Kelas ${row.class_id}`;
-    return { room: `class:${row.class_id}`, label, classId: row.class_id };
-  }
-  return { room: "class:none", label: "Belum Ada Kelas", classId: null };
 }
 
-function snapshotLobbies() {
-  const byRoom = new Map<string, { room: string; label: string; players: number }>();
-  meta.forEach((m) => {
-    const entry = byRoom.get(m.room) || { room: m.room, label: m.classLabel, players: 0 };
-    entry.players += 1;
-    byRoom.set(m.room, entry);
-  });
-  return Array.from(byRoom.values()).sort((a, b) => b.players - a.players);
-}
-
-const VALID_UNIFORMS: PlayerRole[] = ["sma", "smp", "osis", "guru"];
-const VALID_DIRS: Direction[] = ["n", "s", "e", "w"];
-const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
-
-/* ── Handler ─────────────────────────────────────────────────────────────── */
-
-function registerHandlers(io: Server) {
+function registerHandlers(io: Server): void {
   io.use((socket, next) => {
     const token = String((socket.handshake.auth as any)?.token ?? "").trim();
     const user = getSession(token || undefined);
@@ -237,71 +130,136 @@ function registerHandlers(io: Server) {
   });
 
   io.on("connection", (socket: Socket) => {
-    socket.on("joinGame", async (payload?: { role?: string; hairColor?: string; skinColor?: string }) => {
-      const user = (socket.data as any).smartcbtUser as
-        | { id: string; full_name?: string; username?: string; role: string }
-        | undefined;
-      if (!user || meta.has(socket.id)) return;
+    socket.on(
+      "joinGame",
+      async (payload?: {
+        role?: string;
+        hairStyle?: string;
+        hairColor?: string;
+        skinColor?: string;
+      }) => {
+        const user = (socket.data as any).smartcbtUser as
+          | { id: string; full_name?: string; username?: string; role: string }
+          | undefined;
+        if (!user || !registry.beginJoin(socket.id)) return;
 
-      const { room, label, classId } = await resolveLobby(user);
-      const saved = await loadGameState(user.id);
+        try {
+          let lobby: LobbyDescriptor;
+          try {
+            lobby = await resolveAuthoritativeLobby(user);
+          } catch (err) {
+            console.error("[nusantara] resolve authoritative lobby failed:", err);
+            if (socket.connected) {
+              socket.emit("joinError", {
+                message: "Gagal memverifikasi data kelas dari server. Coba masuk kembali.",
+              });
+            }
+            return;
+          }
 
-      // NAMA SELALU dari akun (build 142) — payload.name tidak pernah dibaca.
-      const displayName = String(user.full_name || user.username || "Siswa").trim().slice(0, 24) || "Siswa";
-      const uniform = VALID_UNIFORMS.includes(payload?.role as PlayerRole)
-        ? (payload?.role as PlayerRole)
-        : ((saved?.uniform as PlayerRole) || "sma");
-      const hairColor = HEX_COLOR.test(String(payload?.hairColor ?? ""))
-        ? String(payload?.hairColor)
-        : saved?.hair_color || "#1e293b";
-      const skinColor = HEX_COLOR.test(String(payload?.skinColor ?? ""))
-        ? String(payload?.skinColor)
-        : saved?.skin_color || "#f6d198";
+          const saved = await loadGameState(user.id);
+          if (!socket.connected) return;
 
-      // Posisi: lanjut terakhir bila masih valid (peta bisa berubah).
-      const savedX = Number(saved?.wx);
-      const savedY = Number(saved?.wy);
-      const useSaved =
-        Number.isFinite(savedX) && Number.isFinite(savedY) && isWalkableServer(savedX, savedY);
-      const spawnX = useSaved ? savedX : 15.5 + (Math.random() * 1.6 - 0.8);
-      const spawnY = useSaved ? savedY : 27.5 + (Math.random() * 1.2 - 0.6);
-      const dir = VALID_DIRS.includes(saved?.dir as Direction) ? (saved?.dir as Direction) : "s";
+          // Evict older tabs/connections of the same user only after DB verification succeeds.
+          evictPreviousUserSockets(io, user.id, socket.id);
 
-      const newPlayer: PlayerState = {
-        id: socket.id,
-        name: displayName,
-        role: uniform,
-        hairColor,
-        skinColor,
-        wx: spawnX,
-        wy: spawnY,
-        dir,
-        moving: false,
-        sprinting: false,
-        sitting: false,
-        jumpOffset: 0,
-        xp: Math.max(0, Number(saved?.xp) || 0),
-        money: Math.max(0, Number(saved?.money) || 10000),
-        energy: 100,
-      };
+          // NAMA SELALU dari akun — payload.name tidak pernah dibaca.
+          const displayName =
+            String(user.full_name || user.username || "Siswa").trim().slice(0, 24) || "Siswa";
+          const uniform = VALID_UNIFORMS.includes(payload?.role as PlayerRole)
+            ? (payload?.role as PlayerRole)
+            : (saved?.uniform as PlayerRole) || "sma";
+          const hairStyle: HairStyle = VALID_HAIR_STYLES.includes(payload?.hairStyle as HairStyle)
+            ? (payload?.hairStyle as HairStyle)
+            : VALID_HAIR_STYLES.includes(saved?.hair_style as HairStyle)
+              ? (saved?.hair_style as HairStyle)
+              : "short";
+          const hairColor = HEX_COLOR.test(String(payload?.hairColor ?? ""))
+            ? String(payload?.hairColor)
+            : saved?.hair_color || (hairStyle === "hijab" ? "#f8fafc" : "#1e293b");
+          const skinColor = HEX_COLOR.test(String(payload?.skinColor ?? ""))
+            ? String(payload?.skinColor)
+            : saved?.skin_color || "#f6d198";
 
-      players.set(socket.id, newPlayer);
-      meta.set(socket.id, { userId: String(user.id), role: user.role, room, classLabel: label });
-      await socket.join(room);
+          const savedX = Number(saved?.wx);
+          const savedY = Number(saved?.wy);
+          const useSaved =
+            Number.isFinite(savedX) &&
+            Number.isFinite(savedY) &&
+            isWalkableServer(savedX, savedY);
+          const spawnX = useSaved ? savedX : 15.5 + (Math.random() * 1.6 - 0.8);
+          const spawnY = useSaved ? savedY : 27.5 + (Math.random() * 1.2 - 0.6);
+          const dir = VALID_DIRS.includes(saved?.dir as Direction)
+            ? (saved?.dir as Direction)
+            : "s";
 
-      socket.emit("initGame", {
-        selfId: socket.id,
-        players: snapshotRoom(room),
-        phase: SCHEDULES[scheduleIndex],
-        timer: scheduleTimer,
-        // Build 142 — lobi & identitas akun.
-        lobby: { kind: user.role === "student" ? "class" : "staff", label, classId },
-        profile: { name: displayName, xp: newPlayer.xp, money: newPlayer.money, restored: useSaved },
-      });
+          const newPlayer: PlayerState = {
+            id: socket.id,
+            name: displayName,
+            role: uniform,
+            hairStyle,
+            hairColor,
+            skinColor,
+            wx: spawnX,
+            wy: spawnY,
+            dir,
+            moving: false,
+            sprinting: false,
+            sitting: false,
+            jumpOffset: 0,
+            xp: Math.max(0, Number(saved?.xp) || 0),
+            money: Math.max(0, Number(saved?.money) || 10000),
+            energy: 100,
+          };
 
-      socket.to(room).emit("playerJoined", newPlayer);
-      io.to(room).emit("systemChat", `${displayName} baru saja memasuki gerbang sekolah.`);
-    });
+          await leaveNonSelfRooms(socket);
+          if (!socket.connected) return;
+
+          await socket.join(lobby.room);
+          if (!socket.connected) return;
+
+          registry.registerPlayer(socket.id, newPlayer, {
+            userId: String(user.id),
+            role: user.role,
+            room: lobby.room,
+            classId: lobby.classId,
+            classLabel: lobby.label,
+          });
+
+          socket.emit("initGame", {
+            selfId: socket.id,
+            players: registry.snapshotRoom(lobby.room, lobby.classId),
+            phase: SCHEDULES[scheduleIndex],
+            timer: scheduleTimer,
+            lobby: {
+              room: lobby.room,
+              kind: lobby.kind,
+              label: lobby.label,
+              classId: lobby.classId,
+            },
+            profile: {
+              name: displayName,
+              xp: newPlayer.xp,
+              money: newPlayer.money,
+              restored: useSaved,
+            },
+          });
+
+          emitToRoomExceptSender(socket, lobby.room, "playerJoined", {
+            ...newPlayer,
+            room: lobby.room,
+          });
+          emitToRoom(
+            io,
+            lobby.room,
+            "systemChat",
+            `${displayName} baru saja memasuki gerbang sekolah.`
+          );
+        } finally {
+          registry.endJoin(socket.id);
+        }
+      }
+    );
 
     socket.on(
       "playerMove",
@@ -314,9 +272,9 @@ function registerHandlers(io: Server) {
         sitting?: boolean;
         jumpOffset?: number;
       }) => {
-        const p = players.get(socket.id);
-        const m = meta.get(socket.id);
-        if (!p || !m || !data) return;
+        const entry = registry.getPlayer(socket.id);
+        if (!entry || !data) return;
+        const { player: p, meta: m } = entry;
 
         const nextWx = Number(data.wx);
         const nextWy = Number(data.wy);
@@ -335,8 +293,9 @@ function registerHandlers(io: Server) {
         p.sitting = Boolean(data.sitting);
         p.jumpOffset = Math.max(0, Math.min(60, Number(data.jumpOffset) || 0));
 
-        socket.to(m.room).emit("playerMoved", {
+        emitToRoomExceptSender(socket, m.room, "playerMoved", {
           id: socket.id,
+          room: m.room,
           wx: p.wx,
           wy: p.wy,
           dir: p.dir,
@@ -349,14 +308,15 @@ function registerHandlers(io: Server) {
     );
 
     socket.on("chatMessage", (msg: unknown) => {
-      const p = players.get(socket.id);
-      const m = meta.get(socket.id);
-      if (!p || !m || typeof msg !== "string") return;
+      const entry = registry.getPlayer(socket.id);
+      if (!entry || typeof msg !== "string") return;
+      const { player: p, meta: m } = entry;
       const cleanMsg = msg.trim().slice(0, 90);
       if (!cleanMsg) return;
-      // Chat hanya sesama penghuni lobi kelas (build 142).
-      io.to(m.room).emit("chatBroadcast", {
+
+      emitToRoom(io, m.room, "chatBroadcast", {
         id: socket.id,
+        room: m.room,
         name: p.name,
         role: p.role,
         text: cleanMsg,
@@ -365,30 +325,37 @@ function registerHandlers(io: Server) {
     });
 
     socket.on("emote", (emoji: unknown) => {
-      const p = players.get(socket.id);
-      const m = meta.get(socket.id);
-      if (!p || !m || typeof emoji !== "string") return;
+      const entry = registry.getPlayer(socket.id);
+      if (!entry || typeof emoji !== "string") return;
+      const { meta: m } = entry;
       const cleanEmoji = emoji.trim().slice(0, 4);
       if (!cleanEmoji) return;
-      io.to(m.room).emit("playerEmote", { id: socket.id, emoji: cleanEmoji });
+
+      emitToRoom(io, m.room, "playerEmote", {
+        id: socket.id,
+        room: m.room,
+        emoji: cleanEmoji,
+      });
     });
 
     socket.on("interactAction", (actionType: unknown) => {
-      const p = players.get(socket.id);
-      const m = meta.get(socket.id);
-      if (!p || !m || typeof actionType !== "string") return;
+      const entry = registry.getPlayer(socket.id);
+      if (!entry || typeof actionType !== "string") return;
+      const { player: p, meta: m } = entry;
 
-      const now = Date.now();
-      const last = actionCooldowns.get(socket.id) || 0;
-      if (now - last < 800 && actionType !== "buy_food") return;
-      actionCooldowns.set(socket.id, now);
+      if (actionType !== "buy_food" && !registry.checkActionCooldown(socket.id, 800)) {
+        return;
+      }
 
       if (actionType === "study" || actionType === "read") {
         p.xp += 15;
         p.money += 250;
       } else if (actionType === "buy_food") {
         if (p.money < 2000) {
-          socket.emit("actionFeedback", { ok: false, message: "Uang saku belum cukup (butuh Rp 2.000)." });
+          socket.emit("actionFeedback", {
+            ok: false,
+            message: "Uang saku belum cukup (butuh Rp 2.000).",
+          });
           return;
         }
         p.money -= 2000;
@@ -396,7 +363,13 @@ function registerHandlers(io: Server) {
         p.xp += 10;
         const scored = Math.random() > 0.35;
         if (scored) p.xp += 5;
-        io.to(m.room).emit("worldEffect", { type: "basketball", playerId: socket.id, name: p.name, scored });
+        emitToRoom(io, m.room, "worldEffect", {
+          type: "basketball",
+          room: m.room,
+          playerId: socket.id,
+          name: p.name,
+          scored,
+        });
       } else if (actionType === "locker") {
         p.money += 100;
       }
@@ -405,8 +378,9 @@ function registerHandlers(io: Server) {
     });
 
     socket.on("quizAnswer", (payload?: { questionId?: number; selectedIndex?: number }) => {
-      const p = players.get(socket.id);
-      if (!p) return;
+      const entry = registry.getPlayer(socket.id);
+      if (!entry) return;
+      const { player: p } = entry;
       const q = QUIZ_BANK.find((item) => item.id === payload?.questionId);
       if (!q) return;
 
@@ -414,7 +388,10 @@ function registerHandlers(io: Server) {
         p.xp += 30;
         p.money += 1000;
         socket.emit("statsUpdate", { xp: p.xp, money: p.money });
-        socket.emit("quizResult", { correct: true, message: "Jawaban benar! +30 XP & Rp 1.000" });
+        socket.emit("quizResult", {
+          correct: true,
+          message: "Jawaban benar! +30 XP & Rp 1.000",
+        });
       } else {
         socket.emit("quizResult", {
           correct: false,
@@ -424,23 +401,18 @@ function registerHandlers(io: Server) {
     });
 
     socket.on("disconnect", () => {
-      const p = players.get(socket.id);
-      const m = meta.get(socket.id);
-      if (p && m) {
-        io.to(m.room).emit("systemChat", `${p.name} telah pulang dari sekolah.`);
-        io.to(m.room).emit("playerLeft", socket.id);
-        // Progres tersimpan per akun — sesi berikutnya lanjut dari sini.
-        void saveGameState(m.userId, p);
-      }
-      players.delete(socket.id);
-      meta.delete(socket.id);
-      actionCooldowns.delete(socket.id);
+      const removed = registry.removePlayer(socket.id);
+      if (!removed) return;
+      const { player: p, meta: m } = removed;
+      emitToRoom(io, m.room, "systemChat", `${p.name} telah pulang dari sekolah.`);
+      emitToRoom(io, m.room, "playerLeft", socket.id);
+      void saveGameState(m.userId, p, m.classId);
     });
   });
 }
 
 /** Interval dunia — sekali per proses. */
-function startWorldLoops(io: Server) {
+function startWorldLoops(io: Server): void {
   if (loopsStarted) return;
   loopsStarted = true;
 
@@ -456,26 +428,20 @@ function startWorldLoops(io: Server) {
   }, 1000).unref?.();
 
   setInterval(() => {
-    players.forEach((player, id) => {
+    registry.forEachConnection((player, _meta, socketId) => {
       player.money += 500;
-      io.to(id).emit("statsUpdate", { xp: player.xp, money: player.money });
+      io.to(socketId).emit("statsUpdate", { xp: player.xp, money: player.money });
     });
   }, 20000).unref?.();
 
   // Flush persistensi berkala — server crash tidak menghapus progression.
   setInterval(() => {
-    meta.forEach((m, socketId) => {
-      const p = players.get(socketId);
-      if (p) void saveGameState(m.userId, p);
+    registry.forEachConnection((player, meta) => {
+      void saveGameState(meta.userId, player, meta.classId);
     });
   }, 60000).unref?.();
 }
 
-/**
- * Tipe target pasang — persis union yang diterima konstruktor Socket.IO,
- * supaya `http.Server` (standalone) dan `server.httpServer` (Vite, yang
- * berupa union http/http2) sama-sama assignable tanpa cast.
- */
 export type GameAttachTarget =
   | HttpServer
   | HttpsServer
@@ -502,10 +468,12 @@ export function attachNusantaraGame(httpServer: GameAttachTarget): Server {
 
 /** Status ringkas untuk panel System Health / troubleshooting (staff). */
 export function getNusantaraGameStatus() {
+  const lobbies = registry.snapshotLobbies();
   return {
     attached: attached !== null,
-    playersOnline: players.size,
-    lobbies: snapshotLobbies(),
+    playersOnline: registry.onlineCount,
+    isolatedRooms: lobbies.length,
+    lobbies,
     phase: SCHEDULES[scheduleIndex].name,
     socketPath: GAME_SOCKET_PATH,
   };
@@ -514,7 +482,10 @@ export function getNusantaraGameStatus() {
 // GET /api/game/nusantara/status — staff-only, ikut dispatcher /api.
 addRoute("GET", /^\/api\/game\/nusantara\/status$/, async (req: AuthenticatedRequest, res) => {
   const user = req.authUser;
-  const staff = user && (user.role === "teacher" || user.role === "admin" || user.role === "super_admin");
-  if (!staff) return json(res, { error: "Hanya guru/admin yang dapat melihat status game." }, 403);
+  const staff =
+    user && (user.role === "teacher" || user.role === "admin" || user.role === "super_admin");
+  if (!staff) {
+    return json(res, { error: "Hanya guru/admin yang dapat melihat status game." }, 403);
+  }
   json(res, getNusantaraGameStatus());
 });
