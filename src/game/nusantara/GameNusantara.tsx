@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { HelpCircle, Send, Volume2, VolumeX, ZoomIn, ZoomOut } from 'lucide-react';
+import { ArrowLeft, HelpCircle, LayoutDashboard, Send, Volume2, VolumeX, ZoomIn, ZoomOut } from 'lucide-react';
 import { io, type Socket } from 'socket.io-client';
 import { LoginScreen } from './LoginScreen';
 import { QuizModal } from './QuizModal';
@@ -62,7 +62,12 @@ const QUICK_EMOTES = [
   { key: '4', emoji: '🔥', label: 'Semangat' },
 ];
 
-export default function GameNusantara() {
+export interface GameNusantaraProps {
+  onExitToLobby?: () => void;
+  onExitToDashboard?: () => void;
+}
+
+export default function GameNusantara({ onExitToLobby, onExitToDashboard }: GameNusantaraProps) {
   const schoolMap = useMemo(() => buildSchoolMap(), []);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const minimapRef = useRef<HTMLCanvasElement | null>(null);
@@ -835,7 +840,33 @@ export default function GameNusantara() {
       />
 
       {gameState === 'TITLE_MENU' && (
-        <LoginScreen accountName={authUser?.name ?? 'Siswa'} onJoin={handleJoin} connecting={connecting} errorMsg={connError} />
+        <>
+          <LoginScreen accountName={authUser?.name ?? 'Siswa'} onJoin={handleJoin} connecting={connecting} errorMsg={connError} />
+          {(onExitToLobby || onExitToDashboard) && (
+            <div className="fixed top-3.5 left-3.5 right-3.5 z-50 flex items-center justify-between gap-2 pointer-events-none">
+              {onExitToLobby ? (
+                <button
+                  type="button"
+                  onClick={onExitToLobby}
+                  className="pointer-events-auto inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl border border-slate-700/80 bg-slate-900/85 text-slate-200 hover:text-white hover:bg-slate-800 backdrop-blur transition-colors min-h-[38px]"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Lobby</span>
+                </button>
+              ) : <span />}
+              {onExitToDashboard && (
+                <button
+                  type="button"
+                  onClick={onExitToDashboard}
+                  className="pointer-events-auto inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl border border-slate-700/80 bg-slate-900/85 text-slate-200 hover:text-white hover:bg-slate-800 backdrop-blur transition-colors min-h-[38px]"
+                >
+                  <LayoutDashboard className="w-3.5 h-3.5" />
+                  <span>Mode Biasa</span>
+                </button>
+              )}
+            </div>
+          )}
+        </>
       )}
 
       {gameState === 'PLAYING' && (
@@ -900,8 +931,34 @@ export default function GameNusantara() {
             )}
           </div>
 
-          {/* Top Right: Minimap & Utility Controls */}
+          {/* Top Right: Exit navigation + Minimap & Utility Controls */}
           <div className="pointer-events-auto fixed top-3.5 right-3.5 flex flex-col items-end gap-2">
+            {(onExitToLobby || onExitToDashboard) && (
+              <div className="flex items-center gap-1.5">
+                {onExitToLobby && (
+                  <button
+                    type="button"
+                    onClick={onExitToLobby}
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold rounded-lg border border-slate-700/75 bg-slate-900/85 text-slate-300 hover:text-white hover:bg-slate-800 backdrop-blur transition-colors cursor-pointer"
+                    title="Kembali ke lobby"
+                  >
+                    <ArrowLeft className="w-3 h-3" />
+                    <span>Lobby</span>
+                  </button>
+                )}
+                {onExitToDashboard && (
+                  <button
+                    type="button"
+                    onClick={onExitToDashboard}
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold rounded-lg border border-slate-700/75 bg-slate-900/85 text-slate-200 hover:text-white hover:bg-slate-800 backdrop-blur transition-colors cursor-pointer"
+                    title="Kembali ke Dashboard Mode Biasa"
+                  >
+                    <LayoutDashboard className="w-3 h-3" />
+                    <span>Mode Biasa</span>
+                  </button>
+                )}
+              </div>
+            )}
             <div className="bg-slate-900/85 backdrop-blur-md border border-slate-700/75 rounded-xl p-2 shadow-lg">
               {!isTouch && (
               <canvas
@@ -991,7 +1048,7 @@ export default function GameNusantara() {
           <button
             type="button"
             onClick={() => setStudyOpen(true)}
-            className={`pointer-events-auto fixed right-3.5 px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 border border-emerald-400/50 text-white font-semibold text-sm shadow-xl transition-colors cursor-pointer whitespace-nowrap ${isTouch ? "top-24" : "bottom-40"}`}
+            className={`pointer-events-auto fixed right-3.5 px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 border border-emerald-400/50 text-white font-semibold text-sm shadow-xl transition-colors cursor-pointer whitespace-nowrap ${isTouch ? "top-28" : "bottom-40"}`}
           >
             📚 Modul &amp; Tugas
           </button>

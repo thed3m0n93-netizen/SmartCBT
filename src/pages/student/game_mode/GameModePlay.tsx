@@ -14,15 +14,10 @@ export default function GameModePlay() {
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950 text-slate-100 overflow-hidden select-none">
-      <GameNusantara />
-      {/* Pintu keluar selalu tersedia meski UI game sedang penuh (HUD/chat). */}
-      <button
-        onClick={() => navigate("/student/game-mode", { replace: true })}
-        className="absolute top-3 right-3 max-sm:left-3 max-sm:right-auto z-[60] px-3 py-1.5 text-[11px] font-semibold rounded-lg border border-slate-700/70 bg-slate-900/80 text-slate-300 hover:text-white hover:bg-slate-800 backdrop-blur transition-colors"
-        title="Kembali ke lobby"
-      >
-        ← Lobby
-      </button>
+      <GameNusantara
+        onExitToLobby={() => navigate("/student/game-mode", { replace: true })}
+        onExitToDashboard={() => navigate("/student/dashboard", { replace: true })}
+      />
     </div>
   );
 }

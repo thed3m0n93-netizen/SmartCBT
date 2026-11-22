@@ -16,7 +16,7 @@ import {
 import { useI18n } from "../../i18n";
 import { C, S } from "../../styles/tokens";
 import { Btn, Modal, Notice } from "../../components/ui";
-import { AiProviderInlineChip } from "../../components/AiProviderWidget";
+import { AiProviderActiveBadge } from "../../components/AiProviderWidget";
 import {
   fetchGradingExams,
   fetchGrading,
@@ -961,7 +961,7 @@ export default function GradingPage() {
 
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex-1 min-w-0">
-              <AiProviderInlineChip compact />
+              <AiProviderActiveBadge />
             </div>
             <button
               onClick={gradeAllEssayAi}

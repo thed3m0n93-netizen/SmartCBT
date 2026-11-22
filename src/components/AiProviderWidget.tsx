@@ -7,14 +7,10 @@ import {
   Check,
   CheckCircle2,
   ChevronDown,
-  ChevronUp,
   Cpu,
   FileCheck2,
   KeyRound,
-  Layers,
   RefreshCw,
-  Server,
-  SlidersHorizontal,
   Sparkles,
   X,
   Zap,
@@ -39,7 +35,7 @@ import {
   type AiConfigSnapshot,
   type AiTestResult,
 } from "../lib/api";
-import { C, R, S } from "../styles/tokens";
+import { C, S } from "../styles/tokens";
 
 function shortProviderTitle(info: AiProviderInfo): string {
   switch (info.id) {
@@ -464,6 +460,15 @@ export function AiProviderHeaderSwitcher() {
   }, [availableModels, config.model, modelFilter]);
 
   useEffect(() => {
+    const onOpenSwitcher = () => {
+      clearError();
+      setOpen(true);
+    };
+    window.addEventListener("smartcbt:open-ai-switcher", onOpenSwitcher);
+    return () => window.removeEventListener("smartcbt:open-ai-switcher", onOpenSwitcher);
+  }, [clearError]);
+
+  useEffect(() => {
     if (!open) return;
     const onDocClick = (e: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
@@ -872,682 +877,70 @@ export function AiProviderHeaderSwitcher() {
 }
 
 /**
- * Inline provider chip + quick dropdown used directly next to AI actions
- * (AI Import modal, GradingPage Essay tab, AssignmentsPage AI grade toolbar).
+ * Lightweight 1-line read-only active AI status badge for AI action screens
+ * (Question Bank AI Generate modal, GradingPage Essay tab, AssignmentsPage AI grading).
+ * Switching provider, fetching NVIDIA NIM models, and testing readiness all happen
+ * through the single header switcher button beside "Pasang Aplikasi".
  */
-export function AiProviderInlineChip({ compact = false }: { compact?: boolean }) {
+export function AiProviderActiveBadge({ allowQuickOpen = true }: { allowQuickOpen?: boolean }) {
   const { t } = useI18n();
-  const {
-    config,
-    descriptor,
-    availableModels,
-    saving,
-    error,
-    fetchingModels,
-    fetchMessage,
-    fetchError,
-    testing,
-    testResult,
-    switchProvider,
-    fetchModels,
-    runApiTest,
-  } = useAiProviderState();
-  const [selectedPlaceholder, setSelectedPlaceholder] = useState<AiProviderInfo | null>(null);
-  const isNvidia = isNvidiaProvider(descriptor.id);
-
-  const handleSelectChange = async (providerId: string) => {
-    const next = getAiProvider(providerId);
-    if (next.hasBuiltInApiKey || !next.requiresApiKey) {
-      if (next.isPlaceholder && next.selfHosted) {
-        setSelectedPlaceholder(next);
-        return;
-      }
-      setSelectedPlaceholder(null);
-      await switchProvider({ provider: next.id, model: next.defaultModel });
-      return;
-    }
-    setSelectedPlaceholder(next);
-  };
+  const { config, descriptor } = useAiProviderState();
 
   return (
     <div
-      className={`rounded-xl ${compact ? "p-2.5" : "p-3"} space-y-2`}
+      className="rounded-xl px-3 py-2 flex flex-wrap items-center justify-between gap-2"
       style={{
         background: C.base.surfaceSoft,
         border: `1px solid ${C.base.border}`,
       }}
     >
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2 min-w-0">
-          <Cpu className="w-4 h-4 shrink-0" style={{ color: config.isReady ? C.ok.main : C.warn.main }} />
-          <div className="min-w-0">
-            <div className="text-xs font-semibold flex items-center gap-1.5 flex-wrap" style={{ color: C.base.text }}>
-              <span>{t("Mesin AI Aktif:")}</span>
-              <span style={{ color: C.brand.dark }}>{shortProviderTitle(descriptor)}</span>
-              <span
-                className="text-[11px] font-medium"
-                style={{ color: config.isReady ? C.ok.dark : C.warn.dark }}
-              >
-                · {readinessLabel(config, t)}
-              </span>
-            </div>
-            <div className="text-[11px] truncate" style={{ color: C.base.textMuted, fontFamily: "var(--font-mono)" }}>
-              {config.model}
-            </div>
-          </div>
-        </div>
-
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto min-w-0 flex-wrap">
-          <select
-            value={config.provider}
-            disabled={saving}
-            onChange={(e) => void handleSelectChange(e.target.value)}
-            aria-label={t("Pilih Provider AI")}
-            className="w-full sm:w-auto max-w-full min-w-0 px-2.5 py-1.5 rounded-lg text-base sm:text-xs font-medium outline-none min-h-[40px] sm:min-h-[38px]"
-            style={{
-              background: C.base.surface,
-              border: `1px solid ${C.base.border}`,
-              color: C.base.text,
-            }}
-          >
-            <optgroup label={t("Akses Instan (Google Gemini & NVIDIA NIM)")}>
-              {getInstantAiProviders().map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.label}
-                </option>
-              ))}
-            </optgroup>
-            <optgroup label={t("Provider Lainnya (Placeholder)")}>
-              {getPlaceholderAiProviders().map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.label} — Placeholder
-                </option>
-              ))}
-            </optgroup>
-          </select>
-
-          {(availableModels.length > 1 || isNvidia) && (
-            <select
-              value={availableModels.includes(config.model) ? config.model : descriptor.defaultModel}
-              disabled={saving}
-              onChange={(e) => void switchProvider({ provider: descriptor.id, model: e.target.value })}
-              aria-label={t("Pilih Model AI")}
-              className="w-full sm:w-auto max-w-[240px] min-w-0 px-2.5 py-1.5 rounded-lg text-base sm:text-xs outline-none min-h-[40px] sm:min-h-[38px]"
-              style={{
-                background: C.base.surface,
-                border: `1px solid ${C.base.border}`,
-                color: C.base.text,
-              }}
-            >
-              {availableModels.map((m) => (
-                <option key={m} value={m}>
-                  {m}
-                </option>
-              ))}
-            </select>
-          )}
-
-          {isNvidia && (
-            <button
-              type="button"
-              disabled={fetchingModels || saving}
-              onClick={() => void fetchModels()}
-              className="px-2.5 py-1.5 rounded-lg text-xs font-semibold inline-flex items-center justify-center gap-1.5 min-h-[40px] sm:min-h-[38px] cbt-row-hover disabled:opacity-60"
-              style={{
-                background: C.base.surface,
-                border: `1px solid ${C.base.border}`,
-                color: C.brand.dark,
-              }}
-              title={t("Ambil semua model bahasa dari base URL NVIDIA NIM")}
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${fetchingModels ? "animate-spin" : ""}`} />
-              <span>{fetchingModels ? t("Mengambil…") : t("Fetch Model")}</span>
-            </button>
-          )}
-
-          <button
-            type="button"
-            disabled={testing || saving}
-            onClick={() => void runApiTest()}
-            className="px-2.5 py-1.5 rounded-lg text-xs font-semibold inline-flex items-center justify-center gap-1.5 min-h-[40px] sm:min-h-[38px] cbt-row-hover disabled:opacity-60"
-            style={{
-              background: C.base.surface,
-              border: `1px solid ${C.base.border}`,
-              color: C.base.textBody,
-            }}
-            title={t("Uji koneksi dan kesiapan provider AI aktif")}
-          >
-            {testing ? (
-              <RefreshCw className="w-3.5 h-3.5 animate-spin" style={{ color: C.brand.main }} />
-            ) : (
-              <Activity className="w-3.5 h-3.5" style={{ color: C.brand.main }} />
-            )}
-            <span>{testing ? t("Menguji…") : t("Test API")}</span>
-          </button>
-        </div>
-      </div>
-
-      {error && (
-        <div className="text-xs" style={{ color: C.danger.text }}>
-          {error}
-        </div>
-      )}
-
-      {fetchMessage && (
-        <div className="text-[11px]" style={{ color: C.ok.dark }}>
-          {fetchMessage}
-        </div>
-      )}
-
-      {fetchError && (
-        <div className="text-[11px]" style={{ color: C.danger.text }}>
-          {fetchError}
-        </div>
-      )}
-
-      {testResult && (
-        <div
-          className="px-3 py-2 rounded-lg text-xs flex items-start gap-2"
-          style={{
-            background: testResult.ok ? C.ok.msgBg : C.danger.bgLight,
-            color: testResult.ok ? C.ok.msgText : C.danger.text,
-            border: `1px solid ${testResult.ok ? C.ok.msgBorder : C.danger.border}`,
-          }}
-        >
-          {testResult.ok ? (
-            <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
-          ) : (
-            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-          )}
-          <div className="min-w-0">
-            <span className="font-semibold">
-              {testResult.ok ? `${t("API Siap")} (${testResult.latencyMs} ms)` : t("Koneksi API Gagal")}:
-            </span>{" "}
-            <span className="break-words">
-              {testResult.ok
-                ? `${testResult.model}${testResult.reply ? ` · "${testResult.reply}"` : ""}`
-                : testResult.error}
-            </span>
-          </div>
-        </div>
-      )}
-
-      {selectedPlaceholder && (
-        <PlaceholderConfigBox
-          provider={selectedPlaceholder}
-          currentConfig={config}
-          saving={saving}
-          onCancel={() => setSelectedPlaceholder(null)}
-          onSave={async (opts) => {
-            const ok = await switchProvider(opts);
-            if (ok) setSelectedPlaceholder(null);
-          }}
+      <div className="flex items-center gap-2 min-w-0">
+        <Cpu
+          className="w-3.5 h-3.5 shrink-0"
+          style={{ color: config.isReady ? C.ok.main : C.warn.main }}
         />
-      )}
-    </div>
-  );
-}
-
-/**
- * Full / collapsible dashboard panel for AdminDashboard & Teacher dashboard (QuestionBankPage).
- */
-export function AiProviderPanel({
-  compact = false,
-  onOpenAiGenerate,
-}: {
-  compact?: boolean;
-  onOpenAiGenerate?: () => void;
-}) {
-  const { t } = useI18n();
-  const navigate = useNavigate();
-  const {
-    config,
-    descriptor,
-    availableModels,
-    saving,
-    error,
-    fetchingModels,
-    fetchMessage,
-    fetchError,
-    testing,
-    testResult,
-    switchProvider,
-    fetchModels,
-    runApiTest,
-  } = useAiProviderState();
-  const [expanded, setExpanded] = useState(!compact);
-  const [editingPlaceholder, setEditingPlaceholder] = useState<AiProviderInfo | null>(null);
-  const [savedNotice, setSavedNotice] = useState<string | null>(null);
-  const [modelFilter, setModelFilter] = useState("");
-
-  const instantProviders = getInstantAiProviders();
-  const placeholderProviders = getPlaceholderAiProviders();
-  const isNvidia = isNvidiaProvider(descriptor.id);
-  const filteredModels = useMemo(() => {
-    const q = modelFilter.trim().toLowerCase();
-    if (!q) return availableModels;
-    const matched = availableModels.filter((m) => m.toLowerCase().includes(q));
-    if (config.model && !matched.includes(config.model)) return [config.model, ...matched];
-    return matched;
-  }, [availableModels, config.model, modelFilter]);
-
-  const activateInstant = async (p: AiProviderInfo) => {
-    setEditingPlaceholder(null);
-    setSavedNotice(null);
-    setModelFilter("");
-    const ok = await switchProvider({ provider: p.id, model: p.defaultModel });
-    if (ok) {
-      setSavedNotice(`${p.label} aktif.`);
-    }
-  };
-
-  return (
-    <div
-      className="rounded-2xl overflow-hidden"
-      style={{
-        background: C.base.surface,
-        border: `1px solid ${C.base.border}`,
-        boxShadow: S.card,
-        borderRadius: R.card,
-      }}
-    >
-      {/* Top summary bar */}
-      <div
-        className="px-4 sm:px-5 py-3.5 flex flex-wrap items-center justify-between gap-3"
-        style={{
-          background: C.base.surfaceMuted,
-          borderBottom: expanded ? `1px solid ${C.base.borderLight}` : "none",
-        }}
-      >
-        <div className="flex items-center gap-3 min-w-0">
-          <div
-            className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
-            style={{
-              background: C.brand.bg,
-              color: C.brand.dark,
-              border: `1px solid ${C.brand.borderSoft}`,
-            }}
+        <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs min-w-0">
+          <span className="font-medium" style={{ color: C.base.textMuted }}>
+            {t("AI Aktif:")}
+          </span>
+          <span className="font-semibold" style={{ color: C.brand.dark }}>
+            {shortProviderTitle(descriptor)}
+          </span>
+          <span style={{ color: C.base.dashed }}>·</span>
+          <span
+            className="text-[11px] truncate max-w-[220px]"
+            style={{ color: C.base.textBody, fontFamily: "var(--font-mono)" }}
+            title={config.model}
           >
-            <Cpu className="w-4 h-4" />
-          </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span
-                className="font-semibold text-sm tracking-tight"
-                style={{ color: C.base.text, fontFamily: "var(--font-display)" }}
-              >
-                {t("Provider AI & Akses Instan")}
-              </span>
-              <span
-                className="text-xs font-medium"
-                style={{ color: config.isReady ? C.ok.dark : C.warn.dark }}
-              >
-                · {readinessLabel(config, t)}
-              </span>
-            </div>
-            <div className="text-xs truncate mt-0.5" style={{ color: C.base.textMuted }}>
-              {descriptor.label} ·{" "}
-              <span style={{ fontFamily: "var(--font-mono)" }}>{config.model}</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            type="button"
-            disabled={testing || saving}
-            onClick={() => void runApiTest()}
-            className="px-3 py-2 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 min-h-[38px] cbt-row-hover disabled:opacity-60"
-            style={{
-              background: C.base.surface,
-              border: `1px solid ${C.base.border}`,
-              color: C.base.textBody,
-              boxShadow: S.control,
-            }}
-            title={t("Uji koneksi dan kesiapan provider AI aktif")}
+            {config.model}
+          </span>
+          <span
+            className="text-[11px] font-semibold"
+            style={{ color: config.isReady ? C.ok.dark : C.warn.dark }}
           >
-            {testing ? (
-              <RefreshCw className="w-3.5 h-3.5 animate-spin" style={{ color: C.brand.main }} />
-            ) : (
-              <Activity className="w-3.5 h-3.5" style={{ color: C.brand.main }} />
-            )}
-            {testing ? t("Menguji…") : t("Test API")}
-          </button>
-
-          {onOpenAiGenerate ? (
-            <button
-              type="button"
-              onClick={onOpenAiGenerate}
-              className="px-3.5 py-2 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 min-h-[38px] active:scale-[0.98]"
-              style={{
-                background: C.brand.main,
-                color: "#FFFFFF",
-                boxShadow: S.btnPrimary,
-              }}
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              {t("Generate Soal AI")}
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => navigate("/teacher/questions")}
-              className="px-3 py-2 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 min-h-[38px] cbt-row-hover"
-              style={{
-                background: C.base.surface,
-                border: `1px solid ${C.base.border}`,
-                color: C.base.textBody,
-                boxShadow: S.control,
-              }}
-            >
-              <Sparkles className="w-3.5 h-3.5" style={{ color: C.brand.main }} />
-              {t("Generate Soal")}
-            </button>
-          )}
-
-          <button
-            type="button"
-            onClick={() => navigate("/teacher/grading")}
-            className="px-3 py-2 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 min-h-[38px] cbt-row-hover"
-            style={{
-              background: C.base.surface,
-              border: `1px solid ${C.base.border}`,
-              color: C.base.textBody,
-              boxShadow: S.control,
-            }}
-          >
-            <BookOpenCheck className="w-3.5 h-3.5" style={{ color: C.purple.main }} />
-            {t("AI Grading")}
-          </button>
-
-          {compact && (
-            <button
-              type="button"
-              onClick={() => setExpanded((v) => !v)}
-              className="px-3 py-2 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 min-h-[38px] cbt-row-hover"
-              style={{
-                background: C.base.surface,
-                border: `1px solid ${C.base.border}`,
-                color: C.base.textBody,
-              }}
-            >
-              <SlidersHorizontal className="w-3.5 h-3.5" />
-              {expanded ? t("Tutup Opsi") : t("Ganti Provider")}
-              {expanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-            </button>
-          )}
+            · {readinessLabel(config, t)}
+          </span>
         </div>
       </div>
 
-      {testResult && (
-        <div
-          className="mx-4 sm:mx-5 mt-3 px-3.5 py-2.5 rounded-xl text-xs flex items-start gap-2"
+      {allowQuickOpen ? (
+        <button
+          type="button"
+          onClick={() => window.dispatchEvent(new CustomEvent("smartcbt:open-ai-switcher"))}
+          className="text-[11px] font-semibold px-2 py-1 rounded-lg cbt-row-hover shrink-0"
           style={{
-            background: testResult.ok ? C.ok.msgBg : C.danger.bgLight,
-            color: testResult.ok ? C.ok.msgText : C.danger.text,
-            border: `1px solid ${testResult.ok ? C.ok.msgBorder : C.danger.border}`,
+            color: C.brand.dark,
+            background: C.base.surface,
+            border: `1px solid ${C.base.borderLight}`,
           }}
         >
-          {testResult.ok ? (
-            <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
-          ) : (
-            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-          )}
-          <div className="min-w-0">
-            <div className="font-semibold">
-              {testResult.ok
-                ? `${t("API Siap Digunakan")} · ${testResult.latencyMs} ms`
-                : t("Test API Gagal")}
-            </div>
-            <div className="text-[11px] opacity-90 break-words">
-              {testResult.ok
-                ? `${testResult.model} (${testResult.baseUrl})${testResult.reply ? ` · "${testResult.reply}"` : ""}`
-                : testResult.error}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Expandable body */}
-      {expanded && (
-        <div className="p-4 sm:p-5 space-y-4">
-          {error && (
-            <div
-              className="px-3.5 py-2.5 rounded-xl text-xs"
-              style={{ background: C.danger.bgLight, color: C.danger.text, border: `1px solid ${C.danger.border}` }}
-            >
-              {error}
-            </div>
-          )}
-
-          {savedNotice && (
-            <div
-              className="px-3.5 py-2 rounded-xl text-xs flex items-center justify-between gap-2"
-              style={{ background: C.ok.msgBg, color: C.ok.msgText, border: `1px solid ${C.ok.msgBorder}` }}
-            >
-              <span>{savedNotice}</span>
-              <button type="button" onClick={() => setSavedNotice(null)} className="opacity-70 hover:opacity-100">
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          )}
-
-          {/* Section 1: Instant Server-Env Providers */}
-          <div>
-            <div className="flex items-center justify-between gap-2 mb-2.5">
-              <div className="flex items-center gap-2">
-                <Zap className="w-4 h-4" style={{ color: C.ok.main }} />
-                <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: C.base.text }}>
-                  {t("Provider Instan · Bawaan")}
-                </span>
-              </div>
-              <span className="text-xs" style={{ color: C.base.textMuted }}>
-                {t("Langsung aktif via env server / Compose")}
-              </span>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
-              {instantProviders.map((p) => {
-                const active = config.provider === p.id;
-                return (
-                  <button
-                    key={p.id}
-                    type="button"
-                    disabled={saving}
-                    onClick={() => void activateInstant(p)}
-                    className="text-left p-3.5 rounded-xl transition-all flex flex-col justify-between gap-2 min-h-[88px] active:scale-[0.99]"
-                    style={{
-                      background: active ? C.brand.bg : C.base.surfaceSoft,
-                      border: `1px solid ${active ? C.brand.main : C.base.border}`,
-                      boxShadow: active ? S.control : "none",
-                    }}
-                  >
-                    <div className="flex items-start justify-between gap-2 w-full">
-                      <span
-                        className="text-xs font-semibold leading-snug"
-                        style={{ color: active ? C.brand.dark : C.base.text }}
-                      >
-                        {p.label}
-                      </span>
-                      {active ? (
-                        <Check className="w-4 h-4 shrink-0" style={{ color: C.brand.main }} />
-                      ) : (
-                        <Zap className="w-3.5 h-3.5 shrink-0" style={{ color: C.ok.main }} />
-                      )}
-                    </div>
-                    <div className="w-full space-y-1">
-                      <div
-                        className="text-[11px] truncate"
-                        style={{ color: C.base.textMuted, fontFamily: "var(--font-mono)" }}
-                        title={p.defaultModel}
-                      >
-                        {p.defaultModel}
-                      </div>
-                      <div
-                        className="text-[11px] font-medium"
-                        style={{ color: active ? C.brand.main : C.ok.dark }}
-                      >
-                        {active ? t("Aktif sekarang") : t("Klik untuk pakai instan")}
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Model picker & NVIDIA Fetch Model */}
-          {(availableModels.length > 1 || isNvidia) && (
-            <div
-              className="space-y-2.5 px-3.5 py-3 rounded-xl"
-              style={{ background: C.base.surfaceMuted, border: `1px solid ${C.base.borderLight}` }}
-            >
-              <div className="flex flex-wrap items-center justify-between gap-2.5">
-                <div className="flex items-center gap-2 text-xs font-medium" style={{ color: C.base.textBody }}>
-                  <Layers className="w-3.5 h-3.5" style={{ color: C.brand.main }} />
-                  <span>
-                    {t("Pilih Model pada")} {shortProviderTitle(descriptor)}
-                    {availableModels.length > 1 ? ` (${availableModels.length})` : ""}:
-                  </span>
-                </div>
-                <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-                  {availableModels.length > 12 && (
-                    <input
-                      type="text"
-                      value={modelFilter}
-                      onChange={(e) => setModelFilter(e.target.value)}
-                      placeholder={t("Cari model...")}
-                      className="px-2.5 py-1.5 rounded-lg text-base sm:text-xs outline-none min-h-[38px] flex-1 sm:w-44"
-                      style={{
-                        background: C.base.surface,
-                        border: `1px solid ${C.base.border}`,
-                        color: C.base.text,
-                      }}
-                    />
-                  )}
-                  <select
-                    value={filteredModels.includes(config.model) ? config.model : descriptor.defaultModel}
-                    disabled={saving}
-                    onChange={(e) => void switchProvider({ provider: descriptor.id, model: e.target.value })}
-                    className="px-3 py-1.5 rounded-lg text-base sm:text-xs font-medium outline-none min-h-[38px] max-w-full"
-                    style={{
-                      background: C.base.surface,
-                      border: `1px solid ${C.base.border}`,
-                      color: C.base.text,
-                    }}
-                  >
-                    {filteredModels.map((m) => (
-                      <option key={m} value={m}>
-                        {m}
-                      </option>
-                    ))}
-                  </select>
-                  {isNvidia && (
-                    <button
-                      type="button"
-                      disabled={fetchingModels || saving}
-                      onClick={() => void fetchModels()}
-                      className="px-3 py-1.5 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 min-h-[38px] cbt-row-hover disabled:opacity-60"
-                      style={{
-                        background: C.base.surface,
-                        border: `1px solid ${C.base.border}`,
-                        color: C.brand.dark,
-                      }}
-                    >
-                      <RefreshCw className={`w-3.5 h-3.5 ${fetchingModels ? "animate-spin" : ""}`} />
-                      <span>{fetchingModels ? t("Mengambil…") : t("Fetch Model")}</span>
-                    </button>
-                  )}
-                </div>
-              </div>
-              {fetchMessage && (
-                <div className="text-xs" style={{ color: C.ok.dark }}>
-                  {fetchMessage}
-                </div>
-              )}
-              {fetchError && (
-                <div className="text-xs" style={{ color: C.danger.text }}>
-                  {fetchError}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Section 2: Placeholder Providers */}
-          <div className="pt-2 border-t" style={{ borderColor: C.base.borderLight }}>
-            <div className="flex items-center justify-between gap-2 mb-2.5">
-              <div className="flex items-center gap-2">
-                <Server className="w-4 h-4" style={{ color: C.base.textMuted }} />
-                <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: C.base.textMuted }}>
-                  {t("Provider AI Lainnya (Placeholder)")}
-                </span>
-              </div>
-              <span className="text-xs hidden sm:inline" style={{ color: C.base.textFaint }}>
-                {t("Klik salah satu untuk konfigurasi API key / host")}
-              </span>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
-              {placeholderProviders.map((p) => {
-                const active = config.provider === p.id;
-                const editing = editingPlaceholder?.id === p.id;
-                return (
-                  <button
-                    key={p.id}
-                    type="button"
-                    disabled={saving}
-                    onClick={() => {
-                      setSavedNotice(null);
-                      setEditingPlaceholder(editing ? null : p);
-                    }}
-                    className="text-left px-3 py-2.5 rounded-xl transition-colors min-h-[54px] cbt-row-hover"
-                    style={{
-                      background: active || editing ? C.brand.bg : C.base.surface,
-                      border: `1px solid ${active || editing ? C.brand.borderSoft : C.base.borderLight}`,
-                    }}
-                  >
-                    <div className="flex items-center justify-between gap-1.5">
-                      <span className="text-xs font-semibold truncate" style={{ color: C.base.text }}>
-                        {shortProviderTitle(p)}
-                      </span>
-                      {active ? (
-                        <Check className="w-3.5 h-3.5 shrink-0" style={{ color: C.brand.main }} />
-                      ) : (
-                        <KeyRound className="w-3 h-3 shrink-0 opacity-50" style={{ color: C.base.textFaint }} />
-                      )}
-                    </div>
-                    <div className="text-[11px] truncate mt-0.5" style={{ color: active ? C.brand.dark : C.base.textFaint }}>
-                      {active && config.isReady
-                        ? config.model
-                        : p.selfHosted
-                          ? t("Placeholder · Lokal")
-                          : t("Placeholder · API Key")}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-
-            {editingPlaceholder && (
-              <PlaceholderConfigBox
-                provider={editingPlaceholder}
-                currentConfig={config}
-                saving={saving}
-                onCancel={() => setEditingPlaceholder(null)}
-                onSave={async (opts) => {
-                  const ok = await switchProvider(opts);
-                  if (ok) {
-                    setSavedNotice(`${editingPlaceholder.label} aktif.`);
-                    setEditingPlaceholder(null);
-                  }
-                }}
-              />
-            )}
-          </div>
-        </div>
+          {t("Ganti Provider AI")}
+        </button>
+      ) : (
+        <span className="text-[11px] shrink-0" style={{ color: C.base.textFaint }}>
+          {t("Ubah di tombol AI bar atas")}
+        </span>
       )}
     </div>
   );
 }
-
-export default AiProviderPanel;

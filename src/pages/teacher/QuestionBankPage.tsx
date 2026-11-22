@@ -41,7 +41,7 @@ import { Btn, Chip, Card, SectionCard, controlStyle } from "../../components/ui"
 import { TablePagination } from "../../components/DataTable";
 import { useDataTable, type Accessors } from "../../hooks/useDataTable";
 import { C, R, S, alpha } from "../../styles/tokens";
-import AiProviderPanel, { AiProviderInlineChip } from "../../components/AiProviderWidget";
+import { AiProviderActiveBadge } from "../../components/AiProviderWidget";
 
 /** UI type → DB `question_type` enum. */
 const DB_TYPE: Record<QType, string> = {
@@ -960,7 +960,20 @@ export default function QuestionBankPage() {
           </span>
         }
         right={
-          <div className="flex gap-2 relative">
+          <div className="flex flex-wrap gap-2 relative">
+            <Btn
+              variant="ghost"
+              onClick={() => {
+                setImportModalTab("ai");
+                setImportBankId(selectedBankId || banks[0]?.id || "");
+                setImportResult(null);
+                setImportError(null);
+                setShowImportModal(true);
+              }}
+            >
+              <Sparkles className="w-4 h-4 shrink-0" style={{ color: C.brand.main }} />
+              <span>{t("Generate AI")}</span>
+            </Btn>
             <button
               onClick={() => setShowToolMenu(!showToolMenu)}
               className="px-4 py-2 rounded-xl text-sm font-medium border transition-all cbt-row-hover min-h-[40px]"
@@ -1035,18 +1048,6 @@ export default function QuestionBankPage() {
         }
       >
       </SectionCard>
-
-      {/* AI Provider instant access & switcher (Teacher dashboard) */}
-      <AiProviderPanel
-        compact
-        onOpenAiGenerate={() => {
-          setImportModalTab("ai");
-          setImportBankId(selectedBankId || banks[0]?.id || "");
-          setImportResult(null);
-          setImportError(null);
-          setShowImportModal(true);
-        }}
-      />
 
       {/* Modern question-bank card grid */}
       <div className="rounded-xl" style={{ background: C.base.surface, border: `1px solid ${C.base.border}` }}>
@@ -1943,7 +1944,7 @@ export default function QuestionBankPage() {
 
               {importModalTab === "ai" ? (
                 <div className="space-y-4">
-                  <AiProviderInlineChip compact />
+                  <AiProviderActiveBadge allowQuickOpen={false} />
 
                   <div>
                     <label className="block text-xs font-semibold mb-1.5" style={{ color: C.base.textBody }}>

@@ -51,6 +51,12 @@ const en: Dictionary = {
   "Langsung aktif via env server / Compose": "Active directly via server env / Compose",
   "Uji koneksi dan kesiapan provider AI aktif": "Test connection and readiness of the active AI provider",
   "Ambil semua model bahasa dari base URL NVIDIA NIM": "Fetch all language models from the NVIDIA NIM base URL",
+  "AI Aktif:": "Active AI:",
+  "Ganti Provider AI": "Switch AI Provider",
+  "Ubah di tombol AI bar atas": "Change via top-bar AI button",
+  "Generate AI": "Generate AI",
+  "Kembali ke Dashboard": "Return to Dashboard",
+  "Kembali ke Mode Biasa": "Return to Normal Mode",
   "Item analysis: Tingkat Kesukaran & Daya Beda":
     "Item analysis: Difficulty level & Discrimination power",
   "Gagal memuat dashboard": "Failed to load dashboard",

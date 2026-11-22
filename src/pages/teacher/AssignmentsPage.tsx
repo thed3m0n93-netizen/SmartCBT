@@ -17,7 +17,7 @@ import { useAuth } from "../../app/AuthContext";
 import { useI18n } from "../../i18n";
 import { C, alpha } from "../../styles/tokens";
 import { Badge, Btn, Chip, Field, Modal, Notice, StatCard, controlStyle } from "../../components/ui";
-import { AiProviderInlineChip } from "../../components/AiProviderWidget";
+import { AiProviderActiveBadge } from "../../components/AiProviderWidget";
 import {
   createAssignment,
   deleteAssignment,
@@ -914,7 +914,7 @@ export default function TeacherAssignmentsPage() {
                     border: `1px solid ${C.brand.border}`,
                   }}
                 >
-                  <AiProviderInlineChip compact />
+                  <AiProviderActiveBadge />
                   <div className="flex flex-wrap items-end gap-2">
                     <div className="flex-1 min-w-[220px]">
                       <label

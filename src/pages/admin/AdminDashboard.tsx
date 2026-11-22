@@ -25,7 +25,6 @@ import { C, R, S } from "../../styles/tokens";
 import { getAiProvider } from "../../lib/ai-providers";
 import { SectionCard, PageHeader, Btn, Modal, Notice, controlStyle } from "../../components/ui";
 import { DashboardStats as DashboardStatsComponent } from "../../components/dashboard";
-import AiProviderPanel from "../../components/AiProviderWidget";
 
 const SESSION_PAGE_SIZES = [10, 20, 50, 0] as const;
 
@@ -354,8 +353,6 @@ export default function AdminDashboard() {
       ) : (
         statCards.length > 0 && <DashboardStatsComponent cards={statCards} cols={4} />
       )}
-
-      <AiProviderPanel />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 sm:gap-6">
         {/* Activity feed */}
