@@ -1,4 +1,5 @@
-import { Menu } from "lucide-react";
+import { useState } from "react";
+import { KeyRound, Menu } from "lucide-react";
 import { useLocation } from "react-router";
 import { useAuth } from "../app/AuthContext";
 import { useI18n } from "../i18n";
@@ -7,6 +8,7 @@ import LanguageSwitcher from "./LanguageSwitcher";
 import ThemeToggle from "./ThemeToggle";
 import { AiProviderHeaderSwitcher } from "./AiProviderWidget";
 import PWAInstallButton from "./PWAInstallButton";
+import ChangePasswordModal from "./ChangePasswordModal";
 
 const breadcrumbs: Record<string, string> = {
   "/admin/dashboard": "Dashboard",
@@ -40,6 +42,7 @@ export default function Header({ onMenu }: { onMenu?: () => void }) {
   const { user } = useAuth();
   const { t } = useI18n();
   const location = useLocation();
+  const [showChangePassword, setShowChangePassword] = useState(false);
 
   const page = t(
     breadcrumbs[location.pathname] ??
@@ -104,6 +107,24 @@ export default function Header({ onMenu }: { onMenu?: () => void }) {
         <PWAInstallButton variant="header" />
         <ThemeToggle />
         <LanguageSwitcher />
+        {user && (
+          <button
+            type="button"
+            onClick={() => setShowChangePassword(true)}
+            className="h-10 sm:h-9 px-2.5 sm:px-3 rounded-xl flex items-center gap-1.5 text-xs font-semibold transition-colors cbt-row-hover active:scale-95 shrink-0"
+            style={{
+              background: C.base.surfaceMuted,
+              color: C.base.textBody,
+              border: `1px solid ${C.base.border}`,
+              boxShadow: S.control,
+            }}
+            title={t("Ganti Password")}
+            aria-label={t("Ganti Password")}
+          >
+            <KeyRound className="w-4 h-4 shrink-0" style={{ color: C.brand.main }} />
+            <span className="hidden md:inline">{t("Password")}</span>
+          </button>
+        )}
         {user?.institution && (
           <div
             className="hidden md:flex items-center text-xs px-3 py-1.5 rounded-xl font-semibold max-w-[180px] truncate"
@@ -119,6 +140,9 @@ export default function Header({ onMenu }: { onMenu?: () => void }) {
           </div>
         )}
       </div>
+      {showChangePassword && (
+        <ChangePasswordModal onClose={() => setShowChangePassword(false)} />
+      )}
     </header>
   );
 }

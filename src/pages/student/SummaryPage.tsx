@@ -94,11 +94,13 @@ export default function StudentSummaryPage() {
     return <Notice type="error">{t("Gagal: {e}", { e: error })}</Notice>;
   }
 
-  const scores = exams.map(examScore);
+  const publishedExams = exams.filter((r) => r.results_published !== false);
+  const scores = publishedExams.map(examScore);
   const average = scores.length
     ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
     : 0;
   const best = scores.length ? Math.max(...scores) : 0;
+  const hasPublished = scores.length > 0;
 
   return (
     <div className="space-y-4 sm:space-y-5">
@@ -114,9 +116,17 @@ export default function StudentSummaryPage() {
 
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <Stat label={t("Jumlah Ujian Selesai")} value={String(exams.length)} />
-        <Stat label={t("Rata-rata Nilai")} value={String(average)} accent={GRADE_COLORS[gradeFromScore(average)]} />
+        <Stat
+          label={t("Rata-rata Nilai")}
+          value={hasPublished ? String(average) : "—"}
+          accent={hasPublished ? GRADE_COLORS[gradeFromScore(average)] : undefined}
+        />
         <div className="col-span-2 sm:col-span-1">
-          <Stat label={t("Nilai Tertinggi")} value={String(best)} accent={GRADE_COLORS[gradeFromScore(best)]} />
+          <Stat
+            label={t("Nilai Tertinggi")}
+            value={hasPublished ? String(best) : "—"}
+            accent={hasPublished ? GRADE_COLORS[gradeFromScore(best)] : undefined}
+          />
         </div>
       </div>
 
@@ -127,6 +137,7 @@ export default function StudentSummaryPage() {
             <Empty>{t("Belum ada hasil ujian")}</Empty>
           ) : (
             exams.map((r) => {
+              const published = r.results_published !== false;
               const score = examScore(r);
               const grade = gradeFromScore(score);
               const color = GRADE_COLORS[grade];
@@ -144,16 +155,29 @@ export default function StudentSummaryPage() {
                   <div className="min-w-0">
                     <div className="font-semibold text-sm truncate" style={{ color: C.base.text }}>{r.title}</div>
                     <div className="text-xs mt-0.5" style={{ color: C.base.textMuted }}>{r.subject_name ?? "Umum"} · {dateStr}</div>
-                    {(correct || wrong) ? (
+                    {published && (correct || wrong) ? (
                       <div className="text-[11px] mt-0.5 tabular-nums" style={{ color: C.base.textFaint }}>
                         {t("Benar")}: {correct} · {t("Salah")}: {wrong}
                       </div>
+                    ) : !published ? (
+                      <div className="text-[11px] mt-0.5" style={{ color: C.base.textFaint }}>
+                        {t("Nilai sedang ditahan oleh guru atau admin")}
+                      </div>
                     ) : null}
                   </div>
-                  <div className="text-right shrink-0">
-                    <div className="text-2xl font-bold tabular-nums" style={{ color, fontFamily: "var(--font-serif)" }}>{score}</div>
-                    <div className="text-[11px] font-semibold" style={{ color }}>{t("Grade")} {grade}</div>
-                  </div>
+                  {published ? (
+                    <div className="text-right shrink-0">
+                      <div className="text-2xl font-bold tabular-nums" style={{ color, fontFamily: "var(--font-serif)" }}>{score}</div>
+                      <div className="text-[11px] font-semibold" style={{ color }}>{t("Grade")} {grade}</div>
+                    </div>
+                  ) : (
+                    <span
+                      className="text-[11px] font-semibold px-2.5 py-1 rounded-full shrink-0"
+                      style={{ background: C.warn.bg, color: C.warn.dark }}
+                    >
+                      {t("Menunggu Rilis Nilai")}
+                    </span>
+                  )}
                 </div>
               );
             })

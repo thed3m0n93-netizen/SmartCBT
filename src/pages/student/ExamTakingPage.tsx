@@ -14,7 +14,9 @@ import {
   Lock,
   Maximize2,
   Menu,
+  RefreshCw,
   Send,
+  ShieldAlert,
   Shuffle,
   Smartphone,
   WifiOff,
@@ -514,6 +516,38 @@ export default function ExamTakingPage() {
     return () => clearInterval(timer)
   }, [view])
 
+  const [sebChecking, setSebChecking] = useState(false)
+
+  const recheckSeb = useCallback(async () => {
+    if (!sessionId || !exam?.seb_required) return
+    setSebChecking(true)
+    try {
+      const sebInfo = detectSeb()
+      const result = await enforceSeb({
+        sessionId,
+        seb: sebInfo.detected,
+        configKeyHash: sebInfo.configKeyHash ?? undefined,
+      })
+      if (!result.enforced) {
+        setSebBlocked(true)
+        setSebBlockMessage(
+          result.error || "Safe Exam Browser (SEB) tidak terdeteksi. Ujian dikunci.",
+        )
+      } else {
+        setSebBlocked(false)
+        setSebBlockMessage(null)
+        setSebDetected(result.sebDetected ?? false)
+      }
+    } catch {
+      setSebBlocked(true)
+      setSebBlockMessage(
+        "Safe Exam Browser (SEB) wajib digunakan. Buka ujian melalui aplikasi SEB.",
+      )
+    } finally {
+      setSebChecking(false)
+    }
+  }, [sessionId, exam?.seb_required])
+
   // SEB enforcement: periodically verify SEB is still active during the exam.
   // If `seb_required` is true and SEB is no longer detected, block the exam.
   useEffect(() => {
@@ -522,44 +556,20 @@ export default function ExamTakingPage() {
 
     let cancelled = false
 
-    const checkSeb = async () => {
-      try {
-        const sebInfo = detectSeb()
-        const result = await enforceSeb({
-          sessionId,
-          seb: sebInfo.detected,
-          configKeyHash: sebInfo.configKeyHash ?? undefined,
-        })
-        if (cancelled) return
-        if (!result.enforced) {
-          setSebBlocked(true)
-          setSebBlockMessage(
-            result.error || "SEB tidak terdeteksi. Ujian diblokir.",
-          )
-        } else {
-          setSebBlocked(false)
-          setSebBlockMessage(null)
-          setSebDetected(result.sebDetected ?? false)
-        }
-      } catch {
-        if (cancelled) return
-        // If enforce endpoint returns 403, block the exam
-        setSebBlocked(true)
-        setSebBlockMessage(
-          "Safe Exam Browser (SEB) wajib digunakan. Buka ujian melalui aplikasi SEB.",
-        )
-      }
+    const runCheck = async () => {
+      if (cancelled) return
+      await recheckSeb()
     }
 
     // Check immediately on mount, then every 15 seconds
-    checkSeb()
-    const interval = setInterval(checkSeb, 15000)
+    runCheck()
+    const interval = setInterval(runCheck, 15000)
 
     return () => {
       cancelled = true
       clearInterval(interval)
     }
-  }, [view, sessionId, exam])
+  }, [view, sessionId, exam, recheckSeb])
 
   const [kioskGrace, setKioskGrace] = useState(false)
   const kioskGraceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -883,6 +893,7 @@ export default function ExamTakingPage() {
 
   const setAnswer = useCallback(
     async (qId: string, val: AnswerValue) => {
+      if (sebBlocked) return
       setAnswers((prev) => ({ ...prev, [qId]: val }))
       const q = questions.find((q) => q.id === qId)
       if (q && sessionId) {
@@ -925,7 +936,7 @@ export default function ExamTakingPage() {
         }
       }
     },
-    [questions, sessionId],
+    [questions, sessionId, sebBlocked],
   )
 
   // Flush queued offline answers once connectivity returns.
@@ -1133,6 +1144,7 @@ export default function ExamTakingPage() {
   }
 
   if (view === "result") {
+    const resultsPublished = results?.results_published !== false
     const totalScore = results?.total_score ?? 0
     const maxScore = questions.reduce((sum, q) => sum + q.points, 0)
     const pct = maxScore > 0 ? (Number(totalScore) / maxScore) * 100 : 0
@@ -1168,28 +1180,48 @@ export default function ExamTakingPage() {
             {exam?.title} · {answeredCount}/{questions.length}{" "}
             {t("questions answered")}
           </p>
-          <div
-            className="cbt-card rounded-2xl p-6 mb-6"
-            style={{ background: C.base.surface, border: `1px solid ${C.base.border}`, boxShadow: S.card }}
-          >
-            <div className="text-xs uppercase tracking-wide font-semibold mb-1" style={{ color: C.base.textFaint }}>
-              {t("Objective Score")}
-            </div>
+          {resultsPublished ? (
             <div
-              className="text-6xl font-bold mb-1 tabular-nums"
-              style={{ color: C.brand.dark, fontFamily: "var(--font-serif)" }}
+              className="cbt-card rounded-2xl p-6 mb-6"
+              style={{ background: C.base.surface, border: `1px solid ${C.base.border}`, boxShadow: S.card }}
             >
-              {Number(totalScore).toFixed(2)}
-            </div>
-            <div className="text-sm tabular-nums" style={{ color: C.base.textMuted }}>
-              / {maxScore} ({pct.toFixed(1)}%)
-            </div>
-            {results?.grade_status === "pending_essay_grading" && (
-              <div className="text-xs mt-2 font-medium" style={{ color: C.warn.dark }}>
-                {t("Essay responses pending manual grading")}
+              <div className="text-xs uppercase tracking-wide font-semibold mb-1" style={{ color: C.base.textFaint }}>
+                {t("Objective Score")}
               </div>
-            )}
-          </div>
+              <div
+                className="text-6xl font-bold mb-1 tabular-nums"
+                style={{ color: C.brand.dark, fontFamily: "var(--font-serif)" }}
+              >
+                {Number(totalScore).toFixed(2)}
+              </div>
+              <div className="text-sm tabular-nums" style={{ color: C.base.textMuted }}>
+                / {maxScore} ({pct.toFixed(1)}%)
+              </div>
+              {results?.grade_status === "pending_essay_grading" && (
+                <div className="text-xs mt-2 font-medium" style={{ color: C.warn.dark }}>
+                  {t("Essay responses pending manual grading")}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div
+              className="cbt-card rounded-2xl p-6 mb-6"
+              style={{ background: C.base.surface, border: `1px solid ${C.warn.border}`, boxShadow: S.card }}
+            >
+              <div
+                className="w-11 h-11 rounded-xl flex items-center justify-center mx-auto mb-3"
+                style={{ background: C.warn.bg, color: C.warn.dark }}
+              >
+                <Lock className="w-5 h-5" />
+              </div>
+              <div className="font-bold text-base mb-1" style={{ color: C.base.text }}>
+                {t("Hasil Belum Dirilis")}
+              </div>
+              <p className="text-xs leading-relaxed" style={{ color: C.base.textMuted }}>
+                {t("Jawaban Anda telah tersimpan. Nilai akan ditampilkan setelah guru atau admin merilis hasil ujian.")}
+              </p>
+            </div>
+          )}
           <button
             onClick={() => navigate("/student/dashboard")}
             className="w-full py-3.5 sm:py-3 rounded-xl text-sm font-semibold hover:opacity-90 min-h-[52px] active:scale-[0.99]"
@@ -1197,6 +1229,63 @@ export default function ExamTakingPage() {
           >
             {t("Return to Dashboard")}
           </button>
+        </div>
+      </div>
+    )
+  }
+
+  // ── SEB Enforcement Block Overlay ──────────────────────────────────────
+  if (view === "taking" && sebBlocked) {
+    return (
+      <div
+        className="min-h-screen min-h-[100dvh] flex items-center justify-center px-4 safe-area-top safe-area-bottom"
+        style={{ background: C.base.dark }}
+        role="alertdialog"
+        aria-modal="true"
+      >
+        <div
+          className="w-full max-w-md rounded-2xl p-6 text-center"
+          style={{ background: "#132942", border: "1px solid rgba(248, 113, 113, 0.45)", boxShadow: S.elevated }}
+        >
+          <div
+            className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4"
+            style={{ background: "rgba(239, 68, 68, 0.2)", color: "#FCA5A5" }}
+            aria-hidden
+          >
+            <ShieldAlert className="w-8 h-8" />
+          </div>
+          <h2
+            className="text-xl font-bold mb-2"
+            style={{ color: "#F8FAFC", fontFamily: "var(--font-serif)" }}
+          >
+            {t("Safe Exam Browser (SEB) Diperlukan")}
+          </h2>
+          <p className="text-sm mb-3 leading-relaxed" style={{ color: "#FCA5A5" }}>
+            {sebBlockMessage || t("Safe Exam Browser (SEB) wajib digunakan. Buka ujian melalui aplikasi SEB.")}
+          </p>
+          <p className="text-xs mb-6 leading-relaxed" style={{ color: "#94A3B8" }}>
+            {t("Akses pengerjaan dan penyimpanan jawaban dikunci otomatis selama sesi berada di luar Safe Exam Browser.")}
+          </p>
+          <div className="space-y-2.5">
+            <button
+              type="button"
+              onClick={recheckSeb}
+              disabled={sebChecking}
+              className="w-full inline-flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-semibold min-h-[48px] disabled:opacity-60"
+              style={{ background: C.brand.main, color: "#FFFFFF", boxShadow: S.btnPrimary }}
+            >
+              <RefreshCw className={`w-4 h-4 ${sebChecking ? "animate-spin" : ""}`} />
+              {sebChecking ? t("Memeriksa SEB…") : t("Periksa Ulang SEB")}
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate("/student/dashboard")}
+              className="w-full py-3 rounded-xl text-xs font-medium min-h-[44px]"
+              style={{ color: "#CBD5E1", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.14)" }}
+            >
+              {t("Return to Dashboard")}
+            </button>
+          </div>
         </div>
       </div>
     )

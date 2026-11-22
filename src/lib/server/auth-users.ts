@@ -13,6 +13,7 @@ import bcrypt from "bcryptjs";
 import { createSession, getBearerToken, getSession, revokeSession } from "./auth-session.js";
 import { ensureColumn } from "./schema.js";
 import { NO_CALLER, callerFromRequest, isAdminCaller, requireAdmin } from "./ownership.js";
+import { recordAuditLog } from "./audit.js";
 
 /**
  * Build 143 — penemuan E2E: rute-rute ini dulunya hanya "harus login" tanpa
@@ -87,6 +88,59 @@ addRoute("POST", /^\/api\/logout$/, async (req, res, body) => {
   const token = getBearerToken(req.headers.authorization) || (body?.token ? String(body.token) : undefined);
   if (token) revokeSession(token);
   json(res, { success: true });
+});
+
+// POST /api/auth/change-password — authenticated user updates own password
+addRoute("POST", /^\/api\/auth\/change-password$/, async (req, res, body) => {
+  const caller = callerFromRequest(req);
+  if (!caller) return json(res, NO_CALLER.payload, NO_CALLER.status);
+
+  const currentPassword = String(body?.currentPassword ?? "");
+  const newPassword = String(body?.newPassword ?? "");
+
+  if (!currentPassword || !newPassword) {
+    return json(res, { error: "Password saat ini dan password baru wajib diisi." }, 400);
+  }
+  if (newPassword.length < 8) {
+    return json(res, { error: "Password baru minimal 8 karakter." }, 400);
+  }
+  if (newPassword.length > 128) {
+    return json(res, { error: "Password baru maksimal 128 karakter." }, 400);
+  }
+  if (newPassword === currentPassword) {
+    return json(res, { error: "Password baru harus berbeda dari password saat ini." }, 400);
+  }
+
+  const userRow = await queryOne<{
+    id: string;
+    username: string;
+    full_name: string;
+    role: string;
+    password_hash: string;
+  }>(
+    `SELECT id, username, full_name, role, password_hash FROM users WHERE id = $1`,
+    [caller.id]
+  );
+  if (!userRow) return json(res, { error: "Akun tidak ditemukan." }, 404);
+
+  const ok = await bcrypt.compare(currentPassword, userRow.password_hash);
+  if (!ok) {
+    return json(res, { error: "Password saat ini tidak sesuai." }, 400);
+  }
+
+  const nextHash = await bcrypt.hash(newPassword, 10);
+  await query(`UPDATE users SET password_hash = $1 WHERE id = $2`, [nextHash, caller.id]);
+
+  await recordAuditLog({
+    req,
+    actor: userRow,
+    action: "auth.change_password",
+    entityType: "user",
+    entityId: userRow.id,
+    summary: `${userRow.username} mengganti password akun sendiri`,
+  });
+
+  json(res, { success: true, message: "Password berhasil diperbarui." });
 });
 
 // GET /api/users
@@ -264,6 +318,14 @@ addRoute("POST", /^\/api\/classes$/, async (req, res, body) => {
     `INSERT INTO classes (class_name, grade_level) VALUES ($1, $2) RETURNING id`,
     [className, gradeLevel]
   );
+  await recordAuditLog({
+    req,
+    action: "class.create",
+    entityType: "class",
+    entityId: row?.id ?? null,
+    summary: `Membuat kelas ${gradeLevel} ${className}`,
+    metadata: { className, gradeLevel },
+  });
   json(res, { success: true, id: row?.id });
 });
 
@@ -292,6 +354,14 @@ addRoute("PUT", /^\/api\/classes\/[^/]+$/, async (req, res, body) => {
     `UPDATE classes SET class_name = $1, grade_level = $2 WHERE id = $3`,
     [className, gradeLevel, classId]
   );
+  await recordAuditLog({
+    req,
+    action: "class.update",
+    entityType: "class",
+    entityId: classId,
+    summary: `Mengubah kelas ${gradeLevel} ${className}`,
+    metadata: { className, gradeLevel },
+  });
   json(res, { success: true });
 });
 
@@ -328,6 +398,13 @@ addRoute("DELETE", /^\/api\/classes\/[^/]+$/, async (req, res) => {
   }
 
   await query(`DELETE FROM classes WHERE id = $1`, [classId]);
+  await recordAuditLog({
+    req,
+    action: "class.delete",
+    entityType: "class",
+    entityId: classId,
+    summary: `Menghapus kelas #${classId}`,
+  });
   json(res, { success: true });
 });
 
@@ -366,6 +443,14 @@ addRoute("POST", /^\/api\/subjects$/, async (req, res, body) => {
       [subjectId, ...uniqueClassIds],
     );
   }
+  await recordAuditLog({
+    req,
+    action: "subject.create",
+    entityType: "subject",
+    entityId: subjectId,
+    summary: `Membuat mapel ${subjectCode} — ${subjectName}`,
+    metadata: { subjectCode, subjectName, targetClassIds },
+  });
   json(res, { success: true, id: subjectId });
 });
 
@@ -408,6 +493,14 @@ addRoute("PUT", /^\/api\/subjects\/[^/]+$/, async (req, res, body) => {
       [subjectId, ...uniqueClassIds],
     );
   }
+  await recordAuditLog({
+    req,
+    action: "subject.update",
+    entityType: "subject",
+    entityId: subjectId,
+    summary: `Mengubah mapel ${subjectCode} — ${subjectName}`,
+    metadata: { subjectCode, subjectName, targetClassIds },
+  });
   json(res, { success: true });
 });
 
@@ -433,6 +526,13 @@ addRoute("DELETE", /^\/api\/subjects\/[^/]+$/, async (req, res) => {
   }
 
   await query(`DELETE FROM subjects WHERE id = $1`, [subjectId]);
+  await recordAuditLog({
+    req,
+    action: "subject.delete",
+    entityType: "subject",
+    entityId: subjectId,
+    summary: `Menghapus mapel #${subjectId}`,
+  });
   json(res, { success: true });
 });
 
@@ -797,6 +897,15 @@ addRoute("POST", /^\/api\/users$/, async (req, res, body) => {
     await setTeacherAssignments(String(newId.id), valid.classIds, valid.subjectIds);
   }
 
+  await recordAuditLog({
+    req,
+    action: "user.create",
+    entityType: "user",
+    entityId: newId?.id ?? null,
+    summary: `Membuat akun ${username} (${role})`,
+    metadata: { username, fullName, role, classId },
+  });
+
   json(res, { success: true, id: newId?.id ?? null }, 201);
 });
 // POST /api/register/student — public self-registration for students.
@@ -1003,6 +1112,15 @@ addRoute("PUT", /^\/api\/users\/[^/]+$/, async (req, res, body) => {
     }
   }
 
+  await recordAuditLog({
+    req,
+    action: "user.update",
+    entityType: "user",
+    entityId: userId,
+    summary: `Mengubah akun ${username} (${role}, ${status})`,
+    metadata: { username, role, status, passwordChanged: Boolean(passwordHash) },
+  });
+
   json(res, { success: true });
 });
 
@@ -1054,5 +1172,13 @@ addRoute("DELETE", /^\/api\/users\/[^/]+$/, async (req, res) => {
   }
 
   await query(`DELETE FROM users WHERE id = $1`, [userId]);
+  await recordAuditLog({
+    req,
+    action: "user.delete",
+    entityType: "user",
+    entityId: userId,
+    summary: `Menghapus akun ${existing.username} (${existing.role})`,
+    metadata: { username: existing.username, role: existing.role },
+  });
   json(res, { success: true });
 });

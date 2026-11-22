@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useSearchParams } from "react-router";
 import {
   AlertTriangle,
   Check,
@@ -124,13 +125,15 @@ function mapDbStudent(row: any): Student {
 
 export default function MonitoringPage() {
   const { t } = useI18n();
+  const [searchParams] = useSearchParams();
+  const initialExamId = searchParams.get("examId") || "all";
   const [students, setStudents] = useState<Student[]>([]);
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [statusFilter, setStatusFilter] = useState<StudentStatus | "all">("all");
   const [search, setSearch] = useState("");
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [examOptions, setExamOptions] = useState<{ id: string; title: string }[]>([]);
-  const [selectedExam, setSelectedExam] = useState("all");
+  const [selectedExam, setSelectedExam] = useState(initialExamId);
   const [visibleLimit, setVisibleLimit] = useState(24);
   const [extraTimeStudent, setExtraTimeStudent] = useState<string | null>(null);
   const [extraMinutes, setExtraMinutes] = useState("10");
@@ -160,9 +163,10 @@ export default function MonitoringPage() {
           rows.map((r: any) => [r.exam_id, { id: r.exam_id, title: String(r.exam_title || "") }])
         ).values()
       );
-      // Preserve current selection when possible, else fall back to first option.
+      // Preserve current selection (especially deep-linked ?examId=) when possible.
       setSelectedExam((prevSel) => {
         if (prevSel === "all") return "all";
+        if (initialExamId !== "all" && prevSel === initialExamId) return prevSel;
         return next.some((o) => o.id === prevSel) ? prevSel : (next[0]?.id ?? "all");
       });
       return next;
@@ -176,7 +180,7 @@ export default function MonitoringPage() {
     });
     setLastUpdated(Date.now());
     if (useNextTick) setNowTick((n) => n + 1);
-  }, [selectedExam]);
+  }, [initialExamId]);
 
   // Reusable loader — called on mount and after teacher actions.
   const loadRows = useCallback(async () => {

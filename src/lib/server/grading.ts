@@ -1,16 +1,51 @@
 // SmartCBT — Grading API handlers (server-side only)
-import { query, queryOne, addRoute, json } from "./utils.js";
+import { query, queryOne, addRoute, json, type AuthenticatedRequest } from "./utils.js";
 import { recomputeExamResults } from "./results.js";
-import { requireStaff } from "./ownership.js";
+import { NOT_OWNER, isAdminCaller, requireStaff } from "./ownership.js";
+import { ensureResultsPublishedColumn } from "./schema.js";
+import { recordAuditLog } from "./audit.js";
 
-// GET /api/grading/exams — list of gradable exams.
-// `fetchGradingExams()` in api.ts calls this path; it used to fall into
-// GET /api/grading/:examId below, which cast the literal "exams" to a UUID and
-// crashed with an invalid-input error → HTTP 500 (Grading page broken).
-addRoute("GET", /^\/api\/grading\/exams$/, async (_req, res) => {
+async function guardGradingExamOwner(
+  req: AuthenticatedRequest,
+  res: any,
+  examId: string,
+): Promise<{ id: string; title: string; created_by: string; results_published: boolean } | null> {
+  if (!requireStaff(req, res)) return null;
+  await ensureResultsPublishedColumn();
+  const caller = req.authUser!;
+  const exam = await queryOne<{ id: string; title: string; created_by: string; results_published: any }>(
+    `SELECT id, title, created_by, COALESCE(results_published, TRUE) AS results_published FROM exams WHERE id = $1`,
+    [examId]
+  );
+  if (!exam) {
+    json(res, { error: "Exam not found" }, 404);
+    return null;
+  }
+  if (!isAdminCaller(caller) && String(exam.created_by) !== String(caller.id)) {
+    json(res, NOT_OWNER.payload, NOT_OWNER.status);
+    return null;
+  }
+  return {
+    id: exam.id,
+    title: exam.title,
+    created_by: exam.created_by,
+    results_published: exam.results_published !== false && exam.results_published !== 0,
+  };
+}
+
+// GET /api/grading/exams — list of gradable exams (teacher sees own exams; admin sees all).
+addRoute("GET", /^\/api\/grading\/exams$/, async (req: AuthenticatedRequest, res) => {
+  if (!requireStaff(req, res)) return;
+  await ensureResultsPublishedColumn();
+  const caller = req.authUser!;
+  const admin = isAdminCaller(caller);
+  const ownerClause = admin ? "" : "AND e.created_by = $1";
+  const params = admin ? [] : [caller.id];
+
   const rows = await query(`
     SELECT
-      e.id, e.title, e.status, e.start_time, e.end_time,
+      e.id, e.title, e.status, e.start_time, e.end_time, e.created_by,
+      COALESCE(e.results_published, TRUE) as results_published,
       u.full_name as teacher_name,
       c.class_name, c.grade_level,
       COALESCE(ebc.assigned_count, 0) as assigned_classes,
@@ -36,25 +71,29 @@ addRoute("GET", /^\/api\/grading\/exams$/, async (_req, res) => {
     ) fl ON fl.session_id IN (
       SELECT id FROM student_sessions WHERE exam_id = e.id
     )
-    WHERE e.status IN ('published', 'archived')
-    GROUP BY e.id, e.title, e.status, e.start_time, e.end_time, u.full_name,
-             c.class_name, c.grade_level, ebc.assigned_count,
+    WHERE e.status IN ('published', 'archived') ${ownerClause}
+    GROUP BY e.id, e.title, e.status, e.start_time, e.end_time, e.created_by, e.results_published,
+             u.full_name, c.class_name, c.grade_level, ebc.assigned_count,
              ss.total_sessions, ss.completed_sessions, fl.flagged_count
     ORDER BY e.start_time DESC NULLS LAST
-  `);
+  `, params);
   json(res, rows);
 });
 
 // GET /api/grading/:examId
 // `(?!exams$)` keeps the literal "exams" from being treated as an exam UUID.
-addRoute("GET", /^\/api\/grading\/(?!exams$)[^/]+$/, async (req, res) => {
-  const examId = req.url.match(/^\/api\/grading\/([^/]+)$/)![1];
+addRoute("GET", /^\/api\/grading\/(?!exams$)[^/]+$/, async (req: AuthenticatedRequest, res) => {
+  const examId = req.url.split("?")[0].match(/^\/api\/grading\/([^/]+)$/)![1];
+  const exam = await guardGradingExamOwner(req, res, examId);
+  if (!exam) return;
+
   const rows = await query(
     `SELECT
        ss.id as session_id, ss.student_id, ss.status, ss.started_at, ss.submitted_at,
        u.full_name, u.username, sp.student_number,
        c.class_name, c.grade_level,
        e.title AS exam_title,
+       COALESCE(e.results_published, TRUE) AS results_published,
        er.total_score, er.objective_score, er.essay_score, er.grade_status,
        er.generated_at,
        (SELECT COUNT(*) FROM questions q
@@ -81,11 +120,19 @@ addRoute("GET", /^\/api\/grading\/(?!exams$)[^/]+$/, async (req, res) => {
   json(res, rows);
 });
 
-// GET /api/grading (all exams with results)
-addRoute("GET", /^\/api\/grading$/, async (_req, res) => {
+// GET /api/grading (all exams with results — staff scoped)
+addRoute("GET", /^\/api\/grading$/, async (req: AuthenticatedRequest, res) => {
+  if (!requireStaff(req, res)) return;
+  await ensureResultsPublishedColumn();
+  const caller = req.authUser!;
+  const admin = isAdminCaller(caller);
+  const ownerClause = admin ? "" : "AND e.created_by = $1";
+  const params = admin ? [] : [caller.id];
+
   const rows = await query(`
     SELECT
-      e.id, e.title, e.status, e.start_time, e.end_time,
+      e.id, e.title, e.status, e.start_time, e.end_time, e.created_by,
+      COALESCE(e.results_published, TRUE) as results_published,
       u.full_name as teacher_name,
       c.class_name, c.grade_level,
       COALESCE(ebc.assigned_count, 0) as assigned_classes,
@@ -111,18 +158,21 @@ addRoute("GET", /^\/api\/grading$/, async (_req, res) => {
     ) fl ON fl.session_id IN (
       SELECT id FROM student_sessions WHERE exam_id = e.id
     )
-    WHERE e.status IN ('published', 'archived')
-    GROUP BY e.id, e.title, e.status, e.start_time, e.end_time, u.full_name,
-             c.class_name, c.grade_level, ebc.assigned_count,
+    WHERE e.status IN ('published', 'archived') ${ownerClause}
+    GROUP BY e.id, e.title, e.status, e.start_time, e.end_time, e.created_by, e.results_published,
+             u.full_name, c.class_name, c.grade_level, ebc.assigned_count,
              ss.total_sessions, ss.completed_sessions, fl.flagged_count
     ORDER BY e.start_time DESC NULLS LAST
-  `);
+  `, params);
   json(res, rows);
 });
 
 // GET /api/grading/analysis/:examId — item analysis
-addRoute("GET", /^\/api\/grading\/analysis\/[^/]+$/, async (req, res) => {
-  const examId = req.url.match(/^\/api\/grading\/analysis\/([^/]+)$/)![1];
+addRoute("GET", /^\/api\/grading\/analysis\/[^/]+$/, async (req: AuthenticatedRequest, res) => {
+  const examId = req.url.split("?")[0].match(/^\/api\/grading\/analysis\/([^/]+)$/)![1];
+  const exam = await guardGradingExamOwner(req, res, examId);
+  if (!exam) return;
+
   const rows = await query(
     `WITH exam_qs AS (
        SELECT q.id, q.question_type, q.content, q.difficulty_level, q.score_weight
@@ -156,10 +206,11 @@ addRoute("GET", /^\/api\/grading\/analysis\/[^/]+$/, async (req, res) => {
 });
 
 // GET /api/grading/essays/:examId — alias of /api/grading/:examId/essays.
-// `fetchExamEssays()` in api.ts calls this path; previously it fell into
-// GET /api/grading/:examId (wrong payload → grading essays panel empty/500).
-addRoute("GET", /^\/api\/grading\/essays\/[^/]+$/, async (req, res) => {
-  const examId = req.url.match(/^\/api\/grading\/essays\/([^/]+)$/)![1];
+addRoute("GET", /^\/api\/grading\/essays\/[^/]+$/, async (req: AuthenticatedRequest, res) => {
+  const examId = req.url.split("?")[0].match(/^\/api\/grading\/essays\/([^/]+)$/)![1];
+  const exam = await guardGradingExamOwner(req, res, examId);
+  if (!exam) return;
+
   const rows = await query(
     `SELECT
        sa.id AS answer_id, sa.session_id, sa.question_id,
@@ -185,8 +236,11 @@ addRoute("GET", /^\/api\/grading\/essays\/[^/]+$/, async (req, res) => {
 addRoute(
   "GET",
   /^\/api\/grading\/[^/]+\/essays$/,
-  async (req, res) => {
-    const examId = req.url.match(/^\/api\/grading\/([^/]+)\/essays$/)![1];
+  async (req: AuthenticatedRequest, res) => {
+    const examId = req.url.split("?")[0].match(/^\/api\/grading\/([^/]+)\/essays$/)![1];
+    const exam = await guardGradingExamOwner(req, res, examId);
+    if (!exam) return;
+
     const rows = await query(
       `SELECT
          sa.id AS answer_id, sa.session_id, sa.question_id,
@@ -209,13 +263,33 @@ addRoute(
   }
 );
 
+// POST /api/grading/:examId/publish — toggle release/hold of exam results to students
+addRoute("POST", /^\/api\/grading\/[^/]+\/publish$/, async (req: AuthenticatedRequest, res, body) => {
+  const examId = req.url.split("?")[0].match(/^\/api\/grading\/([^/]+)\/publish$/)![1];
+  const exam = await guardGradingExamOwner(req, res, examId);
+  if (!exam) return;
+
+  const published = body?.published !== undefined ? Boolean(body.published) : true;
+  await query(`UPDATE exams SET results_published = $1 WHERE id = $2`, [published, examId]);
+
+  await recordAuditLog({
+    req,
+    action: published ? "exam.results_publish" : "exam.results_hold",
+    entityType: "exam",
+    entityId: examId,
+    summary: published
+      ? `Merilis nilai ujian "${exam.title}" ke siswa`
+      : `Menahan nilai ujian "${exam.title}" dari siswa`,
+    metadata: { examId, title: exam.title, published },
+  });
+
+  json(res, { success: true, examId, resultsPublished: published });
+});
+
 // POST /api/grading/essay — teacher scores one essay answer
-// Body: { answerId: string, score: number }
-// Updates `student_answers.score_obtained` (clamped to the question's
-// score_weight) and recomputes the session's `exam_results` row, flipping
-// `grade_status` to 'graded' once no essay answer is left unscored.
-addRoute("POST", /^\/api\/grading\/essay$/, async (req, res, body) => {
+addRoute("POST", /^\/api\/grading\/essay$/, async (req: AuthenticatedRequest, res, body) => {
   if (!requireStaff(req, res)) return;
+  const caller = req.authUser!;
   const answerId = String((body || {}).answerId || "").trim();
   const rawScore = Number((body || {}).score);
   if (!answerId || !Number.isFinite(rawScore)) {
@@ -226,18 +300,23 @@ addRoute("POST", /^\/api\/grading\/essay$/, async (req, res, body) => {
   try {
     ans = await queryOne(
       `SELECT sa.id, sa.session_id, sa.score_obtained,
-              q.question_type, q.score_weight
+              q.question_type, q.score_weight,
+              e.id AS exam_id, e.title AS exam_title, e.created_by
        FROM student_answers sa
        JOIN questions q ON q.id = sa.question_id
+       JOIN student_sessions ss ON ss.id = sa.session_id
+       JOIN exams e ON e.id = ss.exam_id
        WHERE sa.id = $1`,
       [answerId]
     );
   } catch {
-    // Invalid id format (e.g. not a UUID on PostgreSQL).
     return json(res, { error: "answerId is not a valid answer id" }, 400);
   }
   if (!ans) {
     return json(res, { error: "Answer not found" }, 404);
+  }
+  if (!isAdminCaller(caller) && String(ans.created_by) !== String(caller.id)) {
+    return json(res, NOT_OWNER.payload, NOT_OWNER.status);
   }
   if (ans.question_type !== "essay") {
     return json(
@@ -259,5 +338,13 @@ addRoute("POST", /^\/api\/grading\/essay$/, async (req, res, body) => {
   );
 
   const result = await recomputeExamResults(ans.session_id);
+  await recordAuditLog({
+    req,
+    action: "grading.essay_manual",
+    entityType: "student_answer",
+    entityId: answerId,
+    summary: `Menilai esai secara manual (${score}/${max}) pada "${ans.exam_title}"`,
+    metadata: { examId: ans.exam_id, sessionId: ans.session_id, score, max },
+  });
   json(res, { success: true, score, clamped, max, result });
 });

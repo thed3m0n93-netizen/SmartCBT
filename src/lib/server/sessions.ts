@@ -8,6 +8,7 @@
 
 import { addRoute, json } from "./utils.js";
 import { getAllActiveSessions, revokeAllSessionsForUser, getSessionStats } from "./auth-session.js";
+import { recordAuditLog } from "./audit.js";
 
 // GET /api/sessions/active — list all active sessions (super_admin only)
 addRoute("GET", /^\/api\/sessions\/active$/, async (req, res) => {
@@ -44,6 +45,13 @@ addRoute("POST", /^\/api\/sessions\/revoke\/([^/]+)$/, async (req, res) => {
   if (!userId) return json(res, { error: "User ID required" }, 400);
 
   revokeAllSessionsForUser(userId);
+  await recordAuditLog({
+    req,
+    action: "session.revoke",
+    entityType: "user",
+    entityId: userId,
+    summary: `Cabut semua sesi aktif untuk user ${userId}`,
+  });
   json(res, { success: true, message: `Semua session untuk user ${userId} telah dicabut` });
 });
 

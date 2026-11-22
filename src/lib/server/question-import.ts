@@ -14,7 +14,8 @@ import XLSX from "xlsx";
 import { XMLParser } from "fast-xml-parser";
 import { randomUUID } from "node:crypto";
 import { query, queryOne, addRoute, json, type AuthenticatedRequest } from "./utils.js";
-import { requireStaff } from "./ownership.js";
+import { isAdminCaller, NOT_OWNER, requireStaff } from "./ownership.js";
+import { recordAuditLog } from "./audit.js";
 import {
   normalizeOptions,
   normalizeAnswer,
@@ -646,6 +647,7 @@ ${buildParagraph("Setelah diisi, simpan sebagai .docx dan upload untuk import.")
 // POST /api/questions/import — bulk import questions
 addRoute("POST", /^\/api\/questions\/import$/, async (req: AuthenticatedRequest, res, body) => {
   if (!requireStaff(req, res)) return;
+  const caller = req.authUser!;
   const bankId = typeof body.bankId === "string" ? body.bankId : "";
   const importType = String(body.importType || "").trim() || null;
   const fileBase64 = String(body.file || "").trim();
@@ -654,8 +656,14 @@ addRoute("POST", /^\/api\/questions\/import$/, async (req: AuthenticatedRequest,
   if (!bankId) return json(res, { error: "bankId is required" }, 400);
   if (!fileBase64) return json(res, { error: "file (base64) is required" }, 400);
 
-  const bank = await queryOne(`SELECT id FROM question_banks WHERE id = $1`, [bankId]);
+  const bank = await queryOne<{ id: string; teacher_id: string; title: string }>(
+    `SELECT id, teacher_id, title FROM question_banks WHERE id = $1`,
+    [bankId]
+  );
   if (!bank) return json(res, { error: "Question bank not found" }, 404);
+  if (!isAdminCaller(caller) && String(bank.teacher_id) !== String(caller.id)) {
+    return json(res, NOT_OWNER.payload, NOT_OWNER.status);
+  }
 
   let buffer: Buffer;
   try {
@@ -711,6 +719,14 @@ addRoute("POST", /^\/api\/questions\/import$/, async (req: AuthenticatedRequest,
   }
 
   await syncBankQuestionCount(bankId);
+  await recordAuditLog({
+    req,
+    action: "question.import",
+    entityType: "question_bank",
+    entityId: bankId,
+    summary: `Impor ${inserted.length} soal ke "${bank.title}" (${fmt})`,
+    metadata: { format: fmt, imported: inserted.length, totalParsed: questions.length, fileName },
+  });
   json(res, {
     success: true, format: fmt, totalParsed: questions.length, imported: inserted.length,
         errors: [...parseErrors, ...validationErrors], questions: inserted,
@@ -718,7 +734,9 @@ addRoute("POST", /^\/api\/questions\/import$/, async (req: AuthenticatedRequest,
 });
 
 // GET /api/questions/export?format=excel|csv|qti&bankId=...
-addRoute("GET", /^\/api\/questions\/export$/, async (req, res) => {
+addRoute("GET", /^\/api\/questions\/export$/, async (req: AuthenticatedRequest, res) => {
+  if (!requireStaff(req, res)) return;
+  const caller = req.authUser!;
   const url = new URL(req.url, "http://localhost");
   const format = url.searchParams.get("format") || "excel";
   const bankId = url.searchParams.get("bankId");
@@ -728,6 +746,14 @@ addRoute("GET", /^\/api\/questions\/export$/, async (req, res) => {
 
   let rows;
   if (bankId) {
+    const bank = await queryOne<{ id: string; teacher_id: string }>(
+      `SELECT id, teacher_id FROM question_banks WHERE id = $1`,
+      [bankId]
+    );
+    if (!bank) return json(res, { error: "Question bank not found" }, 404);
+    if (!isAdminCaller(caller) && String(bank.teacher_id) !== String(caller.id)) {
+      return json(res, NOT_OWNER.payload, NOT_OWNER.status);
+    }
     rows = await query(
       `SELECT q.*, qb.title as bank_title, s.subject_code, s.subject_name
        FROM questions q
@@ -737,13 +763,23 @@ addRoute("GET", /^\/api\/questions\/export$/, async (req, res) => {
        ORDER BY q.created_at DESC`,
       [bankId]
     );
-  } else {
+  } else if (isAdminCaller(caller)) {
     rows = await query(
       `SELECT q.*, qb.title as bank_title, s.subject_code, s.subject_name
        FROM questions q
        JOIN question_banks qb ON qb.id = q.bank_id
        JOIN subjects s ON s.id = qb.subject_id
        ORDER BY q.created_at DESC`
+    );
+  } else {
+    rows = await query(
+      `SELECT q.*, qb.title as bank_title, s.subject_code, s.subject_name
+       FROM questions q
+       JOIN question_banks qb ON qb.id = q.bank_id
+       JOIN subjects s ON s.id = qb.subject_id
+       WHERE qb.teacher_id = $1
+       ORDER BY q.created_at DESC`,
+      [caller.id]
     );
   }
 

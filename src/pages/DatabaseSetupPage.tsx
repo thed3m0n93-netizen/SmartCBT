@@ -948,28 +948,46 @@ export default function DatabaseSetupPage() {
                     />
                   )}
                 </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1.5" style={{ color: C.base.textBody }}>
-                    {t("Token API AI")}
-                  </label>
-                  <input
-                    type="password"
-                    value={aiApiKey}
-                    onChange={(e) => setAiApiKey(e.target.value)}
-                    placeholder={
-                      aiProviderInfo.hasBuiltInApiKey
-                        ? t("Kosongkan untuk memakai API key bawaan")
-                        : t("Masukkan token API AI")
-                    }
-                    className="w-full px-3 py-2.5 rounded-xl text-sm outline-none min-h-[44px]"
-                    style={aiFieldStyle}
-                  />
-                  {aiProviderInfo.hasBuiltInApiKey && (
-                    <div className="text-xs mt-1.5" style={{ color: C.base.textFaint }}>
-                      {t("API key bawaan sudah terpasang untuk provider ini — boleh dikosongkan.")}
+                {aiProviderInfo.id === "gemini" ? (
+                  <div>
+                    <label className="block text-sm font-medium mb-1.5" style={{ color: C.base.textBody }}>
+                      {t("Autentikasi AI")}
+                    </label>
+                    <div
+                      className="w-full px-3 py-2.5 rounded-xl text-xs"
+                      style={{
+                        background: C.base.surfaceMuted,
+                        border: `1px solid ${C.base.border}`,
+                        color: C.base.textMuted,
+                      }}
+                    >
+                      {t("Google Gemini menggunakan kunci server bawaan (GEMINI_API_KEY pada Settings > Secrets / .env) secara otomatis.")}
                     </div>
-                  )}
-                </div>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-sm font-medium mb-1.5" style={{ color: C.base.textBody }}>
+                      {t("Token API AI")}
+                    </label>
+                    <input
+                      type="password"
+                      value={aiApiKey}
+                      onChange={(e) => setAiApiKey(e.target.value)}
+                      placeholder={
+                        aiProviderInfo.hasBuiltInApiKey
+                          ? t("Kosongkan untuk memakai API key bawaan")
+                          : t("Masukkan token API AI")
+                      }
+                      className="w-full px-3 py-2.5 rounded-xl text-sm outline-none min-h-[44px]"
+                      style={aiFieldStyle}
+                    />
+                    {aiProviderInfo.hasBuiltInApiKey && (
+                      <div className="text-xs mt-1.5" style={{ color: C.base.textFaint }}>
+                        {t("API key bawaan sudah terpasang untuk provider ini — boleh dikosongkan.")}
+                      </div>
+                    )}
+                  </div>
+                )}
                 <div>
                   <label className="block text-sm font-medium mb-1.5" style={{ color: C.base.textBody }}>
                     {t("Alamat Server AI (otomatis)")}

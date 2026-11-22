@@ -12,6 +12,7 @@
     "build:all": "npm run build && npm run build:server"
   },
   "dependencies": {
+    "@google/genai": "^3.6.1",
     "bcryptjs": "^3.0.3",
     "fast-xml-parser": "^5.11.1",
     "jszip": "^3.10.2",

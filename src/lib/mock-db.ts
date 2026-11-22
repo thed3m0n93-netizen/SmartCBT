@@ -40,6 +40,7 @@ interface MockStore {
   assignment_classes: any[];
   assignment_submissions: any[];
   uploads: any[];
+  audit_logs: any[];
 }
 
 function createInitialStore(): MockStore {
@@ -101,10 +102,10 @@ function createInitialStore(): MockStore {
       { key: "school_background", value: "" },
       { key: "school_favicon", value: "" },
       { key: "student_registration_open", value: "true" },
-      { key: "ai_provider", value: "ollama" },
-      { key: "ai_model", value: "gemma3:4b" },
+      { key: "ai_provider", value: "gemini" },
+      { key: "ai_model", value: "gemini-4-hydrogen" },
       { key: "ai_api_key", value: "" },
-      { key: "ai_base_url", value: "http://192.168.22.23:11434" },
+      { key: "ai_base_url", value: "https://generativelanguage.googleapis.com/v1beta" },
     ],
     question_banks: [
       {
@@ -195,6 +196,7 @@ function createInitialStore(): MockStore {
         randomize_questions: true,
         randomize_options: false,
         seb_required: false,
+        results_published: true,
         status: "published",
         created_at: nowIso(),
       },
@@ -252,6 +254,7 @@ function createInitialStore(): MockStore {
     assignment_classes: [],
     assignment_submissions: [],
     uploads: [],
+    audit_logs: [],
   };
 }
 
@@ -300,6 +303,13 @@ export async function executeMockQuery(sqlText: string, params: any[] = []): Pro
     const row = store.settings.find((s) => s.key === String(params[0]));
     return row ? [{ value: row.value }] : [];
   }
+  {
+    const m = sql.match(/^select value from settings where key = '([^']+)'/i);
+    if (m) {
+      const row = store.settings.find((s) => s.key === m[1]);
+      return row ? [{ value: row.value }] : [];
+    }
+  }
   if (/^select key from settings where key = \$1/i.test(sql)) {
     const row = store.settings.find((s) => s.key === String(params[0]));
     return row ? [{ key: row.key }] : [];
@@ -316,6 +326,121 @@ export async function executeMockQuery(sqlText: string, params: any[] = []): Pro
     return [];
   }
 
+  // Audit logs (in-memory mock)
+  if (/^insert into audit_logs /i.test(sql)) {
+    let parsedMeta: any = params[8] ?? null;
+    if (typeof parsedMeta === "string") {
+      try { parsedMeta = JSON.parse(parsedMeta); } catch { /* ignore */ }
+    }
+    store.audit_logs.unshift({
+      id: params[0],
+      actor_id: params[1] ?? null,
+      actor_name: params[2] ?? "",
+      actor_role: params[3] ?? "",
+      action: params[4] ?? "",
+      entity_type: params[5] ?? "",
+      entity_id: params[6] ?? null,
+      summary: params[7] ?? "",
+      metadata: parsedMeta,
+      ip_address: params[9] ?? null,
+      created_at: nowIso(),
+    });
+    return [];
+  }
+  if (lower.includes("from audit_logs")) {
+    let rows = [...store.audit_logs];
+    // Apply LIKE / exact params heuristically when present
+    for (const p of params) {
+      if (typeof p === "string") {
+        if (p.endsWith(".%")) {
+          const prefix = p.slice(0, -1).toLowerCase();
+          rows = rows.filter((r) => String(r.action || "").toLowerCase().startsWith(prefix));
+        } else if (p.startsWith("%") && p.endsWith("%")) {
+          const needle = p.slice(1, -1).toLowerCase();
+          rows = rows.filter((r) =>
+            String(r.actor_name || "").toLowerCase().includes(needle) ||
+            String(r.action || "").toLowerCase().includes(needle) ||
+            String(r.summary || "").toLowerCase().includes(needle) ||
+            String(r.entity_type || "").toLowerCase().includes(needle)
+          );
+        }
+      }
+    }
+    if (lower.includes("select count(*)")) {
+      return [{ total: rows.length }];
+    }
+    const limit = typeof params[params.length - 2] === "number" ? params[params.length - 2] : 25;
+    const offset = typeof params[params.length - 1] === "number" ? params[params.length - 1] : 0;
+    return rows.slice(offset, offset + limit);
+  }
+  if (/^update users set password_hash = \$1/i.test(sql)) {
+    const u = store.users.find((x) => String(x.id) === String(params[1]));
+    if (u) u.password_hash = params[0];
+    return [];
+  }
+  if (/^update exams set results_published = \$1/i.test(sql)) {
+    const ex = store.exams.find((e) => String(e.id) === String(params[1]));
+    if (ex) ex.results_published = Boolean(params[0]);
+    return ex ? [{ id: ex.id }] : [];
+  }
+  if (/^insert into exams /i.test(sql)) {
+    const ex = {
+      id: params[0],
+      title: params[1],
+      bank_id: params[2],
+      created_by: params[3],
+      duration_minutes: Number(params[4]),
+      start_time: params[5],
+      end_time: params[6],
+      dynamic_token: params[7] ?? null,
+      is_token_active: Boolean(params[8]),
+      randomize_questions: Boolean(params[9]),
+      randomize_options: Boolean(params[10]),
+      seb_required: Boolean(params[11]),
+      results_published: params[12] !== false && params[12] !== 0,
+      status: params[13] || "draft",
+      created_at: nowIso(),
+    };
+    store.exams.push(ex);
+    return [{ ...ex }];
+  }
+  if (/^update exams set title = \$1/i.test(sql)) {
+    const ex = store.exams.find((e) => String(e.id) === String(params[12]));
+    if (ex) {
+      ex.title = params[0];
+      ex.bank_id = params[1];
+      ex.duration_minutes = Number(params[2]);
+      ex.start_time = params[3];
+      ex.end_time = params[4];
+      ex.dynamic_token = params[5] ?? null;
+      ex.is_token_active = Boolean(params[6]);
+      ex.randomize_questions = Boolean(params[7]);
+      ex.randomize_options = Boolean(params[8]);
+      ex.seb_required = Boolean(params[9]);
+      ex.results_published = params[10] !== false && params[10] !== 0;
+      ex.status = params[11];
+    }
+    return ex ? [{ ...ex }] : [];
+  }
+  if (/^delete from exams where id = \$1/i.test(sql)) {
+    const idx = store.exams.findIndex((e) => String(e.id) === String(params[0]));
+    if (idx >= 0) store.exams.splice(idx, 1);
+    store.exam_class_assignments = store.exam_class_assignments.filter(
+      (a) => String(a.exam_id) !== String(params[0])
+    );
+    return [];
+  }
+  if (/^insert into exam_class_assignments /i.test(sql)) {
+    store.exam_class_assignments.push({ exam_id: params[0], class_id: Number(params[1]) });
+    return [];
+  }
+  if (/^delete from exam_class_assignments where exam_id = \$1/i.test(sql)) {
+    store.exam_class_assignments = store.exam_class_assignments.filter(
+      (a) => String(a.exam_id) !== String(params[0])
+    );
+    return [];
+  }
+
   // Auth login / users lookup
   if (lower.includes("from users where username = $1")) {
     const uname = String(params[0] ?? "").toLowerCase();
@@ -324,6 +449,10 @@ export async function executeMockQuery(sqlText: string, params: any[] = []): Pro
         item.username.toLowerCase() === uname &&
         (!lower.includes("status = 'active'") || item.status === "active")
     );
+    return u ? [{ ...u }] : [];
+  }
+  if (lower.includes("from users where id = $1")) {
+    const u = store.users.find((item) => String(item.id) === String(params[0]));
     return u ? [{ ...u }] : [];
   }
 
@@ -464,6 +593,10 @@ export async function executeMockQuery(sqlText: string, params: any[] = []): Pro
   }
 
   // Question banks & questions
+  if (lower.includes("from question_banks where id = $1")) {
+    const qb = store.question_banks.find((b) => String(b.id) === String(params[0]));
+    return qb ? [{ ...qb }] : [];
+  }
   if (lower.includes("from question_banks") && !lower.includes("count(")) {
     return store.question_banks.map((qb) => {
       const subj = store.subjects.find((s) => Number(s.id) === Number(qb.subject_id));
@@ -482,6 +615,15 @@ export async function executeMockQuery(sqlText: string, params: any[] = []): Pro
   if (lower.includes("from questions") && !lower.includes("count(")) {
     const bankId = params[0];
     return store.questions.filter((q) => (!bankId ? true : String(q.bank_id) === String(bankId)));
+  }
+
+  if (lower.includes("from exams where id = $1")) {
+    const ex = store.exams.find((e) => String(e.id) === String(params[0]));
+    return ex ? [{ ...ex }] : [];
+  }
+  if (lower.includes("from student_sessions where exam_id = $1") && lower.includes("count(")) {
+    const n = store.student_sessions.filter((s) => String(s.exam_id) === String(params[0])).length;
+    return [{ count: n }];
   }
 
   // Active exams & exams list

@@ -355,6 +355,7 @@ export interface ExamRow {
   randomize_options: boolean;
   seb_required: boolean;
   seb_config_hash?: string | null;
+  results_published?: boolean;
   status: "draft" | "published" | "archived";
   created_at: string;
   subject_name: string;
@@ -389,6 +390,7 @@ export interface ExamResultsRow {
   start_time: string;
   end_time: string;
   duration_minutes: number;
+  results_published?: boolean;
   participant_count: number;
   graded_count: number;
   pending_count: number;
@@ -611,6 +613,17 @@ export async function fetchCurrentUser(): Promise<UserRow | null> {
   } catch {
     return null;
   }
+}
+
+/** Change the authenticated user's own password. */
+export function changePassword(
+  currentPassword: string,
+  newPassword: string,
+): Promise<{ success: boolean; message?: string }> {
+  return apiPost<{ success: boolean; message?: string }>("/api/auth/change-password", {
+    currentPassword,
+    newPassword,
+  });
 }
 
 // ── Sessions (multi-device monitoring) ────────────────────────────────
@@ -1176,6 +1189,7 @@ export interface CreateExamPayload {
   randomizeQuestions?: boolean;
   randomizeOptions?: boolean;
   sebRequired?: boolean;
+  resultsPublished?: boolean;
   generateToken?: boolean;
   publishNow?: boolean;
   classIds?: number[];
@@ -1352,6 +1366,17 @@ export interface AiEssayBatchGradeResult {
 /** Batch AI-grade every unscored essay in an exam. */
 export function gradeExamEssaysWithAi(examId: string): Promise<AiEssayBatchGradeResult> {
   return apiPost<AiEssayBatchGradeResult>("/api/ai/grade/exam", { examId });
+}
+
+/** Publish or hold student-visible results for a specific exam. */
+export function publishExamResults(
+  examId: string,
+  published: boolean,
+): Promise<{ success: boolean; examId: string; resultsPublished: boolean }> {
+  return apiPost<{ success: boolean; examId: string; resultsPublished: boolean }>(
+    `/api/grading/${encodeURIComponent(examId)}/publish`,
+    { published },
+  );
 }
 // ─ Dashboard ─────────────────────────────────────────────────────────
 
@@ -2415,3 +2440,39 @@ export function enforceSeb(payload: {
 }> {
   return apiPost("/api/seb/enforce", payload);
 }
+
+// ── System Audit Logs (admin only) ────────────────────────────────────
+
+export interface AuditLogRow {
+  id: string;
+  actor_id?: string | null;
+  actor_name: string;
+  actor_role: string;
+  action: string;
+  entity_type: string;
+  entity_id?: string | null;
+  summary: string;
+  metadata?: Record<string, unknown> | null;
+  ip_address?: string | null;
+  created_at: string;
+}
+
+export type AuditLogsResponse = PagedResult<AuditLogRow>;
+
+export function fetchAuditLogs(params: {
+  page?: number;
+  pageSize?: number;
+  category?: string;
+  action?: string;
+  search?: string;
+} = {}): Promise<AuditLogsResponse> {
+  const qs = new URLSearchParams();
+  if (params.page) qs.set("page", String(params.page));
+  if (params.pageSize) qs.set("pageSize", String(params.pageSize));
+  if (params.category && params.category !== "all") qs.set("category", params.category);
+  if (params.action && params.action !== "all") qs.set("action", params.action);
+  if (params.search?.trim()) qs.set("search", params.search.trim());
+  const suffix = qs.toString();
+  return apiGetPaged<AuditLogRow>(`/api/audit-logs${suffix ? `?${suffix}` : ""}`);
+}
+

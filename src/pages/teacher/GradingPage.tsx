@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
-import { useNavigate } from "react-router";
+import { useSearchParams } from "react-router";
 import {
   AlertTriangle,
   Check,
   Download,
+  Eye,
+  EyeOff,
   FileSpreadsheet,
   Flag,
   Printer,
@@ -11,9 +13,9 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
-import { useAuth } from "../../app/AuthContext";
 import { useI18n } from "../../i18n";
 import { C, S } from "../../styles/tokens";
+import { Btn, Modal, Notice } from "../../components/ui";
 import { AiProviderInlineChip } from "../../components/AiProviderWidget";
 import {
   fetchGradingExams,
@@ -25,6 +27,7 @@ import {
   exportExamResults,
   downloadFromBase64,
   gradeExamEssaysWithAi,
+  publishExamResults,
   type AnalysisRow,
   type EssayAnswerRow,
   type EssayGradeResult,
@@ -183,9 +186,14 @@ function ScoreBar({ value, max = 100, color }: { value: number; max?: number; co
 
 export default function GradingPage() {
   const { t } = useI18n();
+  const [searchParams] = useSearchParams();
+  const initialExamId = searchParams.get("examId") || "";
   const [activeTab, setActiveTab] = useState<"results" | "essay" | "analysis">("results");
-  const [examOptions, setExamOptions] = useState<{ id: string; title: string }[]>([]);
-    const [selectedExamId, setSelectedExamId] = useState<string | "">("");
+  const [examOptions, setExamOptions] = useState<{ id: string; title: string; resultsPublished: boolean }[]>([]);
+  const [selectedExamId, setSelectedExamId] = useState<string | "">(initialExamId);
+  const [publishBusy, setPublishBusy] = useState(false);
+  const [publishMsg, setPublishMsg] = useState<{ type: "ok" | "error"; text: string } | null>(null);
+  const [printPreviewOpen, setPrintPreviewOpen] = useState(false);
   const [essays, setEssays] = useState<EssayAnswerRow[]>([]);
   const [essayInputs, setEssayInputs] = useState<Record<string, string>>({});
   const [essaySavingId, setEssaySavingId] = useState<string | null>(null);
@@ -234,10 +242,18 @@ export default function GradingPage() {
       try {
         const exams = await fetchGradingExams();
         if (cancelled) return;
-        const options = exams.map((e: any) => ({ id: e.id, title: e.title }));
+        const options = exams.map((e: any) => ({
+          id: e.id,
+          title: e.title,
+          resultsPublished: e.results_published !== false && e.results_published !== 0,
+        }));
         setExamOptions(options);
-        if (options.length > 0) setSelectedExamId(options[0].id);
-        else setLoading(false);
+        if (options.length > 0) {
+          const matched = initialExamId && options.some((o: any) => o.id === initialExamId);
+          setSelectedExamId(matched ? initialExamId : options[0].id);
+        } else {
+          setLoading(false);
+        }
       } catch (err: any) {
         if (!cancelled) {
           setLoadError(err.message || t("Failed to load grading exams"));
@@ -246,7 +262,7 @@ export default function GradingPage() {
       }
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [initialExamId]);
 
     // Load results + item analysis + essay answers for the selected exam.
   // Returns a cancellation token consumed by the effect's cleanup.
@@ -424,7 +440,32 @@ export default function GradingPage() {
   ];
   const maxCount = Math.max(...distribution.map((d) => d.count), 1);
 
-  const selectedExamTitle = examOptions.find((exam) => exam.id === selectedExamId)?.title ?? t("Exam Results");
+  const selectedExamOption = examOptions.find((exam) => exam.id === selectedExamId);
+  const selectedExamTitle = selectedExamOption?.title ?? t("Exam Results");
+  const selectedExamPublished = selectedExamOption?.resultsPublished !== false;
+
+  const togglePublishResults = async () => {
+    if (!selectedExamId || !selectedExamOption) return;
+    const next = !selectedExamPublished;
+    setPublishBusy(true);
+    setPublishMsg(null);
+    try {
+      const res = await publishExamResults(selectedExamId, next);
+      setExamOptions((prev) =>
+        prev.map((opt) => (opt.id === selectedExamId ? { ...opt, resultsPublished: res.resultsPublished } : opt))
+      );
+      setPublishMsg({
+        type: "ok",
+        text: res.resultsPublished
+          ? t("Nilai ujian telah dirilis dan kini dapat dilihat oleh siswa.")
+          : t("Nilai ujian ditahan — siswa hanya melihat status menunggu rilis."),
+      });
+    } catch (err: any) {
+      setPublishMsg({ type: "error", text: err?.message || t("Gagal mengubah status rilis nilai.") });
+    } finally {
+      setPublishBusy(false);
+    }
+  };
 
   const exportCsv = () => {
     const header = [t("Student"), t("Student Number"), t("Score"), t("Correct"), t("Wrong"), t("Essay Score"), t("Essay Maximum"), t("Duration"), t("Status")];
@@ -450,33 +491,30 @@ export default function GradingPage() {
   };
 
   const exportPdf = () => {
-    const printWindow = window.open("", "_blank", "noopener,noreferrer");
-    if (!printWindow) {
-      setLoadError(t("Izinkan pop-up browser untuk mencetak PDF."));
-      return;
-    }
-    const tableRows = sorted.map((row, index) => `
-      <tr><td>${index + 1}</td><td>${row.name}</td><td>${row.nis}</td>
-      <td>${row.score}</td><td>${row.correct}</td><td>${row.wrong}</td>
-      <td>${row.essayScore}/${row.essayMax}</td><td>${row.status}</td></tr>`).join("");
-    printWindow.document.write(`<!doctype html><html><head><title>${selectedExamTitle}</title>
-      <style>body{font-family:Arial,sans-serif;color:#111827;padding:32px}h1{margin:0 0 4px;font-size:22px}p{color:#4b5563;margin:0 0 20px}.stats{display:flex;gap:24px;margin-bottom:20px}.stat{font-size:12px;color:#4b5563}.stat strong{display:block;font-size:20px;color:#111827}table{width:100%;border-collapse:collapse;font-size:11px}th,td{border:1px solid #d1d5db;padding:7px;text-align:left}th{background:#f3f4f6}@media print{body{padding:0}}</style>
-      </head><body><h1>${selectedExamTitle}</h1><p>${t("Grading report")}</p>
-      <div class="stats"><div class="stat"><strong>${avgScore}</strong>${t("Average")}</div>
-      <div class="stat"><strong>${highest}</strong>${t("Highest")}</div><div class="stat"><strong>${lowest}</strong>${t("Lowest")}</div>
-      <div class="stat"><strong>${results.length ? Math.round((passing / results.length) * 100) : 0}%</strong>${t("Pass rate")}</div></div>
-      <table><thead><tr><th>#</th><th>${t("Student")}</th><th>${t("Student Number")}</th><th>${t("Score")}</th><th>${t("Correct")}</th><th>${t("Wrong")}</th><th>${t("Essay")}</th><th>${t("Status")}</th></tr></thead><tbody>${tableRows}</tbody></table>
-      <script>window.onload=function(){window.print();}</script></body></html>`);
-    printWindow.document.close();
+    setPrintPreviewOpen(true);
   };
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold" style={{ color: C.base.text, fontFamily: "var(--font-serif)" }}>
-            {t("Grading & Analysis")}
-          </h1>
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <h1 className="text-2xl font-bold" style={{ color: C.base.text, fontFamily: "var(--font-serif)" }}>
+              {t("Grading & Analysis")}
+            </h1>
+            {selectedExamId && (
+              <span
+                className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full"
+                style={{
+                  background: selectedExamPublished ? C.ok.bg : C.warn.bg,
+                  color: selectedExamPublished ? C.ok.dark : C.warn.dark,
+                }}
+              >
+                {selectedExamPublished ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                {selectedExamPublished ? t("Nilai Dirilis") : t("Nilai Ditahan")}
+              </span>
+            )}
+          </div>
           <p className="text-sm mt-0.5" style={{ color: C.base.textMuted }}>
             {t("Automated grading · Item analysis (Tingkat Kesukaran & Daya Beda)")}
           </p>
@@ -484,7 +522,10 @@ export default function GradingPage() {
         <div className="flex flex-wrap gap-2">
           <select
             value={selectedExamId}
-            onChange={(e) => setSelectedExamId(e.target.value)}
+            onChange={(e) => {
+              setSelectedExamId(e.target.value);
+              setPublishMsg(null);
+            }}
             className="px-3 py-2 rounded-xl text-base sm:text-sm outline-none min-h-[42px]"
             style={{ border: `1px solid ${C.base.border}`, background: C.base.surface, color: C.base.text, boxShadow: S.inset }}
           >
@@ -497,6 +538,26 @@ export default function GradingPage() {
             )}
           </select>
           <button
+            type="button"
+            onClick={togglePublishResults}
+            disabled={!selectedExamId || publishBusy}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-semibold border transition-all cbt-row-hover disabled:opacity-50 min-h-[42px]"
+            style={{
+              borderColor: selectedExamPublished ? C.warn.border : C.ok.border,
+              color: selectedExamPublished ? C.warn.dark : C.ok.dark,
+              background: selectedExamPublished ? C.warn.bgLight : C.ok.bgLight,
+              boxShadow: S.control,
+            }}
+          >
+            {selectedExamPublished ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            {publishBusy
+              ? t("Memproses…")
+              : selectedExamPublished
+                ? t("Tahan Nilai")
+                : t("Rilis Nilai")}
+          </button>
+          <button
+            type="button"
             onClick={exportPdf}
             disabled={!selectedExamId || results.length === 0}
             className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-medium border transition-all cbt-row-hover disabled:opacity-50 min-h-[42px]"
@@ -506,6 +567,7 @@ export default function GradingPage() {
             {t("Export PDF")}
           </button>
           <button
+            type="button"
             onClick={exportCsv}
             disabled={!selectedExamId || results.length === 0}
             className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-medium border transition-all cbt-row-hover disabled:opacity-50 min-h-[42px]"
@@ -515,6 +577,7 @@ export default function GradingPage() {
             {t("Export CSV")}
           </button>
           <button
+            type="button"
             onClick={exportExcel}
             disabled={!selectedExamId || excelBusy}
             className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold transition-all hover:opacity-90 disabled:opacity-50 min-h-[42px]"
@@ -525,6 +588,8 @@ export default function GradingPage() {
           </button>
         </div>
       </div>
+
+      {publishMsg && <Notice type={publishMsg.type}>{publishMsg.text}</Notice>}
 
       {/* Excel export error */}
       {excelError && (
@@ -1062,6 +1127,92 @@ export default function GradingPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {printPreviewOpen && (
+        <Modal
+          title={t("Pratinjau Laporan Hasil Ujian (PDF)")}
+          onClose={() => setPrintPreviewOpen(false)}
+          width={920}
+          actions={
+            <>
+              <Btn onClick={() => setPrintPreviewOpen(false)} style={{ flex: 1 }}>
+                {t("Tutup")}
+              </Btn>
+              <Btn variant="primary" onClick={() => window.print()} style={{ flex: 1 }}>
+                <Printer className="w-4 h-4" />
+                {t("Cetak / Simpan PDF")}
+              </Btn>
+            </>
+          }
+        >
+          <div id="smartcbt-print-report" className="space-y-4">
+            <div className="flex flex-wrap items-start justify-between gap-2 pb-3 border-b" style={{ borderColor: C.base.border }}>
+              <div>
+                <h2 className="text-lg font-bold" style={{ color: C.base.text, fontFamily: "var(--font-serif)" }}>
+                  {selectedExamTitle}
+                </h2>
+                <p className="text-xs mt-0.5" style={{ color: C.base.textMuted }}>
+                  {t("Grading report")} · {new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}
+                </p>
+              </div>
+              <span className="text-xs font-medium tabular-nums" style={{ color: C.base.textMuted }}>
+                {sorted.length} {t("siswa")}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {[
+                { label: t("Average"), val: String(avgScore) },
+                { label: t("Highest"), val: String(highest) },
+                { label: t("Lowest"), val: String(lowest) },
+                { label: t("Pass rate"), val: `${results.length ? Math.round((passing / results.length) * 100) : 0}%` },
+              ].map((st) => (
+                <div
+                  key={st.label}
+                  className="rounded-xl px-3 py-2.5 text-center"
+                  style={{ background: C.base.surfaceMuted, border: `1px solid ${C.base.border}` }}
+                >
+                  <div className="text-lg font-bold tabular-nums" style={{ color: C.base.text }}>{st.val}</div>
+                  <div className="text-[11px]" style={{ color: C.base.textMuted }}>{st.label}</div>
+                </div>
+              ))}
+            </div>
+
+            <div className="overflow-x-auto rounded-xl border" style={{ borderColor: C.base.border }}>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr style={{ background: C.base.surfaceMuted, borderBottom: `1px solid ${C.base.border}` }}>
+                    <th className="px-3 py-2 text-left font-semibold">#</th>
+                    <th className="px-3 py-2 text-left font-semibold">{t("Student")}</th>
+                    <th className="px-3 py-2 text-left font-semibold">{t("Student Number")}</th>
+                    <th className="px-3 py-2 text-left font-semibold">{t("Class")}</th>
+                    <th className="px-3 py-2 text-right font-semibold">{t("Score")}</th>
+                    <th className="px-3 py-2 text-right font-semibold">{t("Correct")}</th>
+                    <th className="px-3 py-2 text-right font-semibold">{t("Wrong")}</th>
+                    <th className="px-3 py-2 text-right font-semibold">{t("Essay")}</th>
+                    <th className="px-3 py-2 text-left font-semibold">{t("Status")}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y" style={{ borderColor: C.base.borderLight }}>
+                  {sorted.map((row, idx) => (
+                    <tr key={row.id}>
+                      <td className="px-3 py-2 tabular-nums">{idx + 1}</td>
+                      <td className="px-3 py-2 font-medium">{row.name}</td>
+                      <td className="px-3 py-2 font-mono tabular-nums">{row.nis}</td>
+                      <td className="px-3 py-2">{row.className}</td>
+                      <td className="px-3 py-2 text-right font-bold tabular-nums">{row.score}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{row.correct}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{row.wrong}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{row.essayScore}/{row.essayMax}</td>
+                      <td className="px-3 py-2">{row.status === "complete" ? t("Graded") : row.status === "needs_manual" ? t("Manual Needed") : t("Auto Graded")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </Modal>
       )}
     </div>
   );

@@ -1,4 +1,4 @@
-﻿# ──────────────────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────────
 # SmartCBT — Docker Compose (All-in-One)
 #
 # Satu file yang build dan menjalankan seluruh stack (PostgreSQL + Backend API
@@ -84,6 +84,7 @@ services:
       SETUP_AUTH_FORCE_DEFAULT: "true"
       # Jika true, database akan di-install dan di-seed otomatis saat backend boot.
       SETUP_AUTO_SEED: "true"
+      GEMINI_API_KEY: "${GEMINI_API_KEY:-}"
     volumes:
       - uploads-data:/app/uploads
       - server-config:/app/server/dist

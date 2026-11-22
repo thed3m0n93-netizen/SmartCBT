@@ -1,8 +1,11 @@
 import { useState, useEffect, useMemo } from "react";
+import { useNavigate } from "react-router";
 import {
   ChevronLeft,
   ChevronRight,
   Download,
+  Eye,
+  EyeOff,
   Lock,
   Plus,
   Radio,
@@ -19,6 +22,10 @@ import {
   createExam,
   updateExam,
   deleteExam,
+  generateToken,
+  exportExamResults,
+  downloadFromBase64,
+  publishExamResults,
   type ExamRow,
   type QuestionBankRow,
   type ClassRow,
@@ -27,7 +34,8 @@ import { useAuth } from "../../app/AuthContext";
 import { useI18n } from "../../i18n";
 import { ResultCount, SearchInput, TablePagination } from "../../components/DataTable";
 import { matchesSearch, useDataTable, type Accessors } from "../../hooks/useDataTable";
-import { C, S, alpha } from "../../styles/tokens";
+import { C, S } from "../../styles/tokens";
+import { Btn, Modal, Notice } from "../../components/ui";
 
 type ExamStatus = "draft" | "scheduled" | "active" | "completed";
 
@@ -45,6 +53,7 @@ interface Exam {
   questionCount: number;
   randomize: boolean;
   sebRequired: boolean;
+  resultsPublished: boolean;
   token?: string;
   createdBy: string;
 }
@@ -80,6 +89,7 @@ function mapDbExam(row: ExamRow): Exam {
     questionCount: row.question_count,
     randomize: row.randomize_questions,
     sebRequired: row.seb_required,
+    resultsPublished: row.results_published !== false,
     token: row.dynamic_token ?? undefined,
     createdBy: row.teacher_name,
   };
@@ -106,6 +116,7 @@ const EXAM_ACCESSORS: Accessors<Exam, ExamSortKey> = {
 export default function ExamsPage() {
   const { user } = useAuth();
   const { t } = useI18n();
+  const navigate = useNavigate();
   const [exams, setExams] = useState<Exam[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -113,6 +124,16 @@ export default function ExamsPage() {
   const [search, setSearch] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [createStep, setCreateStep] = useState(1);
+
+  // Action feedback + confirm modal state
+  const [actionMsg, setActionMsg] = useState<{ type: "ok" | "error"; text: string } | null>(null);
+  const [busyExamId, setBusyExamId] = useState<string | null>(null);
+  const [confirmAction, setConfirmAction] = useState<{
+    type: "force-end" | "delete" | "force-delete";
+    exam: Exam;
+    detail?: string;
+  } | null>(null);
+  const [confirmBusy, setConfirmBusy] = useState(false);
 
   // Wizard form state (mapped to the `exams` table columns on save).
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -216,7 +237,7 @@ export default function ExamsPage() {
     } catch (err: any) {
       setShowCreate(false);
       setEditingId(null);
-      alert(err.message || t("Failed to load exam for editing"));
+      setActionMsg({ type: "error", text: err?.message || t("Failed to load exam for editing") });
     }
   }
 
@@ -279,35 +300,115 @@ export default function ExamsPage() {
   }
 
   async function handlePublish(exam: Exam) {
+    setBusyExamId(exam.id);
+    setActionMsg(null);
     try {
       await updateExam(exam.id, { status: "published" });
       await reloadExams();
+      setActionMsg({ type: "ok", text: t("Ujian \"{title}\" berhasil dipublikasikan.", { title: exam.title }) });
     } catch (err: any) {
-      alert(err.message || t("Failed to publish exam"));
+      setActionMsg({ type: "error", text: err?.message || t("Failed to publish exam") });
+    } finally {
+      setBusyExamId(null);
     }
   }
 
-  async function handleDelete(exam: Exam) {
-    if (!window.confirm(t("Delete exam \"{title}\"? This cannot be undone.", { title: exam.title }))) return;
+  async function handleRegenerateToken(exam: Exam) {
+    if (!user) return;
+    setBusyExamId(exam.id);
+    setActionMsg(null);
     try {
-      await deleteExam(exam.id);
-      await reloadExams();
+      const res = await generateToken(exam.id, user.id);
+      setExams((prev) => prev.map((e) => (e.id === exam.id ? { ...e, token: res.token } : e)));
+      setActionMsg({ type: "ok", text: t("Token baru untuk \"{title}\": {token}", { title: exam.title, token: res.token }) });
     } catch (err: any) {
-      if (err?.status === 409) {
-        const force = window.confirm(
-          `${err.message}\n\n${t("Delete permanently, including all student sessions, answers and results?")}`
-        );
-        if (force) {
-          try {
-            await deleteExam(exam.id, true);
-            await reloadExams();
-          } catch (e: any) {
-            alert(e.message || t("Failed to delete exam"));
-          }
-        }
+      setActionMsg({ type: "error", text: err?.message || t("Gagal memperbarui token ujian.") });
+    } finally {
+      setBusyExamId(null);
+    }
+  }
+
+  async function handleExportExam(exam: Exam) {
+    setBusyExamId(exam.id);
+    setActionMsg(null);
+    try {
+      const res = await exportExamResults({ examId: exam.id, format: "excel" });
+      downloadFromBase64(res);
+      setActionMsg({ type: "ok", text: t("Hasil ujian diunduh: {file}", { file: res.fileName }) });
+    } catch (err: any) {
+      setActionMsg({ type: "error", text: err?.message || t("Gagal mengekspor hasil ujian.") });
+    } finally {
+      setBusyExamId(null);
+    }
+  }
+
+  async function handleToggleResultsPublished(exam: Exam) {
+    const next = !exam.resultsPublished;
+    setBusyExamId(exam.id);
+    setActionMsg(null);
+    try {
+      await publishExamResults(exam.id, next);
+      setExams((prev) => prev.map((e) => (e.id === exam.id ? { ...e, resultsPublished: next } : e)));
+      setActionMsg({
+        type: "ok",
+        text: next
+          ? t("Nilai ujian \"{title}\" dirilis ke siswa.", { title: exam.title })
+          : t("Nilai ujian \"{title}\" ditahan dari siswa.", { title: exam.title }),
+      });
+    } catch (err: any) {
+      setActionMsg({ type: "error", text: err?.message || t("Gagal mengubah status rilis nilai.") });
+    } finally {
+      setBusyExamId(null);
+    }
+  }
+
+  function handleDelete(exam: Exam) {
+    setActionMsg(null);
+    setConfirmAction({ type: "delete", exam });
+  }
+
+  function handleForceEnd(exam: Exam) {
+    setActionMsg(null);
+    setConfirmAction({ type: "force-end", exam });
+  }
+
+  async function executeConfirmAction() {
+    if (!confirmAction) return;
+    setConfirmBusy(true);
+    const { type, exam } = confirmAction;
+    try {
+      if (type === "force-end") {
+        await updateExam(exam.id, { status: "archived" });
+        await reloadExams();
+        setConfirmAction(null);
+        setActionMsg({ type: "ok", text: t("Ujian \"{title}\" diakhiri secara paksa.", { title: exam.title }) });
+      } else if (type === "delete") {
+        await deleteExam(exam.id);
+        await reloadExams();
+        setConfirmAction(null);
+        setActionMsg({ type: "ok", text: t("Ujian \"{title}\" berhasil dihapus.", { title: exam.title }) });
       } else {
-        alert(err.message || t("Failed to delete exam"));
+        await deleteExam(exam.id, true);
+        await reloadExams();
+        setConfirmAction(null);
+        setActionMsg({ type: "ok", text: t("Ujian \"{title}\" beserta seluruh sesi dihapus permanen.", { title: exam.title }) });
       }
+    } catch (err: any) {
+      if (type === "delete" && err?.status === 409) {
+        setConfirmAction({
+          type: "force-delete",
+          exam,
+          detail: err?.message || t("Ujian ini memiliki sesi siswa aktif atau riwayat pengerjaan."),
+        });
+      } else {
+        setActionMsg({
+          type: "error",
+          text: err?.message || t("Gagal memproses aksi ujian."),
+        });
+        setConfirmAction(null);
+      }
+    } finally {
+      setConfirmBusy(false);
     }
   }
 
@@ -351,6 +452,22 @@ export default function ExamsPage() {
           {t("Create Exam")}
         </button>
       </div>
+
+      {actionMsg && (
+        <Notice type={actionMsg.type}>
+          <div className="flex items-center justify-between gap-2">
+            <span>{actionMsg.text}</span>
+            <button
+              type="button"
+              onClick={() => setActionMsg(null)}
+              aria-label={t("Close")}
+              className="opacity-70 hover:opacity-100"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </Notice>
+      )}
 
       {/* Status tabs + search */}
       <div className="flex gap-2 flex-wrap items-center">
@@ -461,6 +578,15 @@ export default function ExamsPage() {
                       {t("Random")}
                     </span>
                   )}
+                  {!exam.resultsPublished && (
+                    <span
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-semibold"
+                      style={{ background: C.warn.bg, color: C.warn.dark }}
+                    >
+                      <EyeOff className="w-3 h-3" />
+                      {t("Nilai Ditahan")}
+                    </span>
+                  )}
                 </div>
                 <h3 className="font-semibold text-base" style={{ color: C.base.text }}>
                   {exam.title}
@@ -525,8 +651,14 @@ export default function ExamsPage() {
                     {exam.token}
                   </div>
                 </div>
-                <button className="inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-lg cbt-row-hover" style={{ color: C.brand.dark }}>
-                  <RefreshCw className="w-3 h-3" />
+                <button
+                  type="button"
+                  onClick={() => handleRegenerateToken(exam)}
+                  disabled={busyExamId === exam.id}
+                  className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 rounded-lg cbt-row-hover disabled:opacity-50 min-h-[34px]"
+                  style={{ color: C.brand.dark }}
+                >
+                  <RefreshCw className={`w-3 h-3 ${busyExamId === exam.id ? "animate-spin" : ""}`} />
                   {t("Regenerate")}
                 </button>
               </div>
@@ -536,48 +668,87 @@ export default function ExamsPage() {
             <div className="flex gap-2 mt-auto">
               {exam.status === "draft" && (
                 <>
-                  <button onClick={() => openEditWizard(exam)} className="flex-1 py-2.5 rounded-xl text-xs font-medium border transition-all cbt-row-hover min-h-[40px]" style={{ borderColor: C.base.border, color: C.base.textBody, background: C.base.surface }}>
+                  <button type="button" onClick={() => openEditWizard(exam)} className="flex-1 py-2.5 rounded-xl text-xs font-medium border transition-all cbt-row-hover min-h-[40px]" style={{ borderColor: C.base.border, color: C.base.textBody, background: C.base.surface }}>
                     {t("Edit")}
                   </button>
-                  <button onClick={() => handlePublish(exam)} className="flex-1 py-2.5 rounded-xl text-xs font-semibold transition-all hover:opacity-90 min-h-[40px]" style={{ background: C.brand.main, color: "#FFFFFF", boxShadow: S.btnPrimary }}>
+                  <button type="button" onClick={() => handlePublish(exam)} disabled={busyExamId === exam.id} className="flex-1 py-2.5 rounded-xl text-xs font-semibold transition-all hover:opacity-90 disabled:opacity-50 min-h-[40px]" style={{ background: C.brand.main, color: "#FFFFFF", boxShadow: S.btnPrimary }}>
                     {t("Publish")}
                   </button>
                 </>
               )}
               {exam.status === "scheduled" && (
                 <>
-                  <button onClick={() => openEditWizard(exam)} className="flex-1 py-2.5 rounded-xl text-xs font-medium border transition-all cbt-row-hover min-h-[40px]" style={{ borderColor: C.base.border, color: C.base.textBody, background: C.base.surface }}>
+                  <button type="button" onClick={() => openEditWizard(exam)} className="flex-1 py-2.5 rounded-xl text-xs font-medium border transition-all cbt-row-hover min-h-[40px]" style={{ borderColor: C.base.border, color: C.base.textBody, background: C.base.surface }}>
                     {t("Edit Schedule")}
                   </button>
-                  <button onClick={() => handlePublish(exam)} className="flex-1 py-2.5 rounded-xl text-xs font-semibold transition-all hover:opacity-90 min-h-[40px]" style={{ background: C.ok.main, color: "#FFFFFF", boxShadow: S.btnSuccess }}>
+                  <button type="button" onClick={() => handlePublish(exam)} disabled={busyExamId === exam.id} className="flex-1 py-2.5 rounded-xl text-xs font-semibold transition-all hover:opacity-90 disabled:opacity-50 min-h-[40px]" style={{ background: C.ok.main, color: "#FFFFFF", boxShadow: S.btnSuccess }}>
                     {t("Publish Now")}
                   </button>
                 </>
               )}
               {exam.status === "active" && (
                 <>
-                  <button className="flex-1 inline-flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-semibold transition-all hover:opacity-90 min-h-[40px]" style={{ background: C.brand.main, color: "#FFFFFF", boxShadow: S.btnPrimary }}>
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/teacher/monitoring?examId=${exam.id}`)}
+                    className="flex-1 inline-flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-semibold transition-all hover:opacity-90 min-h-[40px]"
+                    style={{ background: C.brand.main, color: "#FFFFFF", boxShadow: S.btnPrimary }}
+                  >
                     <Radio className="w-3.5 h-3.5" />
                     {t("Monitor")}
                   </button>
-                  <button className="flex-1 py-2.5 rounded-xl text-xs font-medium border transition-all cbt-row-hover min-h-[40px]" style={{ borderColor: C.danger.border, color: C.danger.text, background: C.danger.bgLight }}>
+                  <button
+                    type="button"
+                    onClick={() => handleForceEnd(exam)}
+                    disabled={busyExamId === exam.id}
+                    className="flex-1 py-2.5 rounded-xl text-xs font-medium border transition-all cbt-row-hover disabled:opacity-50 min-h-[40px]"
+                    style={{ borderColor: C.danger.border, color: C.danger.text, background: C.danger.bgLight }}
+                  >
                     {t("Force End")}
                   </button>
                 </>
               )}
               {exam.status === "completed" && (
                 <>
-                  <button className="flex-1 py-2.5 rounded-xl text-xs font-medium border transition-all cbt-row-hover min-h-[40px]" style={{ borderColor: C.base.border, color: C.base.textBody, background: C.base.surface }}>
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/teacher/grading?examId=${exam.id}`)}
+                    className="flex-1 py-2.5 rounded-xl text-xs font-medium border transition-all cbt-row-hover min-h-[40px]"
+                    style={{ borderColor: C.base.border, color: C.base.textBody, background: C.base.surface }}
+                  >
                     {t("View Results")}
                   </button>
-                  <button className="flex-1 inline-flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-semibold transition-all hover:opacity-90 min-h-[40px]" style={{ background: C.ok.main, color: "#FFFFFF", boxShadow: S.btnSuccess }}>
+                  <button
+                    type="button"
+                    onClick={() => handleExportExam(exam)}
+                    disabled={busyExamId === exam.id}
+                    className="flex-1 inline-flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-semibold transition-all hover:opacity-90 disabled:opacity-50 min-h-[40px]"
+                    style={{ background: C.ok.main, color: "#FFFFFF", boxShadow: S.btnSuccess }}
+                  >
                     <Download className="w-3.5 h-3.5" />
                     {t("Export")}
                   </button>
                 </>
               )}
             </div>
+            {exam.status === "completed" && (
+              <button
+                type="button"
+                onClick={() => handleToggleResultsPublished(exam)}
+                disabled={busyExamId === exam.id}
+                className="w-full inline-flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-medium border transition-all cbt-row-hover disabled:opacity-50 min-h-[38px]"
+                style={{
+                  borderColor: exam.resultsPublished ? C.warn.border : C.ok.border,
+                  color: exam.resultsPublished ? C.warn.dark : C.ok.dark,
+                  background: exam.resultsPublished ? C.warn.bgLight : C.ok.bgLight,
+                }}
+              >
+                {exam.resultsPublished ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                {exam.resultsPublished ? t("Tahan Nilai dari Siswa") : t("Rilis Nilai ke Siswa")}
+              </button>
+            )}
             <button
+              type="button"
               onClick={() => handleDelete(exam)}
               className="w-full inline-flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-medium border transition-all cbt-row-hover min-h-[38px]"
               style={{ borderColor: C.danger.border, color: C.danger.text, background: C.base.surface }}
@@ -876,6 +1047,49 @@ export default function ExamsPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {confirmAction && (
+        <Modal
+          title={
+            confirmAction.type === "force-end"
+              ? t("Akhiri Ujian Sekarang")
+              : confirmAction.type === "force-delete"
+                ? t("Hapus Permanen Beserta Sesi")
+                : t("Hapus Ujian")
+          }
+          onClose={() => !confirmBusy && setConfirmAction(null)}
+          actions={
+            <>
+              <Btn onClick={() => setConfirmAction(null)} disabled={confirmBusy} style={{ flex: 1 }}>
+                {t("Batal")}
+              </Btn>
+              <Btn
+                variant="danger"
+                onClick={executeConfirmAction}
+                disabled={confirmBusy}
+                style={{ flex: 1 }}
+              >
+                {confirmBusy
+                  ? t("Memproses…")
+                  : confirmAction.type === "force-end"
+                    ? t("Akhiri Paksa")
+                    : confirmAction.type === "force-delete"
+                      ? t("Hapus Permanen")
+                      : t("Hapus")}
+              </Btn>
+            </>
+          }
+        >
+          {confirmAction.detail && <Notice type="warn">{confirmAction.detail}</Notice>}
+          <p className="text-sm leading-relaxed" style={{ color: C.base.textBody }}>
+            {confirmAction.type === "force-end"
+              ? t("Ujian \"{title}\" akan diarsipkan dan ditutup bagi siswa yang belum memulai.", { title: confirmAction.exam.title })
+              : confirmAction.type === "force-delete"
+                ? t("Delete permanently, including all student sessions, answers and results?")
+                : t("Delete exam \"{title}\"? This cannot be undone.", { title: confirmAction.exam.title })}
+          </p>
+        </Modal>
       )}
     </div>
   );

@@ -1,16 +1,16 @@
 # SmartCBT — Ringkasan Fitur
 
-> Terakhir disinkronkan dengan kode: **2026-11-12 (build 137)**. Rincian status
+> Terakhir disinkronkan dengan kode: **2026-11-19 (build 148)**. Rincian status
 > per fitur ada di `FEATURES.md`; riwayat pekerjaan ada di `CHANGELOG.md`
 > (build 136 = rekonstruksi pekerjaan 7 Okt–10 Nov yang sempat tidak tercatat).
 
 ## Status umum
-SmartCBT adalah platform CBT (Computer Based Test) sekolah multi-peran yang fiturnya sudah melampaui sekadar ujian: manajemen database multi-engine, autentikasi single-session, bank soal (5 tipe + media + LaTeX + impor/ekspor + AI generate), pelaksanaan ujian dengan anti-cheat dua lapis, monitoring SSE real-time, penilaian manual + AI, modul belajar (LMS), tugas dengan AI grading batch, berita sekolah, penyimpanan berkas, branding, PWA, game mode multiplayer "Nusantara High", dan deployment Docker/standalone.
+SmartCBT adalah platform CBT (Computer Based Test) sekolah multi-peran yang fiturnya sudah melampaui sekadar ujian: manajemen database multi-engine, autentikasi single-session + ganti password mandiri, bank soal (5 tipe + media + LaTeX + impor/ekspor + AI generate), pelaksanaan ujian dengan anti-cheat dua lapis & overlay SEB, monitoring SSE real-time, penilaian manual + AI + kontrol rilis nilai, modul belajar (LMS), tugas dengan AI grading batch, berita sekolah, audit log sistem, penyimpanan berkas, branding, PWA, game mode multiplayer "Nusantara High", dan deployment Docker/standalone.
 
 Status umum saat ini:
-- Fitur inti CBT: berjalan; durasi (138) & kepemilikan sesi (139) ditegakkan server — E2E lobi/ownership LULUS di DB lokal nyata (2026-11-14), uji visual browser menyusul
-- Fitur pengawasan, AI, LMS, tugas, berita, storage: sudah terintegrasi & operasional
-- Gap utama: lanjutan audit peran endpoint manajemen (`students.ts` dkk.), rotasi secret bawaan di repo, audit log, reset password, notifikasi
+- Fitur inti CBT: berjalan; durasi (138), kepemilikan sesi (139), dan kepemilikan lintas-staff (148) ditegakkan server
+- Fitur pengawasan, AI, LMS, tugas, berita, storage, rilis nilai, ganti password, dan audit log: sudah terintegrasi & operasional
+- Gap utama tersisa: rotasi secret bawaan di repo, notifikasi (email/push) + scheduler, scaling sesi multi-instance (Redis/DB), dan roadmap E-Rapor (§13)
 
 ---
 
@@ -35,12 +35,15 @@ Status umum saat ini:
 - Registrasi mandiri siswa publik via `/register` (gerbang setting `student_registration_open`)
 - Profil siswa (NISN, kontak, kelas, avatar) + edit profil & avatar oleh siswa
 - Rotasi siswa: promote/naik kelas massal (resolusi bentrok NISN), graduate, aktif/nonaktif
+- Ubah password mandiri terautentikasi (`POST /api/auth/change-password`) via tombol **Password** di header untuk semua peran
+- Kepemilikan resource antar-staff (`403 NOT_OWNER`) & actor-id dari sesi pada authoring ujian, bank soal, penilaian, import/export, token, dan SEB
 
 ### 3. Dashboard admin
 - Statistik (Total Users, Active Exams, Submissions Today, Flagged Events) via komponen `DashboardStats` bersama
 - Daftar ujian aktif + progres siswa, feed aktivitas
-- Panel Sesi Login Aktif (revoke per user)
+- Panel Sesi Login Aktif (revoke per user dengan Modal konfirmasi)
 - Panel System Health: uptime, memori, latensi & versi DB, pemakaian disk upload, klien SSE, probe Ollama
+- Panel **Log Audit Sistem**: pencatatan aktivitas sensitif (`audit_logs`) + filter kategori, pencarian, dan paginasi
 - Backup/restore database JSON dari UI
 
 ### 4. Bank soal dan media
@@ -62,19 +65,20 @@ Status umum saat ini:
 - Timer countdown + auto-submit; extra time guru masuk hitungan klien
 - Navigator soal + flag review; skor dihitung otoritatif server (kunci tak pernah dikirim ke klien)
 - Anti-cheat klien: kiosk fullscreen, blokir shortcut, violation tracker (dedupe, limit → force submit), focus-loss via sendBeacon
-- Enforcement SEB server-side: jawaban ditolak tanpa bukti SEB
-- Hasil via modal submit + `GET /api/sessions/results/:sessionId` (halaman `SummaryPage` terpisah belum dirutekan)
+- Enforcement SEB server-side & **overlay blokir SEB di UI** (`sebBlocked` dengan pemeriksaan ulang & penguncian kirim jawaban)
+- Hasil via modal submit, halaman ringkasan `/student/summary`, & kontrol rilis nilai (**Menunggu Rilis Nilai** bila ditahan guru/admin)
 
 ### 7. Monitoring real-time dan pengawasan
-- SSE `/api/sse/monitoring` (snapshot berubah → push; auto-reconnect di UI)
+- SSE `/api/sse/monitoring` (snapshot berubah → push; auto-reconnect di UI, dukungan deep-link `?examId=`)
 - Monitoring semua/per ujian: progres, IP, device, focus-loss, pelanggaran anticheat
-- Aksi guru: force submit, extra time (maks 480 mnt), reset sesi macet
+- Aksi guru: force submit, extra time (maks 480 mnt), tandai mencurigakan/terputus manual, reset sesi macet (dengan modal konfirmasi)
 
 ### 8. Penilaian dan analisis
 - Auto-generate `exam_results` saat submit; status `pending_essay_grading`
 - Nilai esai manual + AI (per jawaban / batch), clamp ke bobot soal
+- Kontrol **Rilis Nilai / Tahan Nilai** (`results_published`) oleh guru/admin & redaksi otomatis di endpoint siswa
 - Analisis butir soal (daya beda per opsi benar/salah/terjawab)
-- Ekspor hasil XLSX 2 sheet (Rekap + per siswa, termasuk pelanggaran/IP/device) / CSV
+- Ekspor hasil XLSX 2 sheet (Rekap + per siswa, termasuk pelanggaran/IP/device), CSV, dan **Pratinjau Cetak / Simpan PDF in-app**
 
 ### 9. AI dan integrasi eksternal
 - 13 provider (Ollama default self-hosted, OpenAI, Anthropic, DeepSeek, GLM, Gemini, Mistral, Groq, 3 varian NVIDIA NIM, OpenRouter, custom OpenAI-compatible)
@@ -114,23 +118,18 @@ Status umum saat ini:
 
 ## Gap yang masih ada
 
-### Perlu segera (keamanan/keadilan ujian)
-- **Gelombang otorisasi lanjutan (audit build 144, terurut):** ~~AI grade esai (self-grading!) + generate soal~~ — **selesai build 146** (`requireStaff`, matriks 12/12 DB nyata). Masih terbuka: exams tulis; questions/banks tulis; grading esai manual (`POST /api/grading/essay` — siswa bisa menilai esainya sendiri secara manual); questions/import; GET /api/results (bocor ke siswa); tokens generate/revoke (actor-id dari body yang terbaca publik) + SEB config/file; storage ownerId dari body + legacy delete. Pola siap pakai: `requireAdmin`/`requireStaff`/`ownership.ts` — detail di CHANGELOG 144/146
-- ~~Otorisasi ROLE di `auth-users.ts`~~ — **selesai build 143** (matriks peran 16/16); ~~`students.ts`~~ — **selesai build 144** (matriks 9/9, `requireStaff`)
-- ~~Validasi kepemilikan `sessionId`/`studentId`~~ — **selesai build 139 & TERUJI E2E DB nyata 2026-11-14 (19/19)**: lintas siswa → 403 `NOT_OWNER`, lobi game per kelas terisolasi, progres `game_nusantara_state` pulih saat reconnect
-- ~~Penegakan durasi/`end_time` + extra time di server~~ — **selesai build 138**; uji alur ujian penuh start→lewat-batas→auto-close dengan DB nyata menyusul
-- Rotasi secret bawaan: key NVIDIA (`ai-keys.ts`), kredensial DB default (`db.ts`), password compose, akun demo, sisa `.env.local`
-- Overlay UI blokir SEB tidak dirender (`sebBlocked`); tombol stub di kartu ExamsPage (Regenerate/Monitor/Force End/Export)
-- Inkonsistensi pengecekan role `admin` vs `super_admin` di sebagian handler
-- Sesi login & SSE in-memory → belum bisa scale horizontal multi-instance
+### Selesai pada gelombang hardening (build 138–148)
+- **Gelombang otorisasi penuh & kepemilikan antar-staff** — selesai build 143–148 (`students.ts`, `auth-users.ts`, `aiagent.ts`, `exams.ts`, `questions.ts`, `question-import.ts`, `grading.ts`, `tokens.ts`, `storage.ts`; `403 NOT_OWNER`, `STAFF_ONLY`, `ADMIN_ONLY`, actor-id dari sesi)
+- **Overlay SEB (`sebBlocked`), tombol aksi `ExamsPage`, deep-link `?examId=`, modal konfirmasi tanpa browser popup** — selesai build 148
+- **Publish/unpublish hasil ujian (`results_published`), Pratinjau Cetak PDF in-app, `SummaryPage` ter-route (`/student/summary`)** — selesai build 147–148
+- **Ubah password mandiri (`ChangePasswordModal`), Tandai sesi manual (`MonitoringPage`), dan System Audit Log (`audit_logs`)** — selesai build 147–148
 
-### Pelengkapan fitur
-- Ubah/reset password mandiri
-- Tandai sesi disrupted/flagged manual dari UI (status ada di DB, aksinya belum)
-- Publish/unpublish hasil ke siswa; ekspor PDF; audit log
+### Masih tersisa (operasional & jangka panjang)
+- Rotasi secret bawaan: key NVIDIA (`ai-keys.ts`), kredensial DB default (`db.ts`), password compose, akun demo
+- Sesi login & SSE in-memory → belum bisa scale horizontal multi-instance
 - Notifikasi (email/push) + scheduler
 - Multi-tenant penuh (baru isolasi file per domain)
-- Integrasi data (soal/nilai) ke Game Mode (kuis masih `QUIZ_BANK` statis); lobi game in-memory (belum multi-instance); rute-kan atau hapus `SummaryPage.tsx`
+- Integrasi data bank soal ke Game Mode (kuis masih `QUIZ_BANK` statis); lobi game in-memory
 - Kuis/post-test di dalam modul belajar
 
 ### Rencana besar

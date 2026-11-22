@@ -70,14 +70,34 @@ export interface AiProviderInfo {
 }
 
 /** Fallback provider id used when the stored setting is empty/unknown. */
-export const DEFAULT_AI_PROVIDER_ID = "nvidia-mistral-large";
+export const DEFAULT_AI_PROVIDER_ID = "gemini";
 
 /**
- * Provider catalog. Order matters: instant NVIDIA NIM providers appear first so
- * admins & teachers can use AI immediately without setup, followed by
+ * Provider catalog. Order matters: built-in Google Gemini and instant providers
+ * appear first so admins & teachers can use AI immediately, followed by
  * placeholder entries for other external/self-hosted AI providers.
  */
 export const AI_PROVIDERS: AiProviderInfo[] = [
+  {
+    id: "gemini",
+    label: "Google Gemini (Bawaan)",
+    protocol: "gemini",
+    defaultBaseUrl: "https://generativelanguage.googleapis.com/v1beta",
+    requiresApiKey: true,
+    apiKeyEnv: "GEMINI_API_KEY",
+    hasBuiltInApiKey: true,
+    category: "instant",
+    isPlaceholder: false,
+    badge: "Default · Bawaan",
+    defaultModel: "gemini-4-hydrogen",
+    models: [
+      "gemini-4-hydrogen",
+      "gemini-3.1-flash-lite",
+      "gemini-4-neon",
+      "gemini-4-carbon",
+    ],
+    note: "Provider bawaan SmartCBT menggunakan SDK @google/genai (Gemini 4 Hydrogen) melalui GEMINI_API_KEY server.",
+  },
   {
     id: "nvidia-mistral-large",
     label: "NVIDIA NIM · Mistral Large 4 (1T)",
@@ -99,7 +119,7 @@ export const AI_PROVIDERS: AiProviderInfo[] = [
       reasoningEffort: "high",
       maxTokens: 4096,
     },
-    note: "Akses instan NVIDIA NIM (Mistral Large 4 1T) dengan API key bawaan — siap pakai langsung untuk Generate Soal & AI Grading.",
+    note: "Akses instan NVIDIA NIM (Mistral Large 4 1T) — siap pakai langsung untuk Generate Soal & AI Grading.",
   },
   {
     id: "nvidia",
@@ -170,26 +190,6 @@ export const AI_PROVIDERS: AiProviderInfo[] = [
     defaultModel: "gpt-4o-mini",
     models: ["gpt-4o-mini", "gpt-4o", "gpt-4.1", "gpt-4.1-mini", "o4-mini"],
     note: "Placeholder — masukkan API key dari platform.openai.com untuk mengaktifkan.",
-  },
-  {
-    id: "gemini",
-    label: "Google Gemini",
-    protocol: "gemini",
-    defaultBaseUrl: "https://generativelanguage.googleapis.com/v1beta",
-    requiresApiKey: true,
-    category: "placeholder",
-    isPlaceholder: true,
-    badge: "Placeholder · API Key",
-    defaultModel: "gemini-3.8-flash",
-    models: [
-      "gemini-3.8-flash",
-      "gemini-3.7-flash",
-      "gemini-3.6-flash",
-      "gemini-3.5-flash",
-      "gemini-3.5-flash-lite",
-      "gemini-3.1-pro-preview",
-    ],
-    note: "Placeholder — masukkan API key dari aistudio.google.com untuk mengaktifkan.",
   },
   {
     id: "anthropic",
@@ -416,6 +416,9 @@ export function resolveAiApiKey(
 /** Standard error message when a key-requiring provider has no key stored. */
 export function aiProviderRequiresKeyError(providerId: string): string {
   const provider = getAiProvider(providerId);
+  if (provider.id === "gemini") {
+    return "GEMINI_API_KEY belum tersedia di server. Tambahkan GEMINI_API_KEY pada Settings > Secrets atau file .env server.";
+  }
   return `Provider ${provider.label} memerlukan API key. Buka Pengaturan → AI Agent untuk menyimpannya.`;
 }
 

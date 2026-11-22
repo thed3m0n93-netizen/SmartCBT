@@ -11,6 +11,7 @@ import {
   requireStaff,
   sessionOwnerOf,
 } from "./ownership.js";
+import { recordAuditLog } from "./audit.js";
 
 function generateTokenValue(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -48,8 +49,8 @@ addRoute("POST", /^\/api\/tokens\/generate$/, async (req, res, body) => {
   if (!examId) {
     return json(res, { error: "examId required" }, 400);
   }
-  const exam = await queryOne<{ created_by: string }>(
-    `SELECT id, created_by FROM exams WHERE id = $1`,
+  const exam = await queryOne<{ created_by: string; title: string }>(
+    `SELECT id, created_by, title FROM exams WHERE id = $1`,
     [examId]
   );
   if (!exam) return json(res, { error: "Ujian tidak ditemukan" }, 404);
@@ -65,6 +66,13 @@ addRoute("POST", /^\/api\/tokens\/generate$/, async (req, res, body) => {
     `SELECT dynamic_token, is_token_active FROM exams WHERE id = $1`,
     [examId]
   );
+  await recordAuditLog({
+    req,
+    action: "token.generate",
+    entityType: "exam",
+    entityId: examId,
+    summary: `Generate token baru untuk ujian "${exam.title}"`,
+  });
   json(res, { token: updated?.dynamic_token, isActive: updated?.is_token_active });
 });
 
@@ -79,8 +87,8 @@ addRoute("POST", /^\/api\/tokens\/revoke$/, async (req, res, body) => {
   if (!examId) {
     return json(res, { error: "examId required" }, 400);
   }
-  const exam = await queryOne<{ created_by: string }>(
-    `SELECT id, created_by FROM exams WHERE id = $1`,
+  const exam = await queryOne<{ created_by: string; title: string }>(
+    `SELECT id, created_by, title FROM exams WHERE id = $1`,
     [examId]
   );
   if (!exam) return json(res, { error: "Ujian tidak ditemukan" }, 404);
@@ -97,6 +105,13 @@ addRoute("POST", /^\/api\/tokens\/revoke$/, async (req, res, body) => {
     `SELECT dynamic_token, is_token_active FROM exams WHERE id = $1`,
     [examId]
   );
+  await recordAuditLog({
+    req,
+    action: "token.revoke",
+    entityType: "exam",
+    entityId: examId,
+    summary: `Nonaktifkan token ujian "${exam.title}"`,
+  });
   json(res, { token: updated?.dynamic_token, isActive: updated?.is_token_active });
 });
 
@@ -251,15 +266,32 @@ addRoute("GET", /^\/api\/seb\/config\/[^/]+$/, async (req, res) => {
 // PUT /api/seb/config/:examId — save (or clear) the approved hash.
 addRoute("PUT", /^\/api\/seb\/config\/[^/]+$/, async (req, res, body) => {
   if (!requireStaff(req, res)) return;
+  const caller = callerFromRequest(req)!;
   const examId = req.url.match(/^\/api\/seb\/config\/([^/]+)$/)![1];
-  const existing = await queryOne(`SELECT id FROM exams WHERE id = $1`, [examId]);
+  const existing = await queryOne<{ id: string; created_by: string; title: string }>(
+    `SELECT id, created_by, title FROM exams WHERE id = $1`,
+    [examId]
+  );
   if (!existing) return json(res, { error: "Ujian tidak ditemukan" }, 404);
+  if (!isAdminCaller(caller) && String(existing.created_by) !== String(caller.id)) {
+    return json(res, NOT_OWNER.payload, NOT_OWNER.status);
+  }
   const { hash } = body ?? {};
   if (hash !== null && hash !== undefined && !isHex64(hash)) {
     return json(res, { error: "hash harus 64 karakter heksadesimal SHA-256 (atau null)" }, 400);
   }
   const normalised = hash == null ? null : String(hash).toLowerCase();
   await query(`UPDATE exams SET seb_config_hash = $1 WHERE id = $2`, [normalised, examId]);
+  await recordAuditLog({
+    req,
+    action: "seb.config_update",
+    entityType: "exam",
+    entityId: examId,
+    summary: normalised
+      ? `Pin hash konfigurasi SEB untuk "${existing.title}"`
+      : `Hapus pin hash konfigurasi SEB untuk "${existing.title}"`,
+    metadata: { pinned: Boolean(normalised) },
+  });
   json(res, { ok: true, examId, sebConfigHash: normalised });
 });
 
@@ -346,9 +378,16 @@ const sebFileStore = new Map<string, { fileName: string; base64: string }>();
 // NEVER trusted from the client, only recomputed here.
 addRoute("PUT", /^\/api\/seb\/file\/[^/]+$/, async (req, res, body) => {
   if (!requireStaff(req, res)) return;
+  const caller = callerFromRequest(req)!;
   const examId = req.url.match(/^\/api\/seb\/file\/([^/]+)$/)![1];
-  const existing = await queryOne(`SELECT id FROM exams WHERE id = $1`, [examId]);
+  const existing = await queryOne<{ id: string; created_by: string; title: string }>(
+    `SELECT id, created_by, title FROM exams WHERE id = $1`,
+    [examId]
+  );
   if (!existing) return json(res, { error: "Ujian tidak ditemukan" }, 404);
+  if (!isAdminCaller(caller) && String(existing.created_by) !== String(caller.id)) {
+    return json(res, NOT_OWNER.payload, NOT_OWNER.status);
+  }
   const { base64, fileName } = body ?? {};
   if (typeof base64 !== "string" || base64.length === 0) {
     return json(res, { error: "base64 file .seb wajib diisi" }, 400);
@@ -367,9 +406,18 @@ addRoute("PUT", /^\/api\/seb\/file\/[^/]+$/, async (req, res, body) => {
   }
   const hash = hashSebConfigText(text);
   await query(`UPDATE exams SET seb_config_hash = $1 WHERE id = $2`, [hash, examId]);
+  const storedFileName = typeof fileName === "string" && fileName ? fileName.slice(0, 120) : `smartcbt-${examId.slice(0, 8)}.seb`;
   sebFileStore.set(examId, {
-    fileName: typeof fileName === "string" && fileName ? fileName.slice(0, 120) : `smartcbt-${examId.slice(0, 8)}.seb`,
+    fileName: storedFileName,
     base64,
+  });
+  await recordAuditLog({
+    req,
+    action: "seb.file_upload",
+    entityType: "exam",
+    entityId: examId,
+    summary: `Unggah file konfigurasi SEB "${storedFileName}" untuk "${existing.title}"`,
+    metadata: { fileName: storedFileName },
   });
   json(res, { ok: true, examId, sebConfigHash: hash });
 });

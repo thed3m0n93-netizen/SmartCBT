@@ -30,10 +30,10 @@ const DEFAULTS: SchoolSettings = {
   school_logo: "",
   school_background: "",
   school_favicon: "",
-  ai_provider: "nvidia-mistral-large",
-  ai_model: "mistralai/mistral-large-4-1t-a52b",
+  ai_provider: "gemini",
+  ai_model: "gemini-4-hydrogen",
   ai_api_key: "",
-  ai_base_url: "https://integrate.api.nvidia.com/v1",
+  ai_base_url: "https://generativelanguage.googleapis.com/v1beta",
 };
 
 const FIELDS: { key: keyof SchoolSettings; label: string; type: string; placeholder: string }[] = [
@@ -574,28 +574,43 @@ export default function SettingsPage() {
           )}
         </Field>
 
-        {/* API key */}
-        <Field
-          label={t("Token API AI")}
-          hint={
-            aiHasBuiltInKey
-              ? t("API key bawaan sudah terpasang untuk provider ini — boleh dikosongkan.")
-              : undefined
-          }
-        >
-          <input
-            type="password"
-            value={aiApiKey}
-            onChange={(e) => setAiApiKey(e.target.value)}
-            placeholder={
+        {/* API key — hidden for Gemini (managed via server GEMINI_API_KEY) */}
+        {aiProviderInfo.id === "gemini" ? (
+          <Field label={t("Autentikasi AI")}>
+            <div
+              className="w-full px-3 py-2.5 rounded-lg text-xs"
+              style={{
+                background: C.base.surfaceMuted,
+                border: `1px solid ${C.base.border}`,
+                color: C.base.textMuted,
+              }}
+            >
+              {t("Google Gemini menggunakan kunci server bawaan (GEMINI_API_KEY pada Settings > Secrets / .env) secara otomatis.")}
+            </div>
+          </Field>
+        ) : (
+          <Field
+            label={t("Token API AI")}
+            hint={
               aiHasBuiltInKey
-                ? t("Kosongkan untuk memakai API key bawaan")
-                : t("Masukkan token API AI")
+                ? t("API key bawaan sudah terpasang untuk provider ini — boleh dikosongkan.")
+                : undefined
             }
-            className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
-            style={fieldInput}
-          />
-        </Field>
+          >
+            <input
+              type="password"
+              value={aiApiKey}
+              onChange={(e) => setAiApiKey(e.target.value)}
+              placeholder={
+                aiHasBuiltInKey
+                  ? t("Kosongkan untuk memakai API key bawaan")
+                  : t("Masukkan token API AI")
+              }
+              className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
+              style={fieldInput}
+            />
+          </Field>
+        )}
 
         {/* Server address — editable only for self-hosted providers. */}
         {aiProviderInfo.selfHosted ? (

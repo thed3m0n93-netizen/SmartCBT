@@ -22,6 +22,7 @@
  */
 import { query, addRoute, json, type AuthenticatedRequest } from "./utils.js";
 import { getDbType, isMySqlLike } from "../db.js";
+import { recordAuditLog } from "./audit.js";
 
 const APP_NAME = "SmartCBT";
 
@@ -44,6 +45,7 @@ const DELETE_ORDER = [
   "game_nusantara_state",
   "uploads",
   "settings",
+  "audit_logs",
   "classes",
   "subjects",
   "users",
@@ -66,8 +68,8 @@ function isAdminRole(role: string | undefined): boolean {
   return role === "super_admin" || role === "admin";
 }
 
-// POST /api/backup — dump all core tables into a downloadable JSON snapshot.
-addRoute("POST", /^\/api\/backup$/, async (req: AuthenticatedRequest, res) => {
+// POST /api/backup (and /api/backup/create) — dump all core tables into a downloadable JSON snapshot.
+addRoute("POST", /^\/api\/backup(\/create)?$/, async (req: AuthenticatedRequest, res) => {
   if (!isAdminRole(req.authUser?.role)) {
     return json(res, { error: "Hanya admin yang dapat membuat backup" }, 403);
   }
@@ -95,6 +97,14 @@ addRoute("POST", /^\/api\/backup$/, async (req: AuthenticatedRequest, res) => {
 
   const fileName = `smartcbt_backup_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.json`;
   const dataBase64 = Buffer.from(JSON.stringify(snapshot), "utf-8").toString("base64");
+
+  await recordAuditLog({
+    req,
+    action: "backup.create",
+    entityType: "backup",
+    summary: `Membuat snapshot backup (${INSERT_ORDER.length - skipped.length} tabel)`,
+    metadata: { tableCount: INSERT_ORDER.length - skipped.length, fileName },
+  });
 
   return json(res, {
     success: true,
@@ -179,10 +189,19 @@ addRoute("POST", /^\/api\/backup\/restore$/, async (req: AuthenticatedRequest, r
     );
   }
 
+  const totalRestored = Object.values(restoredCounts).reduce((a: number, b: number) => a + b, 0);
+  await recordAuditLog({
+    req,
+    action: "backup.restore",
+    entityType: "backup",
+    summary: `Restore database dari snapshot (${totalRestored} baris dipulihkan)`,
+    metadata: { totalRestored, databaseType: snapshot.databaseType ?? getDbType() },
+  });
+
   return json(res, {
     success: true,
     restored: restoredCounts,
-    total: Object.values(restoredCounts).reduce((a: number, b: number) => a + b, 0),
+    total: totalRestored,
     databaseType: snapshot.databaseType ?? getDbType(),
     createdAt: snapshot.createdAt ?? null,
   });

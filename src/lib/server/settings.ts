@@ -10,6 +10,7 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { getUploadDir } from "./storage.js";
+import { recordAuditLog } from "./audit.js";
 
 /**
  * Absolute origin this API is reachable at, derived from the request.
@@ -71,10 +72,10 @@ const DEFAULT_SETTINGS: Record<string, string> = {
   school_logo: "",
   school_background: "",
   school_favicon: "",
-  ai_provider: "nvidia-mistral-large",
-  ai_model: "mistralai/mistral-large-4-1t-a52b",
+  ai_provider: "gemini",
+  ai_model: "gemini-4-hydrogen",
   ai_api_key: "",
-  ai_base_url: "https://integrate.api.nvidia.com/v1",
+  ai_base_url: "https://generativelanguage.googleapis.com/v1beta",
 };
 
 // GET /api/settings — retrieve all school settings (authenticated)
@@ -150,6 +151,15 @@ addRoute("PUT", /^\/api\/settings$/, async (req, res, body) => {
       );
     }
   }
+
+  const updatedKeys = entries.map(([k]) => k);
+  await recordAuditLog({
+    req,
+    action: "settings.update",
+    entityType: "settings",
+    summary: `Perbarui pengaturan (${updatedKeys.join(", ")})`,
+    metadata: { keys: updatedKeys, bootstrap: !user },
+  });
 
   json(res, { success: true });
 });
@@ -338,6 +348,14 @@ addRoute("POST", /^\/api\/settings\/branding$/, async (req, res, body) => {
   }
 
   removePreviousBrandingFile(previous?.value);
+  await recordAuditLog({
+    req,
+    action: "settings.branding_upload",
+    entityType: "settings",
+    entityId: spec.settingKey,
+    summary: `Unggah ${spec.label}: ${safeName}`,
+    metadata: { kind, size: buf.length, mimeType: mime || null },
+  });
   json(res, {
     ok: true,
     key: spec.settingKey,
@@ -380,6 +398,15 @@ addRoute("POST", /^\/api\/settings\/branding\/remove$/, async (req, res, body) =
     ]);
     removePreviousBrandingFile(existing.value);
   }
+
+  await recordAuditLog({
+    req,
+    action: "settings.branding_remove",
+    entityType: "settings",
+    entityId: spec.settingKey,
+    summary: `Hapus ${spec.label}`,
+    metadata: { kind },
+  });
 
   json(res, { ok: true, key: spec.settingKey });
 });

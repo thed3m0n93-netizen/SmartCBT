@@ -46,7 +46,7 @@ function shortProviderTitle(info: AiProviderInfo): string {
     case "openai":
       return "OpenAI";
     case "gemini":
-      return "Gemini";
+      return "Google Gemini";
     case "anthropic":
       return "Claude";
     case "custom":
@@ -699,7 +699,7 @@ export function AiProviderInlineChip({ compact = false }: { compact?: boolean })
               color: C.base.text,
             }}
           >
-            <optgroup label={t("Akses Instan (NVIDIA NIM · Siap Pakai)")}>
+            <optgroup label={t("Akses Instan (Google Gemini & NVIDIA NIM)")}>
               {getInstantAiProviders().map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.label}
@@ -936,7 +936,7 @@ export function AiProviderPanel({
               <div className="flex items-center gap-2">
                 <Zap className="w-4 h-4" style={{ color: C.ok.main }} />
                 <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: C.base.text }}>
-                  {t("Provider Instan · NVIDIA NIM")}
+                  {t("Provider Instan · Bawaan")}
                 </span>
               </div>
               <span className="text-xs" style={{ color: C.base.textMuted }}>

@@ -1,7 +1,9 @@
 /** SmartCBT — Exams API handlers (server-side only) */
 import { randomUUID } from "node:crypto";
-import { query, queryOne, addRoute, json, jsonPaged, likeParam, parsePagedRequest } from "./utils.js";
-import { requireStaff } from "./ownership.js";
+import { query, queryOne, addRoute, json, jsonPaged, likeParam, parsePagedRequest, type AuthenticatedRequest } from "./utils.js";
+import { NOT_OWNER, isAdminCaller, requireStaff } from "./ownership.js";
+import { ensureResultsPublishedColumn } from "./schema.js";
+import { recordAuditLog } from "./audit.js";
 
 const EXAM_STATUSES = ["draft", "published", "archived"] as const;
 
@@ -24,6 +26,7 @@ function toSqlTimestamp(value: any): string | null {
 
 // GET /api/exams
 addRoute("GET", /^\/api\/exams$/, async (req, res) => {
+  await ensureResultsPublishedColumn();
   // Optional server-side paging/sorting/search:
   //   ?page=1&pageSize=25&sort=start|title|subject|status|teacher&dir=desc&search=uts
   // Without those parameters the legacy bare-array response is returned.
@@ -80,7 +83,8 @@ addRoute("GET", /^\/api\/exams$/, async (req, res) => {
     SELECT
       e.id, e.title, e.duration_minutes, e.start_time, e.end_time,
       e.dynamic_token, e.is_token_active, e.randomize_questions,
-      e.randomize_options, e.seb_required, e.status, e.created_at,
+      e.randomize_options, e.seb_required, COALESCE(e.results_published, TRUE) as results_published,
+      e.status, e.created_at,
       e.bank_id, e.created_by,
       u.full_name as teacher_name,
       s.subject_name, s.subject_code,
@@ -146,6 +150,7 @@ addRoute("GET", /^\/api\/exams\/active$/, async (_req, res) => {
 // route at all, so editing an exam in the wizard failed silently. Registered
 // AFTER /api/exams/active so the literal "active" is never treated as an id.
 addRoute("GET", /^\/api\/exams\/(?!active$)[^/]+$/, async (req, res) => {
+  await ensureResultsPublishedColumn();
   const examId = req.url.split("?")[0].match(/^\/api\/exams\/([^/]+)$/)![1];
   const exam = await queryOne(
     `SELECT e.*, u.full_name as teacher_name,
@@ -172,6 +177,7 @@ addRoute("GET", /^\/api\/exams\/(?!active$)[^/]+$/, async (req, res) => {
 
 // GET /api/exam/:id
 addRoute("GET", /^\/api\/exam\/[^/]+$/, async (req, res) => {
+  await ensureResultsPublishedColumn();
   const examId = req.url.split("?")[0].match(/^\/api\/exam\/([^/]+)$/)![1];
   const exam = await queryOne(
     `SELECT e.*, u.full_name as teacher_name,
@@ -200,11 +206,16 @@ addRoute("GET", /^\/api\/exam\/[^/]+$/, async (req, res) => {
 // ── Exam mutations (CRUD) ──────────────────────────────────────────────
 
 // POST /api/exams — create a new exam (+ class assignments + optional token)
-addRoute("POST", /^\/api\/exams$/, async (req, res, body) => {
+addRoute("POST", /^\/api\/exams$/, async (req: AuthenticatedRequest, res, body) => {
   if (!requireStaff(req, res)) return;
+  await ensureResultsPublishedColumn();
+  const caller = req.authUser!;
   const title = typeof body.title === "string" ? body.title.trim() : "";
   const bankId = typeof body.bankId === "string" ? body.bankId : "";
-  const createdBy = typeof body.createdBy === "string" ? body.createdBy : "";
+  // Derive exam creator from session for teachers; admins may specify createdBy (or default to self).
+  const createdBy = isAdminCaller(caller)
+    ? (typeof body.createdBy === "string" && body.createdBy.trim() ? body.createdBy.trim() : caller.id)
+    : caller.id;
   const duration = Number(body.durationMinutes);
   const startTime = toSqlTimestamp(body.startTime);
   const endTime = toSqlTimestamp(body.endTime);
@@ -212,6 +223,7 @@ addRoute("POST", /^\/api\/exams$/, async (req, res, body) => {
     ? body.classIds.map(Number).filter((n: number) => Number.isInteger(n))
     : [];
   const status = EXAM_STATUSES.includes(body.status) ? body.status : "draft";
+  const resultsPublished = body.resultsPublished !== undefined ? Boolean(body.resultsPublished) : true;
 
   if (!title) return json(res, { error: "title is required" }, 400);
   if (!bankId) return json(res, { error: "bankId is required" }, 400);
@@ -245,8 +257,8 @@ addRoute("POST", /^\/api\/exams$/, async (req, res, body) => {
     `INSERT INTO exams
        (id, title, bank_id, created_by, duration_minutes, start_time, end_time,
         dynamic_token, is_token_active, randomize_questions, randomize_options,
-        seb_required, status)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+        seb_required, results_published, status)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
     [
       id,
       title,
@@ -260,6 +272,7 @@ addRoute("POST", /^\/api\/exams$/, async (req, res, body) => {
       !!body.randomizeQuestions,
       !!body.randomizeOptions,
       !!body.sebRequired,
+      resultsPublished,
       status,
     ]
   );
@@ -270,15 +283,28 @@ addRoute("POST", /^\/api\/exams$/, async (req, res, body) => {
     ]);
   }
   const exam = await queryOne(`SELECT * FROM exams WHERE id = $1`, [id]);
+  await recordAuditLog({
+    req,
+    action: "exam.create",
+    entityType: "exam",
+    entityId: id,
+    summary: `Membuat ujian "${title}" (${status})`,
+    metadata: { title, bankId, status, classIds, sebRequired: !!body.sebRequired, resultsPublished },
+  });
   json(res, { exam }, 201);
 });
 
 // PUT /api/exams/:id — update an exam (fields, status/archive, assignments, token)
-addRoute("PUT", /^\/api\/exams\/[^/]+$/, async (req, res, body) => {
+addRoute("PUT", /^\/api\/exams\/[^/]+$/, async (req: AuthenticatedRequest, res, body) => {
   if (!requireStaff(req, res)) return;
+  await ensureResultsPublishedColumn();
+  const caller = req.authUser!;
   const examId = req.url.split("?")[0].match(/^\/api\/exams\/([^/]+)$/)![1];
   const existing = await queryOne(`SELECT * FROM exams WHERE id = $1`, [examId]);
   if (!existing) return json(res, { error: "Exam not found" }, 404);
+  if (!isAdminCaller(caller) && String(existing.created_by) !== String(caller.id)) {
+    return json(res, NOT_OWNER.payload, NOT_OWNER.status);
+  }
 
   const title = body.title !== undefined ? String(body.title).trim() : String(existing.title);
   if (!title) return json(res, { error: "title cannot be empty" }, 400);
@@ -311,6 +337,10 @@ addRoute("PUT", /^\/api\/exams\/[^/]+$/, async (req, res, body) => {
     body.status !== undefined && EXAM_STATUSES.includes(body.status)
       ? body.status
       : String(existing.status);
+  const resultsPublished =
+    body.resultsPublished !== undefined
+      ? Boolean(body.resultsPublished)
+      : existing.results_published !== false && existing.results_published !== 0;
 
   // Token handling: regenerate → new active token, deactivate → keep value, stop accepting it.
   let token = existing.dynamic_token;
@@ -327,8 +357,8 @@ addRoute("PUT", /^\/api\/exams\/[^/]+$/, async (req, res, body) => {
     `UPDATE exams
         SET title = $1, bank_id = $2, duration_minutes = $3, start_time = $4, end_time = $5,
             dynamic_token = $6, is_token_active = $7, randomize_questions = $8,
-            randomize_options = $9, seb_required = $10, status = $11
-      WHERE id = $12`,
+            randomize_options = $9, seb_required = $10, results_published = $11, status = $12
+      WHERE id = $13`,
     [
       title,
       bankId,
@@ -342,6 +372,7 @@ addRoute("PUT", /^\/api\/exams\/[^/]+$/, async (req, res, body) => {
         : !!existing.randomize_questions,
       body.randomizeOptions !== undefined ? !!body.randomizeOptions : !!existing.randomize_options,
       body.sebRequired !== undefined ? !!body.sebRequired : !!existing.seb_required,
+      resultsPublished,
       status,
       examId,
     ]
@@ -367,15 +398,37 @@ addRoute("PUT", /^\/api\/exams\/[^/]+$/, async (req, res, body) => {
   }
 
   const exam = await queryOne(`SELECT * FROM exams WHERE id = $1`, [examId]);
+  await recordAuditLog({
+    req,
+    action: status === "archived" && existing.status !== "archived" ? "exam.archive" : "exam.update",
+    entityType: "exam",
+    entityId: examId,
+    summary: `Memperbarui ujian "${title}" (${status})`,
+    metadata: {
+      title,
+      previousStatus: existing.status,
+      status,
+      resultsPublished,
+      regenerateToken: body.regenerateToken === true,
+      deactivateToken: body.deactivateToken === true,
+    },
+  });
   json(res, { exam });
 });
 
 // DELETE /api/exams/:id — delete an exam (archives are the safer alternative)
-addRoute("DELETE", /^\/api\/exams\/[^/]+$/, async (req, res) => {
+addRoute("DELETE", /^\/api\/exams\/[^/]+$/, async (req: AuthenticatedRequest, res) => {
   if (!requireStaff(req, res)) return;
+  const caller = req.authUser!;
   const examId = req.url.split("?")[0].match(/^\/api\/exams\/([^/]+)$/)![1];
-  const existing = await queryOne(`SELECT id FROM exams WHERE id = $1`, [examId]);
+  const existing = await queryOne<{ id: string; title: string; created_by: string }>(
+    `SELECT id, title, created_by FROM exams WHERE id = $1`,
+    [examId]
+  );
   if (!existing) return json(res, { error: "Exam not found" }, 404);
+  if (!isAdminCaller(caller) && String(existing.created_by) !== String(caller.id)) {
+    return json(res, NOT_OWNER.payload, NOT_OWNER.status);
+  }
 
   const sessions = await queryOne<{ count: string | number }>(
     `SELECT COUNT(*) as count FROM student_sessions WHERE exam_id = $1`,
@@ -395,5 +448,13 @@ addRoute("DELETE", /^\/api\/exams\/[^/]+$/, async (req, res) => {
 
   // student_sessions / student_answers / exam_results cascade from exams.
   await query(`DELETE FROM exams WHERE id = $1`, [examId]);
+  await recordAuditLog({
+    req,
+    action: "exam.delete",
+    entityType: "exam",
+    entityId: examId,
+    summary: `Menghapus ujian "${existing.title}"${force ? " (force)" : ""}`,
+    metadata: { title: existing.title, force, sessionCount },
+  });
   json(res, { ok: true });
 });

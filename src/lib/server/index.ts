@@ -1,4 +1,4 @@
-﻿/**
+/**
  * SmartCBT - Server-side API dispatcher
  *
  * Imports all route modules (so they register themselves in the shared
@@ -36,6 +36,7 @@ import "./news.js";
 import "./backup.js";
 import "./sessions.js";
 import "./health.js";
+import "./audit.js";
 import "./students.js";
 import "./nusantara-game.js";
 // Registers /api/setup/auth/{status,verify,password}. Imported for the side

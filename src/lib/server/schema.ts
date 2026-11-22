@@ -46,6 +46,7 @@ export const CORE_TABLES = [
   "assignment_submission_files",
   "news",
   "settings",
+  "audit_logs",
   "game_nusantara_state",
 ] as const;
 
@@ -69,7 +70,7 @@ export const SCHEMA_GROUPS: readonly SchemaGroup[] = [
     id: "identity",
     label: "Akun & Data Master",
     icon: "👥",
-    tables: ["users", "classes", "student_profiles", "subjects", "subject_class_assignments", "teacher_assignments", "settings", "game_nusantara_state"],
+    tables: ["users", "classes", "student_profiles", "subjects", "subject_class_assignments", "teacher_assignments", "settings", "audit_logs", "game_nusantara_state"],
   },
   {
     id: "questions",
@@ -347,6 +348,7 @@ CREATE INDEX IF NOT EXISTS idx_questions_answer_gin      ON questions USING GIN 
     randomize_options    BOOLEAN     NOT NULL DEFAULT FALSE,
     seb_required         BOOLEAN     NOT NULL DEFAULT FALSE,
     seb_config_hash      TEXT,
+    results_published    BOOLEAN     NOT NULL DEFAULT TRUE,
     status               VARCHAR(10) NOT NULL DEFAULT 'draft'
                          CHECK (status IN ('draft','published','archived')),
     created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -727,6 +729,30 @@ CREATE INDEX IF NOT EXISTS idx_news_author     ON news (author_id);`,
         REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE
 );`,
   },
+  {
+    label: "Tabel audit_logs",
+    sql: `CREATE TABLE IF NOT EXISTS audit_logs (
+    id          UUID         NOT NULL DEFAULT gen_random_uuid(),
+    actor_id    UUID         NULL,
+    actor_name  VARCHAR(128) NOT NULL DEFAULT '',
+    actor_role  VARCHAR(32)  NOT NULL DEFAULT '',
+    action      VARCHAR(64)  NOT NULL,
+    entity_type VARCHAR(48)  NOT NULL DEFAULT '',
+    entity_id   VARCHAR(128) NULL,
+    summary     TEXT         NOT NULL DEFAULT '',
+    metadata    JSONB        NULL,
+    ip_address  VARCHAR(64)  NULL,
+    created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT pk_audit_logs PRIMARY KEY (id)
+);`,
+  },
+  {
+    label: "Index audit_logs",
+    sql: `CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_action     ON audit_logs (action);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_actor      ON audit_logs (actor_id);`,
+  },
 ];
 
 export const MYSQL_DDL: DdlStatement[] = [
@@ -924,6 +950,7 @@ CREATE INDEX idx_questions_difficulty      ON questions (difficulty_level);`,
     randomize_options    TINYINT(1)   NOT NULL DEFAULT 0,
     seb_required         TINYINT(1)   NOT NULL DEFAULT 0,
     seb_config_hash      TEXT         NULL,
+    results_published    TINYINT(1)   NOT NULL DEFAULT 1,
     status               VARCHAR(10)  NOT NULL DEFAULT 'draft',
     created_at           TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -1280,6 +1307,30 @@ CREATE INDEX idx_asf_submission            ON assignment_submission_files (submi
         REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`,
   },
+  {
+    label: "Tabel audit_logs",
+    sql: `CREATE TABLE IF NOT EXISTS audit_logs (
+    id          CHAR(36)     NOT NULL,
+    actor_id    CHAR(36)     NULL,
+    actor_name  VARCHAR(128) NOT NULL DEFAULT '',
+    actor_role  VARCHAR(32)  NOT NULL DEFAULT '',
+    action      VARCHAR(64)  NOT NULL,
+    entity_type VARCHAR(48)  NOT NULL DEFAULT '',
+    entity_id   VARCHAR(128) NULL,
+    summary     TEXT         NOT NULL,
+    metadata    JSON         NULL,
+    ip_address  VARCHAR(64)  NULL,
+    created_at  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`,
+  },
+  {
+    label: "Index audit_logs",
+    sql: `CREATE INDEX idx_audit_logs_created_at ON audit_logs (created_at);
+CREATE INDEX idx_audit_logs_action     ON audit_logs (action);
+CREATE INDEX idx_audit_logs_actor      ON audit_logs (actor_id);`,
+  },
 ];
 
 /**
@@ -1314,6 +1365,7 @@ export const UPDATE_TABLES = [
   "assignment_submissions",
   "assignment_submission_files",
   "news",
+  "audit_logs",
   "game_nusantara_state",
 ] as const;
 
@@ -1327,6 +1379,7 @@ export const COLUMN_MIGRATIONS: ColumnMigration[] = [
   { label: "student_profiles.phone", table: "student_profiles", column: "phone", pg: "VARCHAR(32) NULL", mysql: "VARCHAR(32) NULL" },
   { label: "student_profiles.address", table: "student_profiles", column: "address", pg: "TEXT NULL", mysql: "TEXT NULL" },
   { label: "exams.seb_config_hash", table: "exams", column: "seb_config_hash", pg: "TEXT", mysql: "TEXT NULL" },
+  { label: "exams.results_published", table: "exams", column: "results_published", pg: "BOOLEAN NOT NULL DEFAULT TRUE", mysql: "TINYINT(1) NOT NULL DEFAULT 1" },
   { label: "exams.randomize_questions", table: "exams", column: "randomize_questions", pg: "BOOLEAN NOT NULL DEFAULT FALSE", mysql: "BOOLEAN NOT NULL DEFAULT FALSE" },
   { label: "exams.randomize_options", table: "exams", column: "randomize_options", pg: "BOOLEAN NOT NULL DEFAULT FALSE", mysql: "BOOLEAN NOT NULL DEFAULT FALSE" },
   { label: "student_sessions.extra_time_minutes", table: "student_sessions", column: "extra_time_minutes", pg: "INT NOT NULL DEFAULT 0", mysql: "INT NOT NULL DEFAULT 0" },
@@ -1405,6 +1458,22 @@ export async function ensureColumn(
   }
 }
 
+let resultsPublishedEnsured: Promise<void> | null = null;
+
+/** Ensure `exams.results_published` exists even on pre-existing databases. */
+export function ensureResultsPublishedColumn(): Promise<void> {
+  if (!resultsPublishedEnsured) {
+    resultsPublishedEnsured = ensureColumn("exams", "results_published", {
+      pg: "BOOLEAN NOT NULL DEFAULT TRUE",
+      mysql: "TINYINT(1) NOT NULL DEFAULT 1",
+    }).catch((err) => {
+      resultsPublishedEnsured = null;
+      throw err;
+    });
+  }
+  return resultsPublishedEnsured;
+}
+
 /**
  * What "Install & Seed" writes into a fresh database. Rendered on `/setup` so
  * an administrator knows exactly which demo data they will get, and kept
@@ -1429,8 +1498,8 @@ export const SETTINGS_SEED_KEYS: { key: string; value: string }[] = [
   { key: "school_website", value: "" },
   { key: "school_logo", value: "" },
   { key: "school_background", value: "" },
-  { key: "ai_provider", value: "nvidia-mistral-large" },
-  { key: "ai_model", value: "mistralai/mistral-large-4-1t-a52b" },
+  { key: "ai_provider", value: "gemini" },
+  { key: "ai_model", value: "gemini-4-hydrogen" },
   { key: "ai_api_key", value: "" },
-  { key: "ai_base_url", value: "https://integrate.api.nvidia.com/v1" },
+  { key: "ai_base_url", value: "https://generativelanguage.googleapis.com/v1beta" },
 ];

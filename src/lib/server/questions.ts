@@ -1,7 +1,8 @@
 /** SmartCBT — Questions & Question Banks API handlers (server-side only) */
 import { randomUUID } from "node:crypto";
-import { query, queryOne, addRoute, json, jsonPaged, likeParam, parsePagedRequest } from "./utils.js";
-import { requireStaff } from "./ownership.js";
+import { query, queryOne, addRoute, json, jsonPaged, likeParam, parsePagedRequest, type AuthenticatedRequest } from "./utils.js";
+import { NOT_OWNER, isAdminCaller, requireStaff } from "./ownership.js";
+import { recordAuditLog } from "./audit.js";
 
 export const QUESTION_TYPES = [
   "single_choice",
@@ -266,11 +267,14 @@ addRoute("GET", /^\/api\/question-banks$/, async (req, res) => {
 // ── Question bank mutations ────────────────────────────────────────────
 
 // POST /api/question-banks — create a question bank
-addRoute("POST", /^\/api\/question-banks$/, async (req, res, body) => {
+addRoute("POST", /^\/api\/question-banks$/, async (req: AuthenticatedRequest, res, body) => {
   if (!requireStaff(req, res)) return;
+  const caller = req.authUser!;
   const title = typeof body.title === "string" ? body.title.trim() : "";
   const subjectId = Number(body.subjectId);
-  const teacherId = typeof body.teacherId === "string" ? body.teacherId.trim() : "";
+  const teacherId = isAdminCaller(caller)
+    ? (typeof body.teacherId === "string" && body.teacherId.trim() ? body.teacherId.trim() : caller.id)
+    : caller.id;
 
   if (!title) return json(res, { error: "title is required" }, 400);
   if (!Number.isInteger(subjectId) || subjectId <= 0) {
@@ -290,15 +294,27 @@ addRoute("POST", /^\/api\/question-banks$/, async (req, res, body) => {
     [id, subjectId, teacherId, title]
   );
   const bank = await queryOne(`SELECT * FROM question_banks WHERE id = $1`, [id]);
+  await recordAuditLog({
+    req,
+    action: "question_bank.create",
+    entityType: "question_bank",
+    entityId: id,
+    summary: `Membuat bank soal "${title}"`,
+    metadata: { title, subjectId, teacherId },
+  });
   json(res, { bank }, 201);
 });
 
 // PUT /api/question-banks/:id — rename a bank / move it to another subject
-addRoute("PUT", /^\/api\/question-banks\/[^/]+$/, async (req, res, body) => {
+addRoute("PUT", /^\/api\/question-banks\/[^/]+$/, async (req: AuthenticatedRequest, res, body) => {
   if (!requireStaff(req, res)) return;
+  const caller = req.authUser!;
   const bankId = req.url.split("?")[0].match(/^\/api\/question-banks\/([^/]+)$/)![1];
   const existing = await queryOne(`SELECT * FROM question_banks WHERE id = $1`, [bankId]);
   if (!existing) return json(res, { error: "Question bank not found" }, 404);
+  if (!isAdminCaller(caller) && String(existing.teacher_id) !== String(caller.id)) {
+    return json(res, NOT_OWNER.payload, NOT_OWNER.status);
+  }
 
   const title = body.title !== undefined ? String(body.title).trim() : String(existing.title);
   if (!title) return json(res, { error: "title cannot be empty" }, 400);
@@ -316,15 +332,30 @@ addRoute("PUT", /^\/api\/question-banks\/[^/]+$/, async (req, res, body) => {
     bankId,
   ]);
   const bank = await queryOne(`SELECT * FROM question_banks WHERE id = $1`, [bankId]);
+  await recordAuditLog({
+    req,
+    action: "question_bank.update",
+    entityType: "question_bank",
+    entityId: bankId,
+    summary: `Mengubah bank soal "${title}"`,
+    metadata: { title, subjectId },
+  });
   json(res, { bank });
 });
 
 // DELETE /api/question-banks/:id — delete a bank (its questions cascade)
-addRoute("DELETE", /^\/api\/question-banks\/[^/]+$/, async (req, res) => {
+addRoute("DELETE", /^\/api\/question-banks\/[^/]+$/, async (req: AuthenticatedRequest, res) => {
   if (!requireStaff(req, res)) return;
+  const caller = req.authUser!;
   const bankId = req.url.split("?")[0].match(/^\/api\/question-banks\/([^/]+)$/)![1];
-  const existing = await queryOne(`SELECT id FROM question_banks WHERE id = $1`, [bankId]);
+  const existing = await queryOne<{ id: string; title: string; teacher_id: string }>(
+    `SELECT id, title, teacher_id FROM question_banks WHERE id = $1`,
+    [bankId]
+  );
   if (!existing) return json(res, { error: "Question bank not found" }, 404);
+  if (!isAdminCaller(caller) && String(existing.teacher_id) !== String(caller.id)) {
+    return json(res, NOT_OWNER.payload, NOT_OWNER.status);
+  }
 
   // exams.bank_id is FK ON DELETE RESTRICT — the bank cannot disappear while
   // exams still reference it, so check first and explain instead of 500-ing.
@@ -344,14 +375,22 @@ addRoute("DELETE", /^\/api\/question-banks\/[^/]+$/, async (req, res) => {
   }
 
   await query(`DELETE FROM question_banks WHERE id = $1`, [bankId]);
+  await recordAuditLog({
+    req,
+    action: "question_bank.delete",
+    entityType: "question_bank",
+    entityId: bankId,
+    summary: `Menghapus bank soal "${existing.title}"`,
+  });
   json(res, { ok: true });
 });
 
 // ── Question mutations ─────────────────────────────────────────────────
 
 // POST /api/questions — create a question inside a bank
-addRoute("POST", /^\/api\/questions$/, async (req, res, body) => {
+addRoute("POST", /^\/api\/questions$/, async (req: AuthenticatedRequest, res, body) => {
   if (!requireStaff(req, res)) return;
+  const caller = req.authUser!;
   const bankId = typeof body.bankId === "string" ? body.bankId : "";
   const questionType = String(body.questionType ?? "");
   const content = typeof body.content === "string" ? body.content.trim() : "";
@@ -375,8 +414,14 @@ addRoute("POST", /^\/api\/questions$/, async (req, res, body) => {
   }
   if (!content) return json(res, { error: "content is required" }, 400);
 
-  const bank = await queryOne(`SELECT id FROM question_banks WHERE id = $1`, [bankId]);
+  const bank = await queryOne<{ id: string; teacher_id: string }>(
+    `SELECT id, teacher_id FROM question_banks WHERE id = $1`,
+    [bankId]
+  );
   if (!bank) return json(res, { error: "Question bank not found" }, 404);
+  if (!isAdminCaller(caller) && String(bank.teacher_id) !== String(caller.id)) {
+    return json(res, NOT_OWNER.payload, NOT_OWNER.status);
+  }
 
   const opts = normalizeOptions(questionType, body.options);
   if (opts.error) return json(res, { error: opts.error }, 400);
@@ -409,16 +454,32 @@ addRoute("POST", /^\/api\/questions$/, async (req, res, body) => {
 });
 
 // PUT /api/questions/:id — update a question (partial, validated)
-addRoute("PUT", /^\/api\/questions\/[^/]+$/, async (req, res, body) => {
+addRoute("PUT", /^\/api\/questions\/[^/]+$/, async (req: AuthenticatedRequest, res, body) => {
   if (!requireStaff(req, res)) return;
+  const caller = req.authUser!;
   const questionId = req.url.split("?")[0].match(/^\/api\/questions\/([^/]+)$/)![1];
-  const existing = await queryOne(`SELECT * FROM questions WHERE id = $1`, [questionId]);
+  const existing = await queryOne<any>(
+    `SELECT q.*, qb.teacher_id
+       FROM questions q
+       JOIN question_banks qb ON qb.id = q.bank_id
+      WHERE q.id = $1`,
+    [questionId]
+  );
   if (!existing) return json(res, { error: "Question not found" }, 404);
+  if (!isAdminCaller(caller) && String(existing.teacher_id) !== String(caller.id)) {
+    return json(res, NOT_OWNER.payload, NOT_OWNER.status);
+  }
 
   let bankId = String(existing.bank_id);
   if (body.bankId !== undefined && body.bankId !== bankId) {
-    const bank = await queryOne(`SELECT id FROM question_banks WHERE id = $1`, [body.bankId]);
+    const bank = await queryOne<{ id: string; teacher_id: string }>(
+      `SELECT id, teacher_id FROM question_banks WHERE id = $1`,
+      [body.bankId]
+    );
     if (!bank) return json(res, { error: "Question bank not found" }, 404);
+    if (!isAdminCaller(caller) && String(bank.teacher_id) !== String(caller.id)) {
+      return json(res, NOT_OWNER.payload, NOT_OWNER.status);
+    }
     bankId = String(body.bankId);
   }
 
@@ -498,13 +559,21 @@ addRoute("PUT", /^\/api\/questions\/[^/]+$/, async (req, res, body) => {
 });
 
 // DELETE /api/questions/:id — delete a question
-addRoute("DELETE", /^\/api\/questions\/[^/]+$/, async (req, res) => {
+addRoute("DELETE", /^\/api\/questions\/[^/]+$/, async (req: AuthenticatedRequest, res) => {
   if (!requireStaff(req, res)) return;
+  const caller = req.authUser!;
   const questionId = req.url.split("?")[0].match(/^\/api\/questions\/([^/]+)$/)![1];
-  const existing = await queryOne(`SELECT id, bank_id FROM questions WHERE id = $1`, [
-    questionId,
-  ]);
+  const existing = await queryOne<{ id: string; bank_id: string; teacher_id: string }>(
+    `SELECT q.id, q.bank_id, qb.teacher_id
+       FROM questions q
+       JOIN question_banks qb ON qb.id = q.bank_id
+      WHERE q.id = $1`,
+    [questionId]
+  );
   if (!existing) return json(res, { error: "Question not found" }, 404);
+  if (!isAdminCaller(caller) && String(existing.teacher_id) !== String(caller.id)) {
+    return json(res, NOT_OWNER.payload, NOT_OWNER.status);
+  }
 
   // student_answers FK is ON DELETE CASCADE — deleting would silently erase
   // student responses, so block it while answers exist.

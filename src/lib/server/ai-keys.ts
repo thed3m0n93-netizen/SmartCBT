@@ -33,7 +33,14 @@ const BUILT_IN_AI_API_KEYS: Record<string, string> = {
  * surrounding whitespace cannot silently miss the built-in key.
  */
 export function getBuiltInAiApiKey(providerId: string | null | undefined): string {
-  const id = String(providerId ?? "").trim();
+  const id = String(providerId ?? "").trim().toLowerCase();
   if (!id) return "";
+  if (id === "gemini") {
+    return String(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "").trim();
+  }
+  if (id.startsWith("nvidia")) {
+    const envNvidia = String(process.env.NVIDIA_API_KEY || "").trim();
+    if (envNvidia) return envNvidia;
+  }
   return String(BUILT_IN_AI_API_KEYS[id] ?? "").trim();
 }

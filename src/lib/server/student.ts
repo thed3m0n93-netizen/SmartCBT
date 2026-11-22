@@ -1,5 +1,6 @@
 /** SmartCBT — Student Portal API handlers (server-side only) */
 import { query, queryOne, addRoute, json } from "./utils.js";
+import { ensureResultsPublishedColumn } from "./schema.js";
 import { SESSION_GRACE_SECONDS, sessionExpiresAtIso } from "./session-time.js";
 import {
   NO_CALLER,
@@ -24,6 +25,8 @@ addRoute("GET", /^\/api\/student\/dashboard\/[^/]+$/, async (req, res) => {
   }
 
   const { query } = await import("./utils.js");
+
+  await ensureResultsPublishedColumn();
 
   // Upcoming / active exams assigned to the student's class
   const upcomingRows = await query(
@@ -55,9 +58,10 @@ addRoute("GET", /^\/api\/student\/dashboard\/[^/]+$/, async (req, res) => {
   );
 
   // Completed exams with results
-  const completedRows = await query(
+  const rawCompletedRows = await query(
     `SELECT
        e.id, e.title, e.start_time, e.end_time, e.duration_minutes,
+       COALESCE(e.results_published, TRUE) AS results_published,
        s.subject_name, c.class_name,
        er.total_score, er.objective_score, er.essay_score,
        er.grade_status, er.generated_at,
@@ -82,6 +86,25 @@ addRoute("GET", /^\/api\/student\/dashboard\/[^/]+$/, async (req, res) => {
      ORDER BY ss.submitted_at DESC NULLS LAST`,
     [studentId]
   );
+
+  const callerIsStaff = isStaffCaller(caller);
+  const completedRows = rawCompletedRows.map((row: any) => {
+    const published = row.results_published !== false && row.results_published !== 0;
+    if (published || callerIsStaff) {
+      return { ...row, results_published: published };
+    }
+    return {
+      ...row,
+      results_published: false,
+      total_score: null,
+      objective_score: null,
+      essay_score: null,
+      grade_status: "pending",
+      correct_count: null,
+      wrong_count: null,
+      rank: null,
+    };
+  });
 
   // Student profile
   const profile = await queryOne(

@@ -17,6 +17,7 @@ import { addRoute, json, query } from "./utils.js";
 import { getAllActiveSessions, getSessionStats } from "./auth-session.js";
 import { clients as sseClients } from "./sse.js";
 import { loadAiConfig, DEFAULT_AI_BASE_URL, DEFAULT_AI_MODEL } from "./aiagent.js";
+import { DEFAULT_AI_PROVIDER_ID } from "../ai-providers.js";
 
 function ms(start: number): number {
   return Math.max(0, Math.round(performance.now() - start));
@@ -165,7 +166,7 @@ async function checkAi() {
   const result: Record<string, unknown> = {
     ok: false,
     checked: false,
-    provider: "nvidia-mistral-large",
+    provider: DEFAULT_AI_PROVIDER_ID,
     model: DEFAULT_AI_MODEL,
     baseUrl: DEFAULT_AI_BASE_URL,
     latencyMs: 0,
@@ -173,13 +174,13 @@ async function checkAi() {
     modelAvailable: false,
   };
 
-  let provider = "nvidia-mistral-large";
+  let provider = DEFAULT_AI_PROVIDER_ID;
   let model = DEFAULT_AI_MODEL;
   let baseUrl = DEFAULT_AI_BASE_URL;
 
   try {
     const config = await loadAiConfig();
-    provider = config.provider || "nvidia-mistral-large";
+    provider = config.provider || DEFAULT_AI_PROVIDER_ID;
     model = config.model || DEFAULT_AI_MODEL;
     baseUrl = config.baseUrl || DEFAULT_AI_BASE_URL;
   } catch (err: any) {

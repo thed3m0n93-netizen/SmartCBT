@@ -39,10 +39,10 @@ function getCachedSettings(): SchoolSettings {
     school_logo: "",
     school_background: "",
     school_favicon: "",
-    ai_provider: "ollama",
-    ai_model: "gemma3:4b",
+    ai_provider: "gemini",
+    ai_model: "gemini-4-hydrogen",
     ai_api_key: "",
-    ai_base_url: "http://192.168.22.23:11434",
+    ai_base_url: "https://generativelanguage.googleapis.com/v1beta",
   };
 }
 

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { AlertTriangle, BarChart3, Lock, Radio, ShieldCheck, Shuffle, UserCheck } from "lucide-react";
+import { AlertTriangle, BarChart3, Lock, Radio, ShieldCheck, Shuffle } from "lucide-react";
 import { Link, useNavigate } from "react-router";
 import { useAuth } from "../app/AuthContext";
 import { useI18n } from "../i18n";
@@ -9,35 +9,13 @@ import ThemeToggle from "../components/ThemeToggle";
 import PWAInstallButton from "../components/PWAInstallButton";
 import { fetchSettings, type SchoolSettings } from "../lib/api";
 
-const DEFAULT_SUPER_ADMIN = {
-  username: "superadmin",
-  password: "Admin@123",
-};
-
-const SUPER_ADMIN_STORAGE_KEY = "examsecure:super-admin-credentials";
-
-function getStoredSuperAdminCredentials() {
-  try {
-    const raw = localStorage.getItem(SUPER_ADMIN_STORAGE_KEY);
-    if (!raw) return DEFAULT_SUPER_ADMIN;
-    const parsed = JSON.parse(raw) as Partial<typeof DEFAULT_SUPER_ADMIN>;
-    return {
-      username: parsed.username && parsed.username !== "username" ? parsed.username : DEFAULT_SUPER_ADMIN.username,
-      password: parsed.password || DEFAULT_SUPER_ADMIN.password,
-    };
-  } catch {
-    return DEFAULT_SUPER_ADMIN;
-  }
-}
-
 export default function LoginPage() {
   const { loginWithCredentials, loading: authLoading, user } = useAuth();
   const { t } = useI18n();
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
-  const [superAdmin, setSuperAdmin] = useState(() => getStoredSuperAdminCredentials());
-  const [username, setUsername] = useState(() => getStoredSuperAdminCredentials().username);
-  const [password, setPassword] = useState(() => getStoredSuperAdminCredentials().password);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [schoolName, setSchoolName] = useState("SMK TEKNOLOGI");
   const [schoolAddress, setSchoolAddress] = useState("");
   const [schoolLogo, setSchoolLogo] = useState("");
@@ -55,10 +33,6 @@ export default function LoginPage() {
         /* keep defaults */
       });
   }, []);
-
-  useEffect(() => {
-    localStorage.setItem(SUPER_ADMIN_STORAGE_KEY, JSON.stringify(superAdmin));
-  }, [superAdmin]);
 
   useEffect(() => {
     if (!user) return;
@@ -85,8 +59,6 @@ export default function LoginPage() {
     setError(null);
 
     try {
-      const nextAdmin = { username: cleanUsername, password: cleanPassword };
-      setSuperAdmin(nextAdmin);
       await loginWithCredentials(cleanUsername, cleanPassword);
       navigate("/admin/dashboard", { replace: true });
     } catch (err: any) {
@@ -279,7 +251,7 @@ export default function LoginPage() {
               {t("Sign in to your account")}
             </h2>
             <p className="text-sm" style={{ color: C.base.textMuted }}>
-              {t("Select a demo role to explore the platform")}
+              {t("Masukkan username dan password akun Anda untuk melanjutkan.")}
             </p>
           </div>
 
@@ -294,8 +266,7 @@ export default function LoginPage() {
           >
             <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
             <span>
-              {t("SEB not detected — accessing via standard browser.")}{" "}
-              <span className="font-semibold">{t("Demo mode active.")}</span>
+              {t("SEB not detected — accessing via standard browser.")}
             </span>
           </div>
 
@@ -317,7 +288,7 @@ export default function LoginPage() {
                     {t("Account Credentials")}
                   </div>
                   <div className="text-xs sm:text-sm mt-0.5" style={{ color: C.base.textMuted }}>
-                    {t("Default credentials can be updated by the admin.")}
+                    {t("Gunakan akun terdaftar untuk mengakses platform.")}
                   </div>
                 </div>
                 <div
@@ -344,11 +315,7 @@ export default function LoginPage() {
                     type="text"
                     value={username}
                     autoComplete="username"
-                    onChange={(e) => {
-                      const next = e.target.value;
-                      setUsername(next);
-                      setSuperAdmin((prev) => ({ ...prev, username: next }));
-                    }}
+                    onChange={(e) => setUsername(e.target.value)}
                     className="w-full px-3.5 py-2.5 rounded-xl text-sm outline-none min-h-[46px]"
                     style={{
                       border: `1px solid ${C.base.border}`,
@@ -356,7 +323,7 @@ export default function LoginPage() {
                       color: C.base.text,
                       boxShadow: S.inset,
                     }}
-                    placeholder="superadmin"
+                    placeholder={t("Username")}
                   />
                 </div>
 
@@ -371,11 +338,7 @@ export default function LoginPage() {
                     type="password"
                     value={password}
                     autoComplete="current-password"
-                    onChange={(e) => {
-                      const next = e.target.value;
-                      setPassword(next);
-                      setSuperAdmin((prev) => ({ ...prev, password: next }));
-                    }}
+                    onChange={(e) => setPassword(e.target.value)}
                     className="w-full px-3.5 py-2.5 rounded-xl text-sm outline-none min-h-[46px]"
                     style={{
                       border: `1px solid ${C.base.border}`,
@@ -383,39 +346,9 @@ export default function LoginPage() {
                       color: C.base.text,
                       boxShadow: S.inset,
                     }}
-                    placeholder="Password"
+                    placeholder={t("Password")}
                   />
                 </div>
-              </div>
-
-              {/* Quick Demo Role Switcher */}
-              <div className="mt-4 pt-3.5 border-t flex flex-wrap items-center gap-1.5" style={{ borderColor: C.base.borderLight }}>
-                <span className="text-[11px] font-medium mr-1 inline-flex items-center gap-1" style={{ color: C.base.textFaint }}>
-                  <UserCheck className="w-3 h-3" /> Demo:
-                </span>
-                {[
-                  { label: "Admin", u: "superadmin", p: "Admin@123" },
-                  { label: "Guru", u: "guru_matematika", p: "Teacher@123" },
-                  { label: "Siswa", u: "siswa_andi", p: "Student@123" },
-                ].map((acc) => (
-                  <button
-                    key={acc.u}
-                    type="button"
-                    onClick={() => {
-                      setUsername(acc.u);
-                      setPassword(acc.p);
-                      setError(null);
-                    }}
-                    className="text-[11px] font-semibold px-2.5 py-1 rounded-lg transition-colors active:scale-95"
-                    style={{
-                      background: username === acc.u ? C.brand.bg : C.base.surfaceSoft,
-                      color: username === acc.u ? C.brand.dark : C.base.textMuted,
-                      border: `1px solid ${username === acc.u ? C.brand.borderSoft : C.base.border}`,
-                    }}
-                  >
-                    {acc.label}
-                  </button>
-                ))}
               </div>
             </div>
 

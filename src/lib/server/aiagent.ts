@@ -1,5 +1,6 @@
 /** SmartCBT — AI Agent server route for prompt-driven question generation and future AI tasks. */
 import { randomUUID } from "node:crypto";
+import { GoogleGenAI } from "@google/genai";
 import { addRoute, json, query, queryOne, type AuthenticatedRequest } from "./utils.js";
 import { recomputeExamResults } from "./results.js";
 import {
@@ -22,7 +23,8 @@ import {
 } from "../ai-providers.js";
 import { getBuiltInAiApiKey } from "./ai-keys.js";
 import { ensureColumn } from "./schema.js";
-import { isStaffCaller, requireStaff } from "./ownership.js";
+import { isAdminCaller, isStaffCaller, NOT_OWNER, requireStaff } from "./ownership.js";
+import { recordAuditLog } from "./audit.js";
 import {
   buildMaterialContext,
   listMaterials,
@@ -154,26 +156,23 @@ export async function callProvider(
 
   const system = `You are a SmartCBT question author. Return ONLY a valid JSON object with a top-level field "questions". Each question must have fields: type, content, difficulty, points, options, answer, explanation, topic, and formula_latex. Use JSON schema only. Use type values: single, multiple, truefalse, matching, essay. For single/multiple choices use exactly five options as an array of {key,text} using keys A, B, C, D, E in order; never generate fewer or more than five choices. For truefalse use options null, answer array keys ["true"] or ["false"]; for matching use options as {left:[{id,text}],right:[{id,text}]} and answer as {pairs:[{left_id,right_id}]}; for essay use options null and answer null.`;
   if (protocol === "gemini") {
-    const url = `${base}/models/${encodeURIComponent(finalModel)}:generateContent?key=${encodeURIComponent(key)}`;
-    const body = {
-      contents: [{ parts: [{ text: `${system}\n\n${prompt}` }] }],
-      generationConfig: { responseMimeType: "application/json" },
-    };
-    const resp = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(AI_GENERATE_TIMEOUT_MS),
+    const ai = new GoogleGenAI({
+      apiKey: key,
+      httpOptions: {
+        headers: {
+          "User-Agent": "aistudio-build",
+        },
+      },
     });
-    const data = await resp.json().catch(() => null);
-    if (!resp.ok) throw new Error(data?.error?.message || `Gemini AI generation failed (HTTP ${resp.status})`);
-    // Gemini 3.x enables thinking by default, so `parts[0]` is often a thought
-    // summary (`thought: true`) instead of the answer. Join the answer parts only.
-    const parts = Array.isArray(data?.candidates?.[0]?.content?.parts) ? data.candidates[0].content.parts : [];
-    return parts
-      .filter((part: { thought?: boolean; text?: unknown }) => part?.thought !== true && typeof part?.text === "string")
-      .map((part: { text: string }) => part.text)
-      .join("");
+    const response = await ai.models.generateContent({
+      model: finalModel,
+      contents: prompt,
+      config: {
+        systemInstruction: system,
+        responseMimeType: "application/json",
+      },
+    });
+    return (response.text ?? "").trim();
   }
 
   if (protocol === "anthropic") {
@@ -566,18 +565,27 @@ function parseAiGradePayload(text: string, maxScore: number) {
   return fallback;
 }
 
-addRoute("POST", /^\/api\/ai\/grade\/essay\/all$/, async (req: AuthenticatedRequest, res, body) => {
+addRoute("POST", /^\/api\/ai\/grade\/(essay\/all|exam)$/, async (req: AuthenticatedRequest, res, body) => {
   // Build 145: gerbang peran — dulu hanya menuntut login, sehingga AKUN SISWA
   // mana pun bisa menilai esainya sendiri lewat AI (self-grading). Khusus staff.
   if (!requireStaff(req, res)) return;
+  const caller = req.authUser!;
   const examId = String(body?.examId || "").trim();
   if (!examId) return json(res, { error: "examId is required" }, 400);
 
-  const exam = await queryOne(`SELECT id FROM exams WHERE id = $1`, [examId]);
+  const exam = await queryOne<{ id: string; title: string; created_by: string }>(
+    `SELECT id, title, created_by FROM exams WHERE id = $1`,
+    [examId]
+  );
   if (!exam) return json(res, { error: "Exam not found" }, 404);
+  if (!isAdminCaller(caller) && String(exam.created_by) !== String(caller.id)) {
+    return json(res, NOT_OWNER.payload, NOT_OWNER.status);
+  }
 
   const config = await loadAiConfig();
-  if (!config.apiKey && providerNeedsApiKey(config.provider)) return json(res, { error: "AI API key is not configured. Add AI Agent in settings." }, 400);
+  if (!config.apiKey && getAiProvider(config.provider).requiresApiKey) {
+    return json(res, { error: aiProviderRequiresKeyError(config.provider) }, 400);
+  }
 
   const answers = await query<any>(
     `SELECT
@@ -624,6 +632,15 @@ addRoute("POST", /^\/api\/ai\/grade\/essay\/all$/, async (req: AuthenticatedRequ
     }
   }
 
+  await recordAuditLog({
+    req,
+    action: "ai.grade_all",
+    entityType: "exam",
+    entityId: examId,
+    summary: `Penilaian AI massal pada "${exam.title}": ${graded}/${answers.length} esai dinilai`,
+    metadata: { graded, total: answers.length, errors: errors.length, provider: config.provider, model: config.model },
+  });
+
   return json(res, {
     success: true,
     graded,
@@ -636,18 +653,25 @@ addRoute("POST", /^\/api\/ai\/grade\/essay\/all$/, async (req: AuthenticatedRequ
 addRoute("POST", /^\/api\/ai\/grade\/essay$/, async (req: AuthenticatedRequest, res, body) => {
   // Build 145: gerbang peran — khusus staff (lihat catatan /essay/all).
   if (!requireStaff(req, res)) return;
+  const caller = req.authUser!;
   const answerId = String(body?.answerId || "").trim();
   if (!answerId) return json(res, { error: "answerId is required" }, 400);
 
   const answer = await queryOne<any>(
-    `SELECT sa.id, sa.session_id, sa.student_response, q.question_type, q.score_weight, q.content AS question_content
+    `SELECT sa.id, sa.session_id, sa.student_response, q.question_type, q.score_weight, q.content AS question_content,
+            e.id AS exam_id, e.created_by AS exam_owner_id
      FROM student_answers sa
      JOIN questions q ON q.id = sa.question_id
+     JOIN student_sessions ss ON ss.id = sa.session_id
+     JOIN exams e ON e.id = ss.exam_id
      WHERE sa.id = $1`,
     [answerId]
   );
 
   if (!answer) return json(res, { error: "Essay answer not found" }, 404);
+  if (!isAdminCaller(caller) && String(answer.exam_owner_id) !== String(caller.id)) {
+    return json(res, NOT_OWNER.payload, NOT_OWNER.status);
+  }
   if (answer.question_type !== "essay") return json(res, { error: "Only essay answers can be graded by AI" }, 400);
 
   const maxScore = Number(answer.score_weight) || 0;
@@ -655,7 +679,9 @@ addRoute("POST", /^\/api\/ai\/grade\/essay$/, async (req: AuthenticatedRequest, 
   const questionText = String(answer.question_content || "");
 
   const config = await loadAiConfig();
-  if (!config.apiKey && providerNeedsApiKey(config.provider)) return json(res, { error: "AI API key is not configured. Add AI Agent in settings." }, 400);
+  if (!config.apiKey && getAiProvider(config.provider).requiresApiKey) {
+    return json(res, { error: aiProviderRequiresKeyError(config.provider) }, 400);
+  }
 
   try {
     const prompt = `Analyze this student essay answer objectively and score it as an essay question.\n\nQuestion:\n${questionText}\n\nStudent answer:\n${essayText}\n\nScore range: 0 to ${maxScore}. Return ONLY a JSON object with numeric field score and short field feedback. Ensure the score is realistic and aligned with rubric: relevance, correctness, completeness, clarity, and structure. Use strict JSON only.`;
@@ -672,6 +698,14 @@ addRoute("POST", /^\/api\/ai\/grade\/essay$/, async (req: AuthenticatedRequest, 
     );
 
     const result = await recomputeExamResults(answer.session_id);
+    await recordAuditLog({
+      req,
+      action: "ai.grade_essay",
+      entityType: "student_answer",
+      entityId: answerId,
+      summary: `Penilaian AI esai (${score}/${maxScore})`,
+      metadata: { examId: answer.exam_id, sessionId: answer.session_id, score, maxScore, provider: config.provider, model: config.model },
+    });
     return json(res, {
       success: true,
       score,
@@ -756,11 +790,19 @@ addRoute("POST", /^\/api\/ai\/questions\/generate$/, async (req: AuthenticatedRe
     return json(res, { error: "questionTypes must include at least one of single, multiple, truefalse, matching, essay" }, 400);
   }
 
-  const bank = await queryOne(`SELECT id FROM question_banks WHERE id = $1`, [bankId]);
+  const bank = await queryOne<{ id: string; teacher_id: string; title: string }>(
+    `SELECT id, teacher_id, title FROM question_banks WHERE id = $1`,
+    [bankId]
+  );
   if (!bank) return json(res, { error: "Question bank not found" }, 404);
+  if (!isAdminCaller(caller) && String(bank.teacher_id) !== String(caller.id)) {
+    return json(res, NOT_OWNER.payload, NOT_OWNER.status);
+  }
 
   const config = await loadAiConfig();
-  if (!config.apiKey && providerNeedsApiKey(config.provider)) return json(res, { error: "AI API key is not configured. Fill AI Agent in admin settings." }, 400);
+  if (!config.apiKey && getAiProvider(config.provider).requiresApiKey) {
+    return json(res, { error: aiProviderRequiresKeyError(config.provider) }, 400);
+  }
 
   // ── Build 140: referensi materi guru (grounding) ───────────────────────
   // body.material = { mode: "off"|"manual"|"auto", uploadIds?: string[], subjectId?: number|string }
@@ -846,6 +888,15 @@ addRoute("POST", /^\/api\/ai\/questions\/generate$/, async (req: AuthenticatedRe
       }, 400);
     }
 
+    await recordAuditLog({
+      req,
+      action: "ai.questions_generate",
+      entityType: "question_bank",
+      entityId: bankId,
+      summary: `Generate AI ${inserted.length} soal ke "${bank.title}"`,
+      metadata: { count: inserted.length, provider: config.provider, model: config.model, materialMode },
+    });
+
     json(res, {
       success: true,
       imported: inserted.length,
@@ -891,9 +942,11 @@ async function readSafeAiConfigSnapshot() {
   const model = (modelRow?.value || descriptor.defaultModel).trim();
   const baseUrl = resolveAiBaseUrl(provider, baseUrlRow?.value);
   const hasCustomApiKey = Boolean(keyRow?.value?.trim());
-  const hasBuiltInApiKey = Boolean(descriptor.hasBuiltInApiKey && getBuiltInAiApiKey(provider));
-  const resolvedKey = resolveAiApiKey(provider, keyRow?.value, getBuiltInAiApiKey(provider));
-  const isReady = Boolean(resolvedKey) || !aiProviderNeedsApiKey(provider);
+  const builtInKey = getBuiltInAiApiKey(provider);
+  const envKey = descriptor.apiKeyEnv ? String(process.env[descriptor.apiKeyEnv] ?? "").trim() : "";
+  const hasBuiltInApiKey = Boolean(builtInKey || envKey);
+  const resolvedKey = resolveAiApiKey(provider, keyRow?.value, builtInKey);
+  const isReady = Boolean(resolvedKey) || !descriptor.requiresApiKey;
 
   return {
     provider,
@@ -951,6 +1004,14 @@ addRoute("PUT", /^\/api\/ai\/config$/, async (req: AuthenticatedRequest, res, bo
   }
 
   const snapshot = await readSafeAiConfigSnapshot();
+  await recordAuditLog({
+    req,
+    action: "ai.config_update",
+    entityType: "settings",
+    entityId: snapshot.provider,
+    summary: `Ubah provider AI ke ${snapshot.provider} (${snapshot.model})`,
+    metadata: { provider: snapshot.provider, model: snapshot.model, customKeyProvided: Boolean(incomingKey) },
+  });
   json(res, { success: true, config: snapshot });
 });
 

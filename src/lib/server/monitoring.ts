@@ -9,6 +9,7 @@ import {
   guardSessionOwner,
   isStaffCaller,
 } from "./ownership.js";
+import { recordAuditLog } from "./audit.js";
 
 /** Uniform handler result so URL-param and body-based routes can share logic. */
 interface ApiResult {
@@ -398,6 +399,15 @@ addRoute("POST", /^\/api\/sessions\/[^/]+\/force-submit$/, async (req, res) => {
   if (!staffGate(req)) return json(res, NOT_STAFF.payload, NOT_STAFF.status);
   const sessionId = req.url.match(/^\/api\/sessions\/([^/]+)\/force-submit$/)?.[1] ?? "";
   const result = await forceSubmitCore(sessionId);
+  if (result.status === 200) {
+    await recordAuditLog({
+      req,
+      action: "monitoring.force_submit",
+      entityType: "student_session",
+      entityId: sessionId,
+      summary: `Force-submit sesi siswa ${sessionId}`,
+    });
+  }
   json(res, result.payload, result.status);
 });
 
@@ -405,6 +415,16 @@ addRoute("POST", /^\/api\/sessions\/[^/]+\/extra-time$/, async (req, res, body) 
   if (!staffGate(req)) return json(res, NOT_STAFF.payload, NOT_STAFF.status);
   const sessionId = req.url.match(/^\/api\/sessions\/([^/]+)\/extra-time$/)?.[1] ?? "";
   const result = await extraTimeCore(sessionId, body?.minutes);
+  if (result.status === 200) {
+    await recordAuditLog({
+      req,
+      action: "monitoring.extra_time",
+      entityType: "student_session",
+      entityId: sessionId,
+      summary: `Tambah waktu +${result.payload.addedMinutes} menit untuk sesi ${sessionId}`,
+      metadata: { addedMinutes: result.payload.addedMinutes, extraTimeMinutes: result.payload.extraTimeMinutes },
+    });
+  }
   json(res, result.payload, result.status);
 });
 
@@ -412,6 +432,15 @@ addRoute("POST", /^\/api\/sessions\/[^/]+\/reset$/, async (req, res) => {
   if (!staffGate(req)) return json(res, NOT_STAFF.payload, NOT_STAFF.status);
   const sessionId = req.url.match(/^\/api\/sessions\/([^/]+)\/reset$/)?.[1] ?? "";
   const result = await resetSessionCore(sessionId);
+  if (result.status === 200) {
+    await recordAuditLog({
+      req,
+      action: "monitoring.reset_session",
+      entityType: "student_session",
+      entityId: sessionId,
+      summary: `Reset sesi siswa ${sessionId}`,
+    });
+  }
   json(res, result.payload, result.status);
 });
 
@@ -420,21 +449,52 @@ addRoute("POST", /^\/api\/sessions\/[^/]+\/reset$/, async (req, res) => {
 // POST /api/monitoring/force-submit  body: { sessionId }
 addRoute("POST", /^\/api\/monitoring\/force-submit$/, async (req, res, body) => {
   if (!staffGate(req)) return json(res, NOT_STAFF.payload, NOT_STAFF.status);
-  const result = await forceSubmitCore(String(body?.sessionId ?? ""));
+  const sessionId = String(body?.sessionId ?? "");
+  const result = await forceSubmitCore(sessionId);
+  if (result.status === 200) {
+    await recordAuditLog({
+      req,
+      action: "monitoring.force_submit",
+      entityType: "student_session",
+      entityId: sessionId,
+      summary: `Force-submit sesi siswa ${sessionId}`,
+    });
+  }
   json(res, result.payload, result.status);
 });
 
 // POST /api/monitoring/extra-time  body: { sessionId, minutes }
 addRoute("POST", /^\/api\/monitoring\/extra-time$/, async (req, res, body) => {
   if (!staffGate(req)) return json(res, NOT_STAFF.payload, NOT_STAFF.status);
-  const result = await extraTimeCore(String(body?.sessionId ?? ""), body?.minutes);
+  const sessionId = String(body?.sessionId ?? "");
+  const result = await extraTimeCore(sessionId, body?.minutes);
+  if (result.status === 200) {
+    await recordAuditLog({
+      req,
+      action: "monitoring.extra_time",
+      entityType: "student_session",
+      entityId: sessionId,
+      summary: `Tambah waktu +${result.payload.addedMinutes} menit untuk sesi ${sessionId}`,
+      metadata: { addedMinutes: result.payload.addedMinutes, extraTimeMinutes: result.payload.extraTimeMinutes },
+    });
+  }
   json(res, result.payload, result.status);
 });
 
 // POST /api/monitoring/reset  body: { sessionId }
 addRoute("POST", /^\/api\/monitoring\/reset$/, async (req, res, body) => {
   if (!staffGate(req)) return json(res, NOT_STAFF.payload, NOT_STAFF.status);
-  const result = await resetSessionCore(String(body?.sessionId ?? ""));
+  const sessionId = String(body?.sessionId ?? "");
+  const result = await resetSessionCore(sessionId);
+  if (result.status === 200) {
+    await recordAuditLog({
+      req,
+      action: "monitoring.reset_session",
+      entityType: "student_session",
+      entityId: sessionId,
+      summary: `Reset sesi siswa ${sessionId}`,
+    });
+  }
   json(res, result.payload, result.status);
 });
 
@@ -449,16 +509,37 @@ addRoute("POST", /^\/api\/sessions\/[^/]+\/flag$/, async (req, res, body) => {
   if (!staffGate(req)) return json(res, NOT_STAFF.payload, NOT_STAFF.status);
   const sessionId = req.url.match(/^\/api\/sessions\/([^/]+)\/flag$/)?.[1] ?? "";
   const result = await flagSessionCore(sessionId, body?.status, body?.reason);
+  if (result.status === 200) {
+    await recordAuditLog({
+      req,
+      action: "monitoring.flag_session",
+      entityType: "student_session",
+      entityId: sessionId,
+      summary: `Ubah tanda sesi ${sessionId} menjadi "${result.payload.status}"`,
+      metadata: { status: result.payload.status, reason: result.payload.flagReason },
+    });
+  }
   json(res, result.payload, result.status);
 });
 
 // POST /api/monitoring/flag  body: { sessionId, status, reason? }
 addRoute("POST", /^\/api\/monitoring\/flag$/, async (req, res, body) => {
   if (!staffGate(req)) return json(res, NOT_STAFF.payload, NOT_STAFF.status);
+  const sessionId = String(body?.sessionId ?? "");
   const result = await flagSessionCore(
-    String(body?.sessionId ?? ""),
+    sessionId,
     body?.status,
     body?.reason,
   );
+  if (result.status === 200) {
+    await recordAuditLog({
+      req,
+      action: "monitoring.flag_session",
+      entityType: "student_session",
+      entityId: sessionId,
+      summary: `Ubah tanda sesi ${sessionId} menjadi "${result.payload.status}"`,
+      metadata: { status: result.payload.status, reason: result.payload.flagReason },
+    });
+  }
   json(res, result.payload, result.status);
 });

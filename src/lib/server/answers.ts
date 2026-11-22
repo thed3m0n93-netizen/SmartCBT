@@ -3,7 +3,7 @@ import { query, queryOne, addRoute, json } from "./utils.js";
 import { recomputeExamResults } from "./results.js";
 import { verifyExamToken } from "./tokens.js";
 import { scoreQuestion } from "./scoring.js";
-import { ensureColumn } from "./schema.js";
+import { ensureColumn, ensureResultsPublishedColumn } from "./schema.js";
 import {
   SESSION_GRACE_SECONDS,
   isSessionExpired,
@@ -14,6 +14,7 @@ import {
   NOT_OWNER,
   callerFromRequest,
   isAdminCaller,
+  isStaffCaller,
   ownsSessionRow,
 } from "./ownership.js";
 
@@ -335,8 +336,11 @@ addRoute("GET", /^\/api\/sessions\/results\/[^/]+$/, async (req, res) => {
   const sessionId = req.url.match(/^\/api\/sessions\/results\/([^/]+)$/)![1];
   const caller = callerFromRequest(req);
   if (!caller) return json(res, NO_CALLER.payload, NO_CALLER.status);
+  await ensureResultsPublishedColumn();
   const results = await queryOne(
-    `SELECT er.*, e.title as exam_title, e.duration_minutes, ss.student_id
+    `SELECT er.*, e.title as exam_title, e.duration_minutes,
+            COALESCE(e.results_published, TRUE) AS results_published,
+            ss.student_id
      FROM exam_results er
      JOIN student_sessions ss ON ss.id = er.session_id
      JOIN exams e ON e.id = ss.exam_id
@@ -349,7 +353,18 @@ addRoute("GET", /^\/api\/sessions\/results\/[^/]+$/, async (req, res) => {
   if (!ownsSessionRow(caller, results) && !isAdminCaller(caller)) {
     return json(res, NOT_OWNER.payload, NOT_OWNER.status);
   }
-  json(res, results);
+  const published = results.results_published !== false && results.results_published !== 0;
+  if (!published && !isStaffCaller(caller)) {
+    return json(res, {
+      ...results,
+      results_published: false,
+      total_score: null,
+      objective_score: null,
+      essay_score: null,
+      grade_status: "pending",
+    });
+  }
+  json(res, { ...results, results_published: published });
 });
 
 // POST /api/sessions/submit — complete a student session

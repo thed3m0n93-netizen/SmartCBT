@@ -24,6 +24,7 @@ import {
 import { useAuth } from "../../app/AuthContext";
 import { useI18n } from "../../i18n";
 import { C, S, alpha } from "../../styles/tokens";
+import { Btn, Modal } from "../../components/ui";
 import PwaInstallBanner from "../../components/PwaInstallBanner";
 import NewsSlider from "../../components/NewsSlider";
 import {
@@ -79,6 +80,7 @@ interface CompletedExam {
   wrong: number;
   duration: string;
   grade: string;
+  resultsPublished: boolean;
 }
 
 function gradeFromScore(score: number): string {
@@ -117,7 +119,8 @@ function mapUpcoming(row: any): UpcomingExam {
 
 /** Map a DB completed-exam row to the UI model. */
 function mapCompleted(row: any): CompletedExam {
-  const score = Math.round(Number(row.total_score) || 0);
+  const resultsPublished = row.results_published !== false && row.results_published !== 0;
+  const score = resultsPublished ? Math.round(Number(row.total_score) || 0) : 0;
   return {
     id: row.id,
     title: row.title,
@@ -129,7 +132,8 @@ function mapCompleted(row: any): CompletedExam {
     correct: Number(row.correct_count) || 0,
     wrong: Number(row.wrong_count) || 0,
     duration: formatDuration(row.started_at, row.submitted_at),
-    grade: gradeFromScore(score),
+    grade: resultsPublished ? gradeFromScore(score) : "—",
+    resultsPublished,
   };
 }
 
@@ -183,6 +187,8 @@ export default function StudentDashboard() {
   const [filesLoading, setFilesLoading] = useState(true);
   const [filesMsg, setFilesMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
   const [fileView, setFileView] = useState<FileViewMode>(() => readStoredFileView());
+  const [deleteConfirmFile, setDeleteConfirmFile] = useState<UploadRow | null>(null);
+  const [deleteFileBusy, setDeleteFileBusy] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -245,15 +251,24 @@ export default function StudentDashboard() {
     );
   };
 
-  const handleDeleteFile = async (file: UploadRow) => {
-    if (!window.confirm(t("Hapus file ini secara permanen?"))) return;
+  const handleDeleteFile = (file: UploadRow) => {
+    setDeleteConfirmFile(file);
+  };
+
+  const confirmDeleteFile = async () => {
+    if (!deleteConfirmFile) return;
+    setDeleteFileBusy(true);
     setFilesMsg(null);
     try {
-      await deleteUpload(file.id);
-      setMyFiles((prev) => prev.filter((f) => f.id !== file.id));
+      await deleteUpload(deleteConfirmFile.id);
+      setMyFiles((prev) => prev.filter((f) => f.id !== deleteConfirmFile.id));
       setFilesMsg({ type: "ok", text: t("File dihapus.") });
+      setDeleteConfirmFile(null);
     } catch (err: any) {
       setFilesMsg({ type: "err", text: err?.message || t("Gagal menghapus file") });
+      setDeleteConfirmFile(null);
+    } finally {
+      setDeleteFileBusy(false);
     }
   };
 
@@ -263,10 +278,12 @@ export default function StudentDashboard() {
   );
   const colorOfSubject = (name: string) => subjectColors[name] ?? colorForSubject(name);
 
-  const avgScore = completed.length
-    ? Math.round(completed.reduce((a, e) => a + e.score, 0) / completed.length)
+  const publishedCompleted = completed.filter((e) => e.resultsPublished);
+  const hasPublishedScore = publishedCompleted.length > 0;
+  const avgScore = hasPublishedScore
+    ? Math.round(publishedCompleted.reduce((a, e) => a + e.score, 0) / publishedCompleted.length)
     : 0;
-  const best = completed.length ? Math.max(...completed.map((e) => e.score)) : 0;
+  const best = hasPublishedScore ? Math.max(...publishedCompleted.map((e) => e.score)) : 0;
 
   const handleStartExam = async (exam: UpcomingExam) => {
     if (!exam.tokenRequired) {
@@ -423,14 +440,16 @@ export default function StudentDashboard() {
               <div className="sm:hidden mt-2.5 inline-flex items-center gap-2 text-xs" style={{ color: "rgba(226,232,240,0.85)" }}>
                 <span>{t("Rata-rata Nilai")}</span>
                 <span aria-hidden>·</span>
-                <span className="font-bold tabular-nums text-sm" style={{ color: "#FFFFFF" }}>{avgScore}</span>
+                <span className="font-bold tabular-nums text-sm" style={{ color: "#FFFFFF" }}>
+                  {hasPublishedScore ? avgScore : "—"}
+                </span>
               </div>
             </div>
           </div>
           <div className="text-right hidden sm:block shrink-0">
             <div className="text-xs mb-1" style={{ color: "rgba(226,232,240,0.75)" }}>{t("Rata-rata Nilai")}</div>
             <div className="text-4xl font-bold tabular-nums" style={{ color: "#FFFFFF", fontFamily: "var(--font-serif)" }}>
-              {avgScore}
+              {hasPublishedScore ? avgScore : "—"}
             </div>
           </div>
         </div>
@@ -609,8 +628,8 @@ export default function StudentDashboard() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {[
           { label: t("Exams Completed"), value: completed.length.toString(), Icon: CheckCircle2, color: C.ok.main },
-          { label: t("Average Score"), value: `${avgScore}/100`, Icon: BarChart3, color: C.brand.main },
-          { label: t("Best Grade"), value: best > 0 ? gradeFromScore(best) : "—", Icon: Award, color: C.warn.main },
+          { label: t("Average Score"), value: hasPublishedScore ? `${avgScore}/100` : "—", Icon: BarChart3, color: C.brand.main },
+          { label: t("Best Grade"), value: hasPublishedScore ? gradeFromScore(best) : "—", Icon: Award, color: C.warn.main },
           { label: t("Upcoming Exams"), value: upcoming.length.toString(), Icon: ClipboardList, color: C.purple.main },
         ].map((s) => (
           <div
@@ -900,50 +919,108 @@ export default function StudentDashboard() {
                     <div className="font-semibold text-sm truncate" style={{ color: C.base.text }}>{exam.title}</div>
                     <div className="text-xs" style={{ color: C.base.textMuted }}>{exam.subject} · {exam.date}</div>
                   </div>
-                  <div
-                    className="w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold shrink-0"
-                    style={{ background: alpha(gColor, 14), color: gColor }}
-                  >
-                    {exam.grade}
-                  </div>
+                  {exam.resultsPublished ? (
+                    <div
+                      className="w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold shrink-0"
+                      style={{ background: alpha(gColor, 14), color: gColor }}
+                    >
+                      {exam.grade}
+                    </div>
+                  ) : (
+                    <span
+                      className="text-[11px] font-semibold px-2.5 py-1 rounded-full shrink-0"
+                      style={{ background: C.warn.bg, color: C.warn.dark }}
+                    >
+                      {t("Menunggu Rilis Nilai")}
+                    </span>
+                  )}
                 </div>
 
-                <div className="flex items-baseline justify-between mb-2">
-                  <div className="text-2xl font-bold tabular-nums" style={{ color: C.base.text, fontFamily: "var(--font-serif)" }}>
-                    {exam.score}
-                    <span className="text-sm font-normal" style={{ color: C.base.textFaint }}>/100</span>
-                  </div>
-                  <div className="text-xs tabular-nums" style={{ color: C.base.textMuted }}>
-                    Rank #{exam.rank}/{exam.totalStudents}
-                  </div>
-                </div>
+                {exam.resultsPublished ? (
+                  <>
+                    <div className="flex items-baseline justify-between mb-2">
+                      <div className="text-2xl font-bold tabular-nums" style={{ color: C.base.text, fontFamily: "var(--font-serif)" }}>
+                        {exam.score}
+                        <span className="text-sm font-normal" style={{ color: C.base.textFaint }}>/100</span>
+                      </div>
+                      <div className="text-xs tabular-nums" style={{ color: C.base.textMuted }}>
+                        Rank #{exam.rank}/{exam.totalStudents}
+                      </div>
+                    </div>
 
-                <div className="h-2 rounded-full mb-2.5 overflow-hidden" style={{ background: C.base.surfaceSoft }}>
-                  <div
-                    className="h-full rounded-full transition-all"
-                    style={{
-                      width: `${exam.score}%`,
-                      background: exam.score >= 85 ? C.ok.main : exam.score >= 70 ? C.brand.main : C.warn.main,
-                    }}
-                  />
-                </div>
+                    <div className="h-2 rounded-full mb-2.5 overflow-hidden" style={{ background: C.base.surfaceSoft }}>
+                      <div
+                        className="h-full rounded-full transition-all"
+                        style={{
+                          width: `${exam.score}%`,
+                          background: exam.score >= 85 ? C.ok.main : exam.score >= 70 ? C.brand.main : C.warn.main,
+                        }}
+                      />
+                    </div>
 
-                <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs tabular-nums" style={{ color: C.base.textMuted }}>
-                  <span className="inline-flex items-center gap-1" style={{ color: C.ok.dark }}>
-                    <Check size={12} /> {exam.correct} {t("correct")}
-                  </span>
-                  <span className="inline-flex items-center gap-1" style={{ color: C.danger.text }}>
-                    <X size={12} /> {exam.wrong} {t("wrong")}
-                  </span>
-                  <span className="inline-flex items-center gap-1">
-                    <Clock size={12} /> {exam.duration}
-                  </span>
-                </div>
+                    <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs tabular-nums" style={{ color: C.base.textMuted }}>
+                      <span className="inline-flex items-center gap-1" style={{ color: C.ok.dark }}>
+                        <Check size={12} /> {exam.correct} {t("correct")}
+                      </span>
+                      <span className="inline-flex items-center gap-1" style={{ color: C.danger.text }}>
+                        <X size={12} /> {exam.wrong} {t("wrong")}
+                      </span>
+                      <span className="inline-flex items-center gap-1">
+                        <Clock size={12} /> {exam.duration}
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="pt-1 space-y-2">
+                    <p className="text-xs leading-relaxed" style={{ color: C.base.textMuted }}>
+                      {t("Nilai sedang ditahan oleh guru atau admin dan akan tampil setelah dirilis.")}
+                    </p>
+                    <div className="flex items-center gap-1 text-xs tabular-nums" style={{ color: C.base.textFaint }}>
+                      <Clock size={12} /> {exam.duration}
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}
         </div>
       </div>
+
+      {deleteConfirmFile && (
+        <Modal
+          title={t("Hapus File")}
+          onClose={() => !deleteFileBusy && setDeleteConfirmFile(null)}
+          actions={
+            <>
+              <Btn
+                onClick={() => setDeleteConfirmFile(null)}
+                disabled={deleteFileBusy}
+                style={{ flex: 1 }}
+              >
+                {t("Batal")}
+              </Btn>
+              <Btn
+                variant="danger"
+                onClick={confirmDeleteFile}
+                disabled={deleteFileBusy}
+                style={{ flex: 1 }}
+              >
+                {deleteFileBusy ? t("Menghapus…") : t("Hapus")}
+              </Btn>
+            </>
+          }
+        >
+          <p className="text-sm leading-relaxed" style={{ color: C.base.textBody }}>
+            {t("Hapus file ini secara permanen?")}
+          </p>
+          <div
+            className="rounded-xl px-3.5 py-2.5 text-xs font-medium truncate"
+            style={{ background: C.base.surfaceMuted, border: `1px solid ${C.base.border}`, color: C.base.text }}
+          >
+            {deleteConfirmFile.file_name}
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

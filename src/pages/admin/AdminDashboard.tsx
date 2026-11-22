@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { AlertTriangle, CheckCircle2, ClipboardList, Download, Flag, Info, RefreshCw, Users } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { AlertTriangle, CheckCircle2, ClipboardList, Download, Flag, Info, RefreshCw, Search, ShieldCheck, Users } from "lucide-react";
 import { useI18n } from "../../i18n";
 import { useAuth } from "../../app/AuthContext";
 import {
@@ -12,16 +12,18 @@ import {
   fetchActiveSessions,
   fetchSystemHealth,
   revokeUserSessions,
+  fetchAuditLogs,
   type DashboardStats,
   type ActiveExamRow,
   type ActivityItem,
   type ActiveSessionInfo,
   type ActiveSessionsResponse,
   type SystemHealthData,
+  type AuditLogRow,
 } from "../../lib/api";
 import { C, R, S } from "../../styles/tokens";
 import { getAiProvider } from "../../lib/ai-providers";
-import { SectionCard, PageHeader, Btn, Modal, Notice } from "../../components/ui";
+import { SectionCard, PageHeader, Btn, Modal, Notice, controlStyle } from "../../components/ui";
 import { DashboardStats as DashboardStatsComponent } from "../../components/dashboard";
 import AiProviderPanel from "../../components/AiProviderWidget";
 
@@ -106,6 +108,40 @@ export default function AdminDashboard() {
 
   const [healthUpdatedAt, setHealthUpdatedAt] = useState<Date | null>(null);
   const [sessionsUpdatedAt, setSessionsUpdatedAt] = useState<Date | null>(null);
+  const [revokeConfirmTarget, setRevokeConfirmTarget] = useState<ActiveSessionInfo | null>(null);
+
+  // Audit Log state
+  const [auditRows, setAuditRows] = useState<AuditLogRow[]>([]);
+  const [auditTotal, setAuditTotal] = useState(0);
+  const [auditCategory, setAuditCategory] = useState("all");
+  const [auditQuery, setAuditQuery] = useState("");
+  const [auditPage, setAuditPage] = useState(1);
+  const [auditPageSize, setAuditPageSize] = useState(15);
+  const [auditLoading, setAuditLoading] = useState(true);
+  const [auditError, setAuditError] = useState<string | null>(null);
+
+  const loadAuditLogs = useCallback(async () => {
+    setAuditLoading(true);
+    setAuditError(null);
+    try {
+      const res = await fetchAuditLogs({
+        category: auditCategory === "all" ? undefined : auditCategory,
+        search: auditQuery.trim() || undefined,
+        page: auditPage,
+        pageSize: auditPageSize,
+      });
+      setAuditRows(res.rows);
+      setAuditTotal(res.total);
+    } catch (err: any) {
+      setAuditError(err?.message || t("Gagal memuat log audit."));
+    } finally {
+      setAuditLoading(false);
+    }
+  }, [auditCategory, auditQuery, auditPage, auditPageSize, t]);
+
+  useEffect(() => {
+    void loadAuditLogs();
+  }, [loadAuditLogs]);
 
   const loadHealth = async (opts?: { silent?: boolean }) => {
     const silent = opts?.silent === true;
@@ -134,8 +170,13 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleRevokeUser = async (session: ActiveSessionInfo) => {
-    if (!window.confirm(`Paksa logout "${session.username}" dari perangkat ini?`)) return;
+  const handleRevokeUser = (session: ActiveSessionInfo) => {
+    setRevokeConfirmTarget(session);
+  };
+
+  const confirmRevokeUser = async () => {
+    if (!revokeConfirmTarget) return;
+    const session = revokeConfirmTarget;
     setRevokeBusy(sessionKey(session));
     setRevokeMsg(null);
     try {
@@ -144,9 +185,11 @@ export default function AdminDashboard() {
         prev.includes(sessionKey(session)) ? prev : [...prev, sessionKey(session)],
       );
       setRevokeMsg({ type: "ok", text: t("Sesi \"{name}\" telah dicabut.", { name: session.username }) });
+      setRevokeConfirmTarget(null);
       await loadSessions();
     } catch (err: any) {
       setRevokeMsg({ type: "error", text: err?.message || t("Gagal mencabut session.") });
+      setRevokeConfirmTarget(null);
     } finally {
       setRevokeBusy(null);
     }
@@ -865,6 +908,274 @@ export default function AdminDashboard() {
           </div>
 
           {exportMsg && <Notice type={exportMsg.type}>{exportMsg.text}</Notice>}
+        </Modal>
+      )}
+
+      {/* System Audit Log Panel */}
+      <SectionCard
+        title={
+          <span className="inline-flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4" style={{ color: C.brand.main }} />
+            {t("Log Audit Sistem")}
+          </span>
+        }
+        subtitle={t("Jejak aktivitas sensitif admin dan guru (perubahan nilai, ujian, monitoring, token, pengaturan, backup)")}
+        right={
+          <button
+            type="button"
+            onClick={() => void loadAuditLogs()}
+            disabled={auditLoading}
+            className="text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-colors inline-flex items-center gap-1.5 min-h-[34px]"
+            style={{
+              background: C.base.surfaceSoft,
+              color: C.base.textBody,
+              border: `1px solid ${C.base.border}`,
+              opacity: auditLoading ? 0.6 : 1,
+            }}
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${auditLoading ? "animate-spin" : ""}`} />
+            {t("Refresh")}
+          </button>
+        }
+        bodyStyle={{ padding: 0 }}
+      >
+        <div
+          className="px-4 sm:px-5 py-3 flex flex-wrap items-center gap-2.5 border-b"
+          style={{ borderColor: C.base.borderLight, background: C.base.surfaceMuted }}
+        >
+          <select
+            value={auditCategory}
+            onChange={(e) => {
+              setAuditCategory(e.target.value);
+              setAuditPage(1);
+            }}
+            className="px-3 py-2 rounded-xl text-xs sm:text-sm outline-none min-h-[38px]"
+            style={{ ...controlStyle, width: "auto", minHeight: 38 }}
+            aria-label={t("Filter kategori audit")}
+          >
+            <option value="all">{t("Semua Kategori")}</option>
+            <option value="auth">{t("Autentikasi (auth)")}</option>
+            <option value="user">{t("Pengguna & Master (user)")}</option>
+            <option value="exam">{t("Ujian (exam)")}</option>
+            <option value="grading">{t("Penilaian & Rilis (grading)")}</option>
+            <option value="monitoring">{t("Monitoring & Pengawas")}</option>
+            <option value="token">{t("Token Ujian")}</option>
+            <option value="seb">{t("Safe Exam Browser (seb)")}</option>
+            <option value="question">{t("Bank & Soal (question)")}</option>
+            <option value="ai">{t("AI Agent (ai)")}</option>
+            <option value="settings">{t("Pengaturan & Branding")}</option>
+            <option value="backup">{t("Backup & Restore")}</option>
+            <option value="session">{t("Sesi Login")}</option>
+          </select>
+
+          <div className="relative flex-1 min-w-[200px]">
+            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2" style={{ color: C.base.textFaint }} />
+            <input
+              type="text"
+              value={auditQuery}
+              onChange={(e) => {
+                setAuditQuery(e.target.value);
+                setAuditPage(1);
+              }}
+              placeholder={t("Cari aktor, aksi, atau ringkasan…")}
+              className="w-full pl-8 pr-3 py-1.5 rounded-xl text-xs sm:text-sm outline-none"
+              style={{ ...controlStyle, minHeight: 38, paddingLeft: 32 }}
+            />
+          </div>
+
+          <span className="text-xs tabular-nums" style={{ color: C.base.textMuted }}>
+            {t("{n} entri", { n: auditTotal })}
+          </span>
+        </div>
+
+        {auditError && (
+          <div className="px-4 sm:px-5 py-3">
+            <Notice type="error">{auditError}</Notice>
+          </div>
+        )}
+
+        {auditLoading && auditRows.length === 0 ? (
+          <div className="px-5 py-8 text-center text-sm" style={{ color: C.base.textMuted }}>
+            {t("Memuat log audit…")}
+          </div>
+        ) : auditRows.length === 0 ? (
+          <div className="px-5 py-8 text-center text-sm" style={{ color: C.base.textMuted }}>
+            {t("Belum ada catatan log audit yang cocok.")}
+          </div>
+        ) : (
+          <div className="divide-y" style={{ borderColor: C.base.borderLight }}>
+            {auditRows.map((entry) => {
+              const roleBg =
+                entry.actor_role === "super_admin" || entry.actor_role === "admin"
+                  ? C.danger.bg
+                  : entry.actor_role === "teacher"
+                    ? C.brand.bg
+                    : C.base.surfaceSoft;
+              const roleColor =
+                entry.actor_role === "super_admin" || entry.actor_role === "admin"
+                  ? C.danger.text
+                  : entry.actor_role === "teacher"
+                    ? C.brand.dark
+                    : C.base.textMuted;
+              return (
+                <div
+                  key={entry.id}
+                  className="px-4 sm:px-5 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 cbt-row-hover"
+                  style={{ borderColor: C.base.borderLight }}
+                >
+                  <div className="min-w-0 space-y-0.5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span
+                        className="text-[11px] font-mono font-semibold px-2 py-0.5 rounded-md"
+                        style={{ background: C.base.surfaceSoft, color: C.base.text, fontFamily: "var(--font-mono)" }}
+                      >
+                        {entry.action}
+                      </span>
+                      <span className="text-xs font-semibold truncate" style={{ color: C.base.text }}>
+                        {entry.actor_name || "System"}
+                      </span>
+                      {entry.actor_role && (
+                        <span
+                          className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
+                          style={{ background: roleBg, color: roleColor }}
+                        >
+                          {t(entry.actor_role)}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs break-words" style={{ color: C.base.textBody }}>
+                      {entry.summary}
+                    </div>
+                  </div>
+                  <div className="flex sm:flex-col items-center sm:items-end justify-between gap-1 shrink-0">
+                    <span
+                      className="text-xs tabular-nums"
+                      style={{ color: C.base.textFaint, fontFamily: "var(--font-mono)" }}
+                    >
+                      {new Date(entry.created_at).toLocaleString("id-ID", {
+                        day: "2-digit",
+                        month: "short",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        second: "2-digit",
+                      })}
+                    </span>
+                    {entry.ip_address && (
+                      <span
+                        className="text-[11px] tabular-nums"
+                        style={{ color: C.base.textFaint, fontFamily: "var(--font-mono)" }}
+                      >
+                        {entry.ip_address}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {auditTotal > 0 && (
+          <div
+            className="px-4 sm:px-5 py-3 flex flex-wrap items-center justify-between gap-3 rounded-b-2xl"
+            style={{ borderTop: `1px solid ${C.base.borderLight}`, background: C.base.surfaceMuted }}
+          >
+            <label className="flex items-center gap-2 text-xs" style={{ color: C.base.textMuted }}>
+              {t("Show")}
+              <select
+                value={auditPageSize}
+                onChange={(e) => {
+                  setAuditPageSize(Number(e.target.value));
+                  setAuditPage(1);
+                }}
+                aria-label={t("Show")}
+                className="rounded-lg px-2 py-1 text-xs outline-none"
+                style={{
+                  background: C.base.surface,
+                  border: `1px solid ${C.base.border}`,
+                  color: C.base.text,
+                  borderRadius: R.control,
+                }}
+              >
+                {[15, 30, 50].map((size) => (
+                  <option key={size} value={size}>
+                    {size}
+                  </option>
+                ))}
+              </select>
+              <span className="tabular-nums" style={{ fontFamily: "var(--font-mono)" }}>
+                {(auditPage - 1) * auditPageSize + 1}–{Math.min(auditPage * auditPageSize, auditTotal)} {t("of")} {auditTotal}
+              </span>
+            </label>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setAuditPage((p) => Math.max(1, p - 1))}
+                disabled={auditPage <= 1}
+                className="text-xs font-medium px-2.5 py-1.5 transition-colors disabled:opacity-40"
+                style={{
+                  background: C.base.surface,
+                  border: `1px solid ${C.base.border}`,
+                  color: C.base.textBody,
+                  cursor: auditPage <= 1 ? "not-allowed" : "pointer",
+                  borderRadius: R.control,
+                }}
+              >
+                ‹ {t("Prev")}
+              </button>
+              <span
+                className="text-xs tabular-nums"
+                style={{ color: C.base.textMuted, fontFamily: "var(--font-mono)" }}
+              >
+                {t("Page {page} / {total}", {
+                  page: auditPage,
+                  total: Math.max(1, Math.ceil(auditTotal / auditPageSize)),
+                })}
+              </span>
+              <button
+                type="button"
+                onClick={() => setAuditPage((p) => Math.min(Math.max(1, Math.ceil(auditTotal / auditPageSize)), p + 1))}
+                disabled={auditPage >= Math.max(1, Math.ceil(auditTotal / auditPageSize))}
+                className="text-xs font-medium px-2.5 py-1.5 transition-colors disabled:opacity-40"
+                style={{
+                  background: C.base.surface,
+                  border: `1px solid ${C.base.border}`,
+                  color: C.base.textBody,
+                  cursor: auditPage >= Math.max(1, Math.ceil(auditTotal / auditPageSize)) ? "not-allowed" : "pointer",
+                  borderRadius: R.control,
+                }}
+              >
+                {t("Next")} ›
+              </button>
+            </div>
+          </div>
+        )}
+      </SectionCard>
+
+      {revokeConfirmTarget && (
+        <Modal
+          title={t("Cabut Sesi Pengguna")}
+          onClose={() => !revokeBusy && setRevokeConfirmTarget(null)}
+          actions={
+            <>
+              <Btn onClick={() => setRevokeConfirmTarget(null)} disabled={!!revokeBusy} style={{ flex: 1 }}>
+                {t("Batal")}
+              </Btn>
+              <Btn
+                variant="danger"
+                onClick={confirmRevokeUser}
+                disabled={!!revokeBusy}
+                style={{ flex: 1 }}
+              >
+                {revokeBusy ? t("Memproses…") : t("Cabut Sesi")}
+              </Btn>
+            </>
+          }
+        >
+          <p className="text-sm leading-relaxed" style={{ color: C.base.textBody }}>
+            {t("Paksa logout \"{name}\" dari perangkat ini?", { name: revokeConfirmTarget.username })}
+          </p>
         </Modal>
       )}
     </div>

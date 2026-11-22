@@ -15,6 +15,15 @@ const en: Dictionary = {
   "Username dan password wajib diisi.": "Username and password are required.",
   "Login gagal. Periksa username dan password.":
     "Login failed. Check your username and password.",
+  "Masukkan username dan password akun Anda untuk melanjutkan.":
+    "Enter your account username and password to continue.",
+  "Gunakan akun terdaftar untuk mengakses platform.":
+    "Use your registered account to access the platform.",
+  "Autentikasi AI": "AI Authentication",
+  "Google Gemini menggunakan kunci server bawaan (GEMINI_API_KEY pada Settings > Secrets / .env) secara otomatis.":
+    "Google Gemini uses the built-in server key (GEMINI_API_KEY in Settings > Secrets / .env) automatically.",
+  "Provider Instan · Bawaan": "Instant Providers · Built-in",
+  "Akses Instan (Google Gemini & NVIDIA NIM)": "Instant Access (Google Gemini & NVIDIA NIM)",
   "Item analysis: Tingkat Kesukaran & Daya Beda":
     "Item analysis: Difficulty level & Discrimination power",
   "Gagal memuat dashboard": "Failed to load dashboard",
@@ -494,6 +503,105 @@ const en: Dictionary = {
   "Buka file untuk melihat isinya.": "Open the file to see its contents.",
   "File Saya": "My Files",
   "Berkas yang pernah kamu unggah.": "Files you have uploaded.",
+
+  // ── Build 148: Change Password, Results Publish, Audit Log, SEB Overlay ──
+  "Ganti Password": "Change Password",
+  "Password Saat Ini": "Current Password",
+  "Password Baru": "New Password",
+  "Konfirmasi Password Baru": "Confirm New Password",
+  "Masukkan password saat ini": "Enter current password",
+  "Minimal 8 karakter": "Minimum 8 characters",
+  "Minimal 8 karakter, gunakan kombinasi huruf dan angka.":
+    "Minimum 8 characters, use a mix of letters and numbers.",
+  "Ulangi password baru": "Repeat new password",
+  "Simpan Password": "Save Password",
+  "Password saat ini wajib diisi.": "Current password is required.",
+  "Password baru minimal 8 karakter.": "New password must be at least 8 characters.",
+  "Password baru maksimal 128 karakter.": "New password must be at most 128 characters.",
+  "Password baru harus berbeda dari password saat ini.":
+    "New password must differ from current password.",
+  "Konfirmasi password baru tidak cocok.": "New password confirmation does not match.",
+  "Password berhasil diperbarui.": "Password updated successfully.",
+  "Gagal memperbarui password.": "Failed to update password.",
+  "Sembunyikan password": "Hide password",
+  "Lihat password": "Show password",
+  "Safe Exam Browser (SEB) Diperlukan": "Safe Exam Browser (SEB) Required",
+  "Akses pengerjaan dan penyimpanan jawaban dikunci otomatis selama sesi berada di luar Safe Exam Browser.":
+    "Exam answering and saving are automatically locked while outside Safe Exam Browser.",
+  "Periksa Ulang SEB": "Recheck SEB",
+  "Memeriksa SEB…": "Checking SEB…",
+  "Hasil Belum Dirilis": "Results Not Yet Published",
+  "Jawaban Anda telah tersimpan. Nilai akan ditampilkan setelah guru atau admin merilis hasil ujian.":
+    "Your answers have been saved. Scores will appear once your teacher or admin publishes the results.",
+  "Menunggu Rilis Nilai": "Awaiting Score Release",
+  "Nilai sedang ditahan oleh guru atau admin dan akan tampil setelah dirilis.":
+    "Scores are currently held by the teacher or admin and will appear once released.",
+  "Nilai sedang ditahan oleh guru atau admin":
+    "Scores are held by the teacher or admin",
+  "Nilai Dirilis": "Results Published",
+  "Nilai Ditahan": "Results Held",
+  "Rilis Nilai": "Publish Results",
+  "Tahan Nilai": "Hold Results",
+  "Rilis Nilai ke Siswa": "Publish Results to Students",
+  "Tahan Nilai dari Siswa": "Hold Results from Students",
+  "Nilai ujian telah dirilis dan kini dapat dilihat oleh siswa.":
+    "Exam results have been published and are now visible to students.",
+  "Nilai ujian ditahan — siswa hanya melihat status menunggu rilis.":
+    "Exam results held — students only see pending release status.",
+  "Gagal mengubah status rilis nilai.": "Failed to update results publish status.",
+  "Pratinjau Laporan Hasil Ujian (PDF)": "Exam Results Report Preview (PDF)",
+  "Cetak / Simpan PDF": "Print / Save PDF",
+  "Log Audit Sistem": "System Audit Log",
+  "Jejak aktivitas sensitif admin dan guru (perubahan nilai, ujian, monitoring, token, pengaturan, backup)":
+    "Audit trail of sensitive admin & teacher actions (grading, exams, monitoring, tokens, settings, backup)",
+  "Filter kategori audit": "Filter audit category",
+  "Semua Kategori": "All Categories",
+  "Autentikasi (auth)": "Authentication (auth)",
+  "Pengguna & Master (user)": "Users & Master Data (user)",
+  "Ujian (exam)": "Exams (exam)",
+  "Penilaian & Rilis (grading)": "Grading & Release (grading)",
+  "Monitoring & Pengawas": "Monitoring & Proctoring",
+  "Token Ujian": "Exam Tokens",
+  "Bank & Soal (question)": "Question Banks (question)",
+  "Pengaturan & Branding": "Settings & Branding",
+  "Backup & Restore": "Backup & Restore",
+  "Sesi Login": "Login Sessions",
+  "Cari aktor, aksi, atau ringkasan…": "Search actor, action, or summary…",
+  "{n} entri": "{n} entries",
+  "Memuat log audit…": "Loading audit logs…",
+  "Belum ada catatan log audit yang cocok.": "No matching audit log entries yet.",
+  "Gagal memuat log audit.": "Failed to load audit logs.",
+  "Cabut Sesi Pengguna": "Revoke User Session",
+  "Cabut Sesi": "Revoke Session",
+  "Paksa logout \"{name}\" dari perangkat ini?":
+    "Force log out \"{name}\" from this device?",
+  "Hapus File": "Delete File",
+  "Menghapus…": "Deleting…",
+  "Akhiri Ujian Sekarang": "End Exam Now",
+  "Akhiri Paksa": "Force End",
+  "Hapus Permanen Beserta Sesi": "Permanently Delete With Sessions",
+  "Hapus Permanen": "Delete Permanently",
+  "Hapus Ujian": "Delete Exam",
+  "Ujian \"{title}\" akan diarsipkan dan ditutup bagi siswa yang belum memulai.":
+    "Exam \"{title}\" will be archived and closed for students who have not started.",
+  "Ujian \"{title}\" berhasil dipublikasikan.":
+    "Exam \"{title}\" published successfully.",
+  "Token baru untuk \"{title}\": {token}":
+    "New token for \"{title}\": {token}",
+  "Gagal memperbarui token ujian.": "Failed to regenerate exam token.",
+  "Hasil ujian diunduh: {file}": "Exam results downloaded: {file}",
+  "Nilai ujian \"{title}\" dirilis ke siswa.":
+    "Results for \"{title}\" published to students.",
+  "Nilai ujian \"{title}\" ditahan dari siswa.":
+    "Results for \"{title}\" held from students.",
+  "Ujian \"{title}\" diakhiri secara paksa.":
+    "Exam \"{title}\" ended forcefully.",
+  "Ujian \"{title}\" berhasil dihapus.": "Exam \"{title}\" deleted.",
+  "Ujian \"{title}\" beserta seluruh sesi dihapus permanen.":
+    "Exam \"{title}\" and all sessions deleted permanently.",
+  "Ujian ini memiliki sesi siswa aktif atau riwayat pengerjaan.":
+    "This exam has active student sessions or attempt history.",
+  "Gagal memproses aksi ujian.": "Failed to process exam action.",
 }
 
 const id: Dictionary = {
@@ -1550,6 +1658,20 @@ const id: Dictionary = {
   "Buka file untuk melihat isinya.": "Buka file untuk melihat isinya.",
   "File Saya": "File Saya",
   "Berkas yang pernah kamu unggah.": "Berkas yang pernah kamu unggah.",
+
+  // ── Build 148: Password, Rilis Nilai, Audit Log, SEB Overlay ────────────
+  "Ganti Password": "Ganti Password",
+  "Nilai Dirilis": "Nilai Dirilis",
+  "Nilai Ditahan": "Nilai Ditahan",
+  "Rilis Nilai": "Rilis Nilai",
+  "Tahan Nilai": "Tahan Nilai",
+  "Menunggu Rilis Nilai": "Menunggu Rilis Nilai",
+  "Log Audit Sistem": "Log Audit Sistem",
+  "Safe Exam Browser (SEB) Diperlukan": "Safe Exam Browser (SEB) Diperlukan",
+  "Periksa Ulang SEB": "Periksa Ulang SEB",
+  "Hasil Belum Dirilis": "Hasil Belum Dirilis",
+  "Pratinjau Laporan Hasil Ujian (PDF)": "Pratinjau Laporan Hasil Ujian (PDF)",
+  "Cetak / Simpan PDF": "Cetak / Simpan PDF",
 }
 
 export const dictionaries: Record<Lang, Dictionary> = { id, en }
