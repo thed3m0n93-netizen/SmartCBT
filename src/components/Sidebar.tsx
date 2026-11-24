@@ -3,6 +3,7 @@ import { NavLink, useLocation, useNavigate } from "react-router";
 import {
   Award,
   BookOpen,
+  CalendarRange,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -73,6 +74,17 @@ const navByRole: Partial<Record<Role, NavGroup[]>> = {
       ],
     },
     {
+      id: "adm_guru",
+      label: "Administrasi Guru",
+      icon: <CalendarRange className={ICON_CLS} />,
+      items: [
+        { path: "/teacher/adm/overview", label: "Ringkasan & Kaldik", icon: <CalendarRange className={ICON_CLS} /> },
+        { path: "/teacher/adm/planning", label: "Perencanaan (ATP & Modul)", icon: <BookOpen className={ICON_CLS} /> },
+        { path: "/teacher/adm/execution", label: "Pelaksanaan (Jurnal & Presensi)", icon: <ClipboardList className={ICON_CLS} /> },
+        { path: "/teacher/adm/assessment", label: "Penilaian (Kisi-Kisi & Nilai)", icon: <Award className={ICON_CLS} /> },
+      ],
+    },
+    {
       id: "people",
       label: "People & Access",
       icon: <Users className={ICON_CLS} />,
@@ -119,6 +131,17 @@ const navByRole: Partial<Record<Role, NavGroup[]>> = {
       items: [
         { path: "/teacher/modules", label: "Learning Modules", icon: <BookOpen className={ICON_CLS} /> },
         { path: "/teacher/assignments", label: "Tugas", icon: <FileText className={ICON_CLS} /> },
+      ],
+    },
+    {
+      id: "adm_guru",
+      label: "Administrasi Guru",
+      icon: <CalendarRange className={ICON_CLS} />,
+      items: [
+        { path: "/teacher/adm/overview", label: "Ringkasan & Kaldik", icon: <CalendarRange className={ICON_CLS} /> },
+        { path: "/teacher/adm/planning", label: "Perencanaan (ATP & Modul)", icon: <BookOpen className={ICON_CLS} /> },
+        { path: "/teacher/adm/execution", label: "Pelaksanaan (Jurnal & Presensi)", icon: <ClipboardList className={ICON_CLS} /> },
+        { path: "/teacher/adm/assessment", label: "Penilaian (Kisi-Kisi & Nilai)", icon: <Award className={ICON_CLS} /> },
       ],
     },
     {

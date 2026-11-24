@@ -18,6 +18,7 @@ import {
 } from "../../lib/api";
 import { C } from "../../styles/tokens";
 import { Field, Btn, Notice, controlStyle } from "../../components/ui";
+import { useAuth } from "../../app/AuthContext";
 import {
   AI_PROVIDERS,
   DEFAULT_AI_PROVIDER_ID,
@@ -25,7 +26,7 @@ import {
   describeEffectiveBaseUrl,
   getAiProvider,
   getEffectiveProviderModels,
-  isNvidiaProvider,
+  supportsLiveModelFetch,
   subscribeAiModelsFetched,
   type AiProviderInfo,
 } from "../../lib/ai-providers";
@@ -39,6 +40,13 @@ const DEFAULTS: SchoolSettings = {
   school_logo: "",
   school_background: "",
   school_favicon: "",
+  school_city: "",
+  active_academic_year: "2026/2027",
+  active_semester: "ganjil",
+  principal_name: "",
+  principal_nip: "",
+  curriculum_vice_name: "",
+  curriculum_vice_nip: "",
   ai_provider: "gemini",
   ai_model: "gemini-4-hydrogen",
   ai_api_key: "",
@@ -153,6 +161,7 @@ function UploadButton({
 const fieldInput = { ...controlStyle, background: C.base.surfaceAlt } as const;
 export default function SettingsPage() {
   const { t } = useI18n();
+  const { refreshSettings } = useAuth();
   const [form, setForm] = useState<SchoolSettings>(DEFAULTS);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -193,7 +202,7 @@ export default function SettingsPage() {
   const [aiTestResult, setAiTestResult] = useState<AiTestResult | null>(null);
 
   const aiProviderInfo: AiProviderInfo = getAiProvider(aiProvider);
-  const isNvidia = isNvidiaProvider(aiProviderInfo.id);
+  const canFetchModels = supportsLiveModelFetch(aiProviderInfo.id);
   const aiModelOptions = useMemo(() => {
     void aiModelsVersion;
     const list = getEffectiveProviderModels(aiProviderInfo.id);
@@ -439,6 +448,7 @@ export default function SettingsPage() {
         ai_api_key: aiApiKey,
         ai_base_url: aiBaseUrl,
       });
+      await refreshSettings();
       setSuccess("Pengaturan berhasil disimpan.");
     } catch (err: any) {
       setError(err?.message || "Gagal menyimpan pengaturan.");
@@ -686,7 +696,7 @@ export default function SettingsPage() {
                 />
               )}
 
-              {isNvidia && (
+              {canFetchModels && (
                 <button
                   type="button"
                   disabled={fetchingModels || saving}
@@ -868,6 +878,95 @@ export default function SettingsPage() {
               </div>
             </div>
           )}
+        </div>
+      </div>
+
+      {/* Kurikulum & Pengesahan Dokumen (Administrasi Guru) */}
+      <div className="rounded-xl p-6 space-y-5" style={{ background: C.base.surface, border: `1px solid ${C.base.border}` }}>
+        <div>
+          <div className="text-xs font-semibold uppercase tracking-widest" style={{ color: C.base.textFaint }}>
+            {t("Kurikulum & Pengesahan Dokumen")}
+          </div>
+          <p className="text-xs mt-1" style={{ color: C.base.textMuted }}>
+            {t("Digunakan otomatis pada kop surat, titik tanda tangan, dan header laporan PDF Administrasi Guru.")}
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <Field label={t("Tahun Ajaran Aktif")}>
+            <input
+              type="text"
+              value={form.active_academic_year}
+              onChange={(e) => handleChange("active_academic_year", e.target.value)}
+              placeholder="2026/2027"
+              className="w-full px-3 py-2.5 rounded-lg text-sm outline-none tabular-nums"
+              style={fieldInput}
+            />
+          </Field>
+          <Field label={t("Semester Aktif")}>
+            <select
+              value={form.active_semester || "ganjil"}
+              onChange={(e) => handleChange("active_semester", e.target.value)}
+              className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
+              style={fieldInput}
+            >
+              <option value="ganjil">{t("Ganjil (Semester 1)")}</option>
+              <option value="genap">{t("Genap (Semester 2)")}</option>
+            </select>
+          </Field>
+          <Field label={t("Kota / Kabupaten Tanda Tangan")}>
+            <input
+              type="text"
+              value={form.school_city}
+              onChange={(e) => handleChange("school_city", e.target.value)}
+              placeholder="Karawang"
+              className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
+              style={fieldInput}
+            />
+          </Field>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2" style={{ borderTop: `1px solid ${C.base.borderLight}` }}>
+          <Field label={t("Nama Kepala Sekolah")}>
+            <input
+              type="text"
+              value={form.principal_name}
+              onChange={(e) => handleChange("principal_name", e.target.value)}
+              placeholder="Drs. H. Budi Santoso, M.Pd."
+              className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
+              style={fieldInput}
+            />
+          </Field>
+          <Field label={t("NIP Kepala Sekolah")}>
+            <input
+              type="text"
+              value={form.principal_nip}
+              onChange={(e) => handleChange("principal_nip", e.target.value)}
+              placeholder="19700101 199512 1 001"
+              className="w-full px-3 py-2.5 rounded-lg text-sm outline-none tabular-nums"
+              style={fieldInput}
+            />
+          </Field>
+          <Field label={t("Nama Waka Kurikulum")}>
+            <input
+              type="text"
+              value={form.curriculum_vice_name}
+              onChange={(e) => handleChange("curriculum_vice_name", e.target.value)}
+              placeholder="Siti Aminah, S.Pd., M.Pd."
+              className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
+              style={fieldInput}
+            />
+          </Field>
+          <Field label={t("NIP Waka Kurikulum")}>
+            <input
+              type="text"
+              value={form.curriculum_vice_nip}
+              onChange={(e) => handleChange("curriculum_vice_nip", e.target.value)}
+              placeholder="19820515 200801 2 012"
+              className="w-full px-3 py-2.5 rounded-lg text-sm outline-none tabular-nums"
+              style={fieldInput}
+            />
+          </Field>
         </div>
       </div>
 

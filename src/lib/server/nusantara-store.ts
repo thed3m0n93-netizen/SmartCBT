@@ -63,21 +63,29 @@ export function ensureGameTable(): Promise<void> {
                  REFERENCES users(id) ON DELETE CASCADE
            )`;
       await query(ddl, []);
-      if (mysql) {
-        try {
+      const requiredColumns: Array<{ name: string; mysqlDef: string; pgDef: string }> = [
+        { name: "uniform", mysqlDef: "VARCHAR(8) NOT NULL DEFAULT 'sma'", pgDef: "VARCHAR(8) NOT NULL DEFAULT 'sma'" },
+        { name: "hair_style", mysqlDef: "VARCHAR(12) NOT NULL DEFAULT 'short'", pgDef: "VARCHAR(12) NOT NULL DEFAULT 'short'" },
+        { name: "hair_color", mysqlDef: "VARCHAR(16) NOT NULL DEFAULT '#1e293b'", pgDef: "VARCHAR(16) NOT NULL DEFAULT '#1e293b'" },
+        { name: "skin_color", mysqlDef: "VARCHAR(16) NOT NULL DEFAULT '#f6d198'", pgDef: "VARCHAR(16) NOT NULL DEFAULT '#f6d198'" },
+      ];
+      for (const col of requiredColumns) {
+        if (mysql) {
+          try {
+            await query(
+              `ALTER TABLE game_nusantara_state ADD COLUMN ${col.name} ${col.mysqlDef}`,
+              []
+            );
+          } catch (err: any) {
+            const msg = String(err?.message || "");
+            if (err?.errno !== 1060 && !/Duplicate column/i.test(msg)) throw err;
+          }
+        } else {
           await query(
-            `ALTER TABLE game_nusantara_state ADD COLUMN hair_style VARCHAR(12) NOT NULL DEFAULT 'short'`,
+            `ALTER TABLE game_nusantara_state ADD COLUMN IF NOT EXISTS ${col.name} ${col.pgDef}`,
             []
           );
-        } catch (err: any) {
-          const msg = String(err?.message || "");
-          if (err?.errno !== 1060 && !/Duplicate column/i.test(msg)) throw err;
         }
-      } else {
-        await query(
-          `ALTER TABLE game_nusantara_state ADD COLUMN IF NOT EXISTS hair_style VARCHAR(12) NOT NULL DEFAULT 'short'`,
-          []
-        );
       }
     })().catch((err) => {
       gameTableReady = null;

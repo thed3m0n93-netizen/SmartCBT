@@ -1,6 +1,13 @@
-import type { PlayerRole } from './schoolMap';
+import type { HairStyle, PlayerRole } from './schoolMap';
 
 export type GameState = 'TITLE_MENU' | 'PLAYING';
+
+export interface CharacterConfig {
+  role: PlayerRole;
+  hairStyle: HairStyle;
+  hairColor: string;
+  skinColor: string;
+}
 
 export interface ChatMessage {
   id: string;

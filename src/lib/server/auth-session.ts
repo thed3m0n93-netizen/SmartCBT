@@ -5,6 +5,8 @@ export interface SessionUser {
   username: string;
   full_name: string;
   role: string;
+  academic_role?: string;
+  nip?: string | null;
   status: string;
 }
 

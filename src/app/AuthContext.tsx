@@ -9,7 +9,7 @@ import {
   type LoginResponse,
   type SchoolSettings,
 } from "../lib/api";
-import { mapRole, type DBRole } from "../lib/types";
+import { mapRole, type AcademicRole, type DBRole } from "../lib/types";
 
 export type Role = "admin" | "teacher" | "student";
 
@@ -17,6 +17,8 @@ export interface AuthUser {
   id: string;
   name: string;
   role: Role;
+  academicRole?: AcademicRole;
+  nip?: string | null;
   email: string;
   institution: string;
   avatar?: string;
@@ -24,26 +26,35 @@ export interface AuthUser {
 
 const SETTINGS_STORAGE_KEY = "smartcbt:settings";
 
+const FALLBACK_SETTINGS: SchoolSettings = {
+  school_name: "SMK TEKNOLOGI",
+  school_address: "",
+  school_phone: "",
+  school_email: "",
+  school_website: "",
+  school_logo: "",
+  school_background: "",
+  school_favicon: "",
+  school_city: "",
+  active_academic_year: "2026/2027",
+  active_semester: "ganjil",
+  principal_name: "",
+  principal_nip: "",
+  curriculum_vice_name: "",
+  curriculum_vice_nip: "",
+  ai_provider: "gemini",
+  ai_model: "gemini-4-hydrogen",
+  ai_api_key: "",
+  ai_base_url: "https://generativelanguage.googleapis.com/v1beta",
+};
+
 /** Fetch school settings (cached in localStorage, refreshed in background). */
 function getCachedSettings(): SchoolSettings {
   try {
     const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) return { ...FALLBACK_SETTINGS, ...JSON.parse(raw) };
   } catch { /* ignore */ }
-    return {
-    school_name: "SMK TEKNOLOGI",
-    school_address: "",
-    school_phone: "",
-    school_email: "",
-    school_website: "",
-    school_logo: "",
-    school_background: "",
-    school_favicon: "",
-    ai_provider: "gemini",
-    ai_model: "gemini-4-hydrogen",
-    ai_api_key: "",
-    ai_base_url: "https://generativelanguage.googleapis.com/v1beta",
-  };
+  return { ...FALLBACK_SETTINGS };
 }
 
 /** Pull the latest settings from the server and update the cache. */
@@ -129,6 +140,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             id: dbUser.id,
             name: dbUser.full_name,
             role: mapRole(dbUser.role as DBRole),
+            academicRole: (dbUser.academic_role as AcademicRole) || "none",
+            nip: dbUser.nip ?? null,
             email: dbUser.username,
             institution: getCachedSettings().school_name || "SMK TEKNOLOGI",
           });
@@ -169,6 +182,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         id: dbUser.id,
         name: dbUser.full_name,
         role: mapRole(dbUser.role as DBRole),
+        academicRole: (dbUser.academic_role as AcademicRole) || "none",
+        nip: dbUser.nip ?? null,
         email: dbUser.username,
         institution: getCachedSettings().school_name || "SMK TEKNOLOGI",
       };

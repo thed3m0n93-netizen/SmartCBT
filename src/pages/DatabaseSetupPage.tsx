@@ -34,7 +34,7 @@ import {
   describeEffectiveBaseUrl,
   getAiProvider,
   getEffectiveProviderModels,
-  isNvidiaProvider,
+  supportsLiveModelFetch,
   subscribeAiModelsFetched,
   type AiProviderInfo,
 } from "../lib/ai-providers";
@@ -568,7 +568,7 @@ function UpdateDatabasePanel({
         </li>
         <li>{t("Trigger & index: student_answers.updated_at (PostgreSQL) + idx_student_answers_flagged")}</li>
         <li>
-          {t("Settings: school_*, ai_provider, ai_model, ai_api_key, ai_base_url")} ({status?.settingsKeys ?? 0} {t("kunci")})
+          {t("Settings: school_*, active_academic_year, active_semester, principal_*, curriculum_vice_*, ai_*")} ({status?.settingsKeys ?? 0} {t("kunci")})
         </li>
       </ul>
 
@@ -643,7 +643,7 @@ export default function DatabaseSetupPage() {
   const [schoolName, setSchoolName] = useState("SMK TEKNOLOGI");
   const [aiProvider, setAiProvider] = useState(DEFAULT_AI_PROVIDER_ID);
   const aiProviderInfo = getAiProvider(aiProvider);
-  const isNvidia = isNvidiaProvider(aiProviderInfo.id);
+  const canFetchModels = supportsLiveModelFetch(aiProviderInfo.id);
   const [aiModel, setAiModel] = useState(() => defaultModelForProvider(DEFAULT_AI_PROVIDER_ID));
   const [aiApiKey, setAiApiKey] = useState("");
   const [aiSaving, setAiSaving] = useState(false);
@@ -1049,7 +1049,7 @@ export default function DatabaseSetupPage() {
                           style={aiFieldStyle}
                         />
                       )}
-                      {isNvidia && (
+                      {canFetchModels && (
                         <button
                           type="button"
                           disabled={fetchingModels || aiSaving}

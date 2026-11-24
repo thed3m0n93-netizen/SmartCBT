@@ -28,6 +28,22 @@ const APP_NAME = "SmartCBT";
 
 /** Child-first order: safe for DELETE / TRUNCATE (children before parents). */
 const DELETE_ORDER = [
+  "adm_remedial_enrichment",
+  "adm_student_grades",
+  "adm_grade_assessments",
+  "adm_blueprint_items",
+  "adm_assessment_blueprints",
+  "adm_student_attendances",
+  "adm_teaching_journals",
+  "adm_teaching_schedules",
+  "adm_lesson_plans",
+  "adm_promes",
+  "adm_prota",
+  "adm_kktp",
+  "adm_cp_atp",
+  "adm_effective_weeks",
+  "adm_calendar_events",
+  "adm_academic_years",
   "exam_results",
   "student_answers",
   "student_sessions",

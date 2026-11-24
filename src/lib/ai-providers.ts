@@ -175,6 +175,37 @@ export const AI_PROVIDERS: AiProviderInfo[] = [
     note: "Google Gemma via NVIDIA NIM — membaca NVIDIA_API_KEY dari Docker Compose / .env server.",
   },
   {
+    id: "freellmapi",
+    label: "freeLLMAPI (llm.devboard.biz.id)",
+    protocol: "openai",
+    defaultBaseUrl: "https://llm.devboard.biz.id/v1",
+    requiresApiKey: true,
+    apiKeyEnv: "FREELLMAPI_API_KEY",
+    hasBuiltInApiKey: true,
+    category: "instant",
+    isPlaceholder: false,
+    badge: "Self-Hosted · Env / Key",
+    defaultModel: "auto",
+    models: [
+      "auto",
+      "fusion",
+      "glm-5.3-flash",
+      "gemini-3.8-flash",
+      "gemini-flash",
+      "gemini-3.1-flash-lite-preview",
+      "gpt-oss-20b",
+      "step-5-preview",
+      "nemotron-3-ultra-550b",
+      "deepseek-aideepseek-v4.1-flash",
+      "mistralaimistral-large-4-1t-a52b",
+      "claude-sonnet-4-5",
+      "claude-opus-4-5",
+      "claude-haiku-4-5",
+    ],
+    supportsJsonMode: true,
+    note: "Gateway AI pribadi OpenAI-compatible (llm.devboard.biz.id) — membaca FREELLMAPI_API_KEY dari Docker Compose / .env server, atau isi API key di Pengaturan / switcher.",
+  },
+  {
     id: "openai",
     label: "OpenAI (GPT-4o / 4.1)",
     protocol: "openai",
@@ -445,6 +476,12 @@ export function defaultBaseUrlForProvider(providerId: string): string {
 /** TRUE for any NVIDIA NIM provider entry in the catalog. */
 export function isNvidiaProvider(providerId: string | null | undefined): boolean {
   return String(providerId ?? "").trim().toLowerCase().startsWith("nvidia");
+}
+
+/** TRUE when the provider exposes an OpenAI-style `/models` catalog suitable for live Fetch Model. */
+export function supportsLiveModelFetch(providerId: string | null | undefined): boolean {
+  const id = String(providerId ?? "").trim().toLowerCase();
+  return isNvidiaProvider(id) || id === "freellmapi";
 }
 
 const AI_FETCHED_MODELS_KEY = "smartcbt:ai_fetched_models_v1";

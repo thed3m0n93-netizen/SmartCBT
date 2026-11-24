@@ -41,6 +41,23 @@ interface MockStore {
   assignment_submissions: any[];
   uploads: any[];
   audit_logs: any[];
+  game_nusantara_state: any[];
+  adm_academic_years: any[];
+  adm_calendar_events: any[];
+  adm_effective_weeks: any[];
+  adm_cp_atp: any[];
+  adm_kktp: any[];
+  adm_prota: any[];
+  adm_promes: any[];
+  adm_lesson_plans: any[];
+  adm_teaching_schedules: any[];
+  adm_teaching_journals: any[];
+  adm_student_attendances: any[];
+  adm_assessment_blueprints: any[];
+  adm_blueprint_items: any[];
+  adm_grade_assessments: any[];
+  adm_student_grades: any[];
+  adm_remedial_enrichment: any[];
 }
 
 function createInitialStore(): MockStore {
@@ -52,6 +69,8 @@ function createInitialStore(): MockStore {
         password_hash: HASH_ADMIN,
         full_name: "Administrator Sistem",
         role: "super_admin",
+        academic_role: "none",
+        nip: null,
         status: "active",
         created_at: nowIso(),
       },
@@ -61,6 +80,8 @@ function createInitialStore(): MockStore {
         password_hash: HASH_TEACHER,
         full_name: "Budi Santoso, S.Pd.",
         role: "teacher",
+        academic_role: "guru",
+        nip: "198504122010011014",
         status: "active",
         created_at: nowIso(),
       },
@@ -70,6 +91,8 @@ function createInitialStore(): MockStore {
         password_hash: HASH_STUDENT,
         full_name: "Andi Prasetyo",
         role: "student",
+        academic_role: "none",
+        nip: null,
         status: "active",
         created_at: nowIso(),
       },
@@ -101,6 +124,13 @@ function createInitialStore(): MockStore {
       { key: "school_logo", value: "" },
       { key: "school_background", value: "" },
       { key: "school_favicon", value: "" },
+      { key: "school_city", value: "Karawang" },
+      { key: "active_academic_year", value: "2026/2027" },
+      { key: "active_semester", value: "ganjil" },
+      { key: "principal_name", value: "Dr. Hj. Ratna Kusuma, M.Pd." },
+      { key: "principal_nip", value: "197208171998022001" },
+      { key: "curriculum_vice_name", value: "Drs. Hendra Wijaya, M.M." },
+      { key: "curriculum_vice_nip", value: "197805032005011007" },
       { key: "student_registration_open", value: "true" },
       { key: "ai_provider", value: "gemini" },
       { key: "ai_model", value: "gemini-4-hydrogen" },
@@ -255,6 +285,23 @@ function createInitialStore(): MockStore {
     assignment_submissions: [],
     uploads: [],
     audit_logs: [],
+    game_nusantara_state: [],
+    adm_academic_years: [],
+    adm_calendar_events: [],
+    adm_effective_weeks: [],
+    adm_cp_atp: [],
+    adm_kktp: [],
+    adm_prota: [],
+    adm_promes: [],
+    adm_lesson_plans: [],
+    adm_teaching_schedules: [],
+    adm_teaching_journals: [],
+    adm_student_attendances: [],
+    adm_assessment_blueprints: [],
+    adm_blueprint_items: [],
+    adm_grade_assessments: [],
+    adm_student_grades: [],
+    adm_remedial_enrichment: [],
   };
 }
 
@@ -326,6 +373,33 @@ export async function executeMockQuery(sqlText: string, params: any[] = []): Pro
     return [];
   }
 
+  // Nusantara High game state (in-memory mock)
+  if (/^select .* from game_nusantara_state where user_id = \$1/i.test(sql)) {
+    const row = store.game_nusantara_state.find((g) => String(g.user_id) === String(params[0]));
+    return row ? [{ ...row }] : [];
+  }
+  if (/^insert into game_nusantara_state\b/i.test(sql) && params.length >= 11) {
+    const userId = String(params[0]);
+    const nextRow = {
+      user_id: userId,
+      class_id: params[1] ?? null,
+      xp: Number(params[2]) || 0,
+      money: Number(params[3]) || 10000,
+      wx: Number(params[4]) || 15.5,
+      wy: Number(params[5]) || 27.5,
+      dir: String(params[6] || "s"),
+      uniform: String(params[7] || "sma"),
+      hair_style: String(params[8] || "short"),
+      hair_color: String(params[9] || "#1e293b"),
+      skin_color: String(params[10] || "#f6d198"),
+      updated_at: nowIso(),
+    };
+    const idx = store.game_nusantara_state.findIndex((g) => String(g.user_id) === userId);
+    if (idx >= 0) store.game_nusantara_state[idx] = nextRow;
+    else store.game_nusantara_state.push(nextRow);
+    return [];
+  }
+
   // Audit logs (in-memory mock)
   if (/^insert into audit_logs /i.test(sql)) {
     let parsedMeta: any = params[8] ?? null;
@@ -376,6 +450,22 @@ export async function executeMockQuery(sqlText: string, params: any[] = []): Pro
   if (/^update users set password_hash = \$1/i.test(sql)) {
     const u = store.users.find((x) => String(x.id) === String(params[1]));
     if (u) u.password_hash = params[0];
+    return [];
+  }
+  if (/^update users set username = \$1/i.test(sql)) {
+    const hasPw = lower.includes("password_hash =");
+    const targetId = String(hasPw ? params[7] : params[6]);
+    const u = store.users.find((x) => String(x.id) === targetId);
+    if (u) {
+      u.username = params[0];
+      u.full_name = params[1];
+      u.role = params[2];
+      u.academic_role = params[3] || "none";
+      u.nip = params[4] ?? null;
+      u.status = params[5];
+      if (hasPw) u.password_hash = params[6];
+      u.updated_at = nowIso();
+    }
     return [];
   }
   if (/^update exams set results_published = \$1/i.test(sql)) {
@@ -477,6 +567,50 @@ export async function executeMockQuery(sqlText: string, params: any[] = []): Pro
     ];
   }
 
+  if (lower.includes("from users u") && lower.includes("u.role = 'student'") && lower.includes("sp.class_id = $1")) {
+    const classId = Number(params[0]);
+    return store.users
+      .filter((u) => {
+        if (u.role !== "student") return false;
+        const sp = store.student_profiles.find((p) => String(p.user_id) === String(u.id));
+        return sp && Number(sp.class_id) === classId && !sp.graduated_at;
+      })
+      .sort((a, b) => String(a.full_name).localeCompare(String(b.full_name)))
+      .map((u) => {
+        const sp = store.student_profiles.find((p) => String(p.user_id) === String(u.id));
+        const cls = sp ? store.classes.find((c) => Number(c.id) === Number(sp.class_id)) : null;
+        return {
+          ...u,
+          student_id: u.id,
+          student_number: sp?.student_number ?? null,
+          class_id: sp?.class_id ?? null,
+          class_name: cls?.class_name ?? null,
+          grade_level: cls?.grade_level ?? null,
+        };
+      });
+  }
+
+  if (lower.includes("from users u") && lower.includes("u.role = 'student'") && lower.includes("sp.class_id is not null")) {
+    return store.users
+      .filter((u) => {
+        if (u.role !== "student") return false;
+        const sp = store.student_profiles.find((p) => String(p.user_id) === String(u.id));
+        return sp && sp.class_id != null && !sp.graduated_at;
+      })
+      .sort((a, b) => String(a.full_name).localeCompare(String(b.full_name)))
+      .map((u) => {
+        const sp = store.student_profiles.find((p) => String(p.user_id) === String(u.id));
+        const cls = sp ? store.classes.find((c) => Number(c.id) === Number(sp.class_id)) : null;
+        return {
+          ...u,
+          student_number: sp?.student_number ?? null,
+          class_id: sp?.class_id ?? null,
+          class_name: cls?.class_name ?? null,
+          grade_level: cls?.grade_level ?? null,
+        };
+      });
+  }
+
   // User list
   if (lower.includes("from users u") && !lower.includes("select count(")) {
     return store.users.map((u) => {
@@ -498,7 +632,13 @@ export async function executeMockQuery(sqlText: string, params: any[] = []): Pro
   if (/from users where role = 'teacher'/i.test(sql)) {
     return store.users
       .filter((u) => u.role === "teacher")
-      .map((u) => ({ id: u.id, fullName: u.full_name, full_name: u.full_name }));
+      .map((u) => ({
+        id: u.id,
+        fullName: u.full_name,
+        full_name: u.full_name,
+        academic_role: u.academic_role ?? "none",
+        nip: u.nip ?? null,
+      }));
   }
 
   if (/^insert into users /i.test(sql)) {
@@ -509,6 +649,8 @@ export async function executeMockQuery(sqlText: string, params: any[] = []): Pro
       password_hash: params[1],
       full_name: params[2],
       role: params[3] || "student",
+      academic_role: params[4] || "none",
+      nip: params[5] ?? null,
       status: "active",
       created_at: nowIso(),
     };
@@ -564,6 +706,11 @@ export async function executeMockQuery(sqlText: string, params: any[] = []): Pro
     if (lower.includes("where id = $1")) {
       return store.classes.filter((c) => Number(c.id) === Number(params[0]));
     }
+    if (lower.includes("where class_name = $1 and grade_level = $2")) {
+      return store.classes.filter(
+        (c) => String(c.class_name) === String(params[0]) && String(c.grade_level) === String(params[1]),
+      );
+    }
     return [...store.classes];
   }
   if (/^insert into classes /i.test(sql)) {
@@ -573,7 +720,10 @@ export async function executeMockQuery(sqlText: string, params: any[] = []): Pro
   }
 
   // Subjects
-  if (/^select \* from subjects\b/i.test(sql)) {
+  if (lower.includes("from subjects") && !lower.includes("join") && !lower.includes("count(")) {
+    if (lower.includes("where id = $1")) {
+      return store.subjects.filter((s) => Number(s.id) === Number(params[0]));
+    }
     return [...store.subjects];
   }
   if (/^select subject_id, class_id from subject_class_assignments/i.test(sql)) {
@@ -617,9 +767,89 @@ export async function executeMockQuery(sqlText: string, params: any[] = []): Pro
     return store.questions.filter((q) => (!bankId ? true : String(q.bank_id) === String(bankId)));
   }
 
+  if (lower.includes("from exams e") && lower.includes("where e.id = $1")) {
+    const ex = store.exams.find((e) => String(e.id) === String(params[0]));
+    if (!ex) return [];
+    const qb = store.question_banks.find((b) => String(b.id) === String(ex.bank_id));
+    return [{ ...ex, subject_id: qb?.subject_id ?? null }];
+  }
   if (lower.includes("from exams where id = $1")) {
     const ex = store.exams.find((e) => String(e.id) === String(params[0]));
     return ex ? [{ ...ex }] : [];
+  }
+  if (lower.includes("from student_sessions ss") && lower.includes("join exam_results er") && lower.includes("where ss.exam_id = $1")) {
+    const examId = String(params[0]);
+    return store.student_sessions
+      .filter((ss) => String(ss.exam_id) === examId)
+      .flatMap((ss) => {
+        const er = store.exam_results.find((r) => String(r.session_id) === String(ss.id));
+        return er ? [{ student_id: ss.student_id, status: ss.status, total_score: Number(er.total_score ?? 0) }] : [];
+      });
+  }
+  if (/^insert into exam_results\b/i.test(sql)) {
+    const row = {
+      id: params.length >= 6 ? params[0] : nextUuid("er"),
+      session_id: params.length >= 6 ? params[1] : params[0],
+      total_score: Number(params.length >= 6 ? params[2] : params[1] ?? 0),
+      objective_score: Number(params.length >= 6 ? params[3] : params[2] ?? 0),
+      essay_score: Number(params.length >= 6 ? params[4] : params[3] ?? 0),
+      grade_status: String(params.length >= 6 ? params[5] : params[4] ?? "graded"),
+      generated_at: nowIso(),
+    };
+    const idx = store.exam_results.findIndex((r) => String(r.session_id) === String(row.session_id));
+    if (idx >= 0) store.exam_results[idx] = row;
+    else store.exam_results.push(row);
+    return [{ ...row }];
+  }
+  if (lower.includes("from assignments a") && !lower.includes("count(")) {
+    const enrich = (a: any) => {
+      const s = a.subject_id != null ? store.subjects.find((x) => Number(x.id) === Number(a.subject_id)) : null;
+      return { ...a, subject_name: s?.subject_name ?? "", subject_code: s?.subject_code ?? "" };
+    };
+    if (lower.includes("where a.id = $1") || /^select .+ from assignments where id = \$1/i.test(sql)) {
+      const row = store.assignments.find((a) => String(a.id) === String(params[0]));
+      return row ? [enrich(row)] : [];
+    }
+    return store.assignments.map(enrich);
+  }
+  if (/^select .+ from assignments where id = \$1/i.test(sql)) {
+    const row = store.assignments.find((a) => String(a.id) === String(params[0]));
+    return row ? [{ ...row }] : [];
+  }
+  if (/^insert into assignments\b/i.test(sql)) {
+    const isFull18 = params.length >= 12;
+    const row = {
+      id: params[0],
+      teacher_id: params[1],
+      class_id: params[2] != null ? Number(params[2]) : null,
+      subject_id: params[3] != null ? Number(params[3]) : null,
+      title: params[4],
+      description: params[5] ?? "",
+      instructions: params[6] ?? "",
+      max_score: Number((isFull18 ? params[11] : params[7]) ?? 100),
+      published: true,
+      created_at: nowIso(),
+    };
+    store.assignments.push(row);
+    return [{ ...row }];
+  }
+  if (/^select student_id, score from assignment_submissions where assignment_id = \$1/i.test(sql)) {
+    return store.assignment_submissions
+      .filter((s) => String(s.assignment_id) === String(params[0]) && s.score != null)
+      .map((s) => ({ student_id: s.student_id, score: Number(s.score) }));
+  }
+  if (/^insert into assignment_submissions\b/i.test(sql)) {
+    const row = {
+      id: params[0],
+      assignment_id: params[1],
+      student_id: params[2],
+      submission_text: params[3] ?? "",
+      score: params[4] != null ? Number(params[4]) : null,
+      status: params[5] ?? "graded",
+      submitted_at: nowIso(),
+    };
+    store.assignment_submissions.push(row);
+    return [{ ...row }];
   }
   if (lower.includes("from student_sessions where exam_id = $1") && lower.includes("count(")) {
     const n = store.student_sessions.filter((s) => String(s.exam_id) === String(params[0])).length;
@@ -735,6 +965,1385 @@ export async function executeMockQuery(sqlText: string, params: any[] = []): Pro
         user_name: user?.full_name ?? "Siswa",
       };
     });
+  }
+
+  // ── Administrasi Guru Phase 1 (in-memory mock) ───────────────────────
+  if (/^select count\(\*\) as n from adm_academic_years/i.test(sql)) {
+    return [{ n: store.adm_academic_years.length }];
+  }
+  if (/^select .* from adm_academic_years where id = \$1/i.test(sql)) {
+    const row = store.adm_academic_years.find((y) => String(y.id) === String(params[0]));
+    return row ? [{ ...row }] : [];
+  }
+  if (/^select id from adm_academic_years where year_label = \$1 and semester = \$2 and id <> \$3/i.test(sql)) {
+    const row = store.adm_academic_years.find(
+      (y) => y.year_label === params[0] && y.semester === params[1] && String(y.id) !== String(params[2]),
+    );
+    return row ? [{ id: row.id }] : [];
+  }
+  if (/^select id from adm_academic_years where year_label = \$1 and semester = \$2/i.test(sql)) {
+    const row = store.adm_academic_years.find(
+      (y) => y.year_label === params[0] && y.semester === params[1],
+    );
+    return row ? [{ id: row.id }] : [];
+  }
+  if (/^select \* from adm_academic_years\b/i.test(sql)) {
+    return [...store.adm_academic_years].sort((a, b) =>
+      String(b.year_label).localeCompare(String(a.year_label)) ||
+      String(a.semester).localeCompare(String(b.semester)),
+    );
+  }
+  if (/^insert into adm_academic_years\b/i.test(sql)) {
+    const row = {
+      id: params[0],
+      year_label: params[1],
+      semester: params[2],
+      start_date: params[3],
+      end_date: params[4],
+      working_days_per_week: Number(params[5] ?? 5),
+      is_active: Boolean(params[6]),
+      created_by: params[7] ?? null,
+      created_at: nowIso(),
+      updated_at: nowIso(),
+    };
+    store.adm_academic_years.push(row);
+    return [{ ...row }];
+  }
+  if (/^update adm_academic_years set is_active = \$1, updated_at/i.test(sql)) {
+    const row = store.adm_academic_years.find((y) => String(y.id) === String(params[1]));
+    if (row) {
+      row.is_active = Boolean(params[0]);
+      row.updated_at = nowIso();
+    }
+    return [];
+  }
+  if (/^update adm_academic_years set is_active = \$1$/i.test(sql)) {
+    for (const y of store.adm_academic_years) y.is_active = Boolean(params[0]);
+    return [];
+  }
+  if (/^update adm_academic_years set year_label = \$1/i.test(sql)) {
+    const row = store.adm_academic_years.find((y) => String(y.id) === String(params[5]));
+    if (row) {
+      row.year_label = params[0];
+      row.semester = params[1];
+      row.start_date = params[2];
+      row.end_date = params[3];
+      row.working_days_per_week = Number(params[4] ?? 5);
+      row.updated_at = nowIso();
+    }
+    return [];
+  }
+  if (/^delete from adm_academic_years where id = \$1/i.test(sql)) {
+    const ayId = String(params[0]);
+    store.adm_academic_years = store.adm_academic_years.filter((y) => String(y.id) !== ayId);
+    store.adm_calendar_events = store.adm_calendar_events.filter((e) => String(e.academic_year_id) !== ayId);
+    store.adm_effective_weeks = store.adm_effective_weeks.filter((w) => String(w.academic_year_id) !== ayId);
+    store.adm_cp_atp = store.adm_cp_atp.filter((c) => String(c.academic_year_id) !== ayId);
+    store.adm_kktp = store.adm_kktp.filter((k) => String(k.academic_year_id) !== ayId);
+    store.adm_prota = store.adm_prota.filter((p) => String(p.academic_year_id) !== ayId);
+    store.adm_promes = store.adm_promes.filter((p) => String(p.academic_year_id) !== ayId);
+    store.adm_lesson_plans = store.adm_lesson_plans.filter((l) => String(l.academic_year_id) !== ayId);
+    const removedJournalIds = new Set(
+      store.adm_teaching_journals.filter((j) => String(j.academic_year_id) === ayId).map((j) => String(j.id)),
+    );
+    store.adm_teaching_schedules = store.adm_teaching_schedules.filter((s) => String(s.academic_year_id) !== ayId);
+    store.adm_teaching_journals = store.adm_teaching_journals.filter((j) => String(j.academic_year_id) !== ayId);
+    store.adm_student_attendances = store.adm_student_attendances.filter((a) => !removedJournalIds.has(String(a.journal_id)));
+    const removedBpIds = new Set(
+      store.adm_assessment_blueprints.filter((b) => String(b.academic_year_id) === ayId).map((b) => String(b.id)),
+    );
+    store.adm_assessment_blueprints = store.adm_assessment_blueprints.filter((b) => String(b.academic_year_id) !== ayId);
+    store.adm_blueprint_items = store.adm_blueprint_items.filter((i) => !removedBpIds.has(String(i.blueprint_id)));
+    const removedGaIds = new Set(
+      store.adm_grade_assessments.filter((g) => String(g.academic_year_id) === ayId).map((g) => String(g.id)),
+    );
+    store.adm_grade_assessments = store.adm_grade_assessments.filter((g) => String(g.academic_year_id) !== ayId);
+    store.adm_student_grades = store.adm_student_grades.filter((g) => !removedGaIds.has(String(g.grade_assessment_id)));
+    store.adm_remedial_enrichment = store.adm_remedial_enrichment.filter((r) => String(r.academic_year_id) !== ayId);
+    return [];
+  }
+
+  // adm_calendar_events
+  if (/^select \* from adm_calendar_events where academic_year_id = \$1/i.test(sql)) {
+    return store.adm_calendar_events
+      .filter((e) => String(e.academic_year_id) === String(params[0]))
+      .sort((a, b) => String(a.start_date).localeCompare(String(b.start_date)));
+  }
+  if (/^select \* from adm_calendar_events where id = \$1/i.test(sql)) {
+    const row = store.adm_calendar_events.find((e) => String(e.id) === String(params[0]));
+    return row ? [{ ...row }] : [];
+  }
+  if (/^insert into adm_calendar_events\b/i.test(sql)) {
+    const row = {
+      id: params[0],
+      academic_year_id: params[1],
+      title: params[2],
+      event_type: params[3],
+      start_date: params[4],
+      end_date: params[5],
+      is_effective: Boolean(params[6]),
+      notes: params[7] ?? null,
+      created_by: params[8] ?? null,
+      created_at: nowIso(),
+      updated_at: nowIso(),
+    };
+    store.adm_calendar_events.push(row);
+    return [{ ...row }];
+  }
+  if (/^update adm_calendar_events set title = \$1/i.test(sql)) {
+    const row = store.adm_calendar_events.find((e) => String(e.id) === String(params[6]));
+    if (row) {
+      row.title = params[0];
+      row.event_type = params[1];
+      row.start_date = params[2];
+      row.end_date = params[3];
+      row.is_effective = Boolean(params[4]);
+      row.notes = params[5] ?? null;
+      row.updated_at = nowIso();
+    }
+    return [];
+  }
+  if (/^delete from adm_calendar_events where id = \$1/i.test(sql)) {
+    store.adm_calendar_events = store.adm_calendar_events.filter((e) => String(e.id) !== String(params[0]));
+    return [];
+  }
+
+  // adm_effective_weeks
+  if (/^select id from adm_effective_weeks\b/i.test(sql)) {
+    const hasClass = lower.includes("class_id = $4");
+    const row = store.adm_effective_weeks.find((w) =>
+      String(w.academic_year_id) === String(params[0]) &&
+      String(w.teacher_id) === String(params[1]) &&
+      Number(w.subject_id) === Number(params[2]) &&
+      (hasClass ? Number(w.class_id) === Number(params[3]) : w.class_id == null),
+    );
+    return row ? [{ id: row.id }] : [];
+  }
+  if (/^select .+ from adm_effective_weeks where id = \$1/i.test(sql)) {
+    const row = store.adm_effective_weeks.find((w) => String(w.id) === String(params[0]));
+    return row ? [{ ...row }] : [];
+  }
+  if (lower.includes("from adm_effective_weeks ew")) {
+    const enrich = (w: any) => {
+      const u = store.users.find((x) => String(x.id) === String(w.teacher_id));
+      const s = store.subjects.find((x) => Number(x.id) === Number(w.subject_id));
+      const c = w.class_id != null ? store.classes.find((x) => Number(x.id) === Number(w.class_id)) : null;
+      const ay = store.adm_academic_years.find((x) => String(x.id) === String(w.academic_year_id));
+      return {
+        ...w,
+        teacher_name: u?.full_name ?? "",
+        teacher_nip: u?.nip ?? null,
+        subject_name: s?.subject_name ?? "",
+        subject_code: s?.subject_code ?? "",
+        class_name: c?.class_name ?? null,
+        grade_level: c?.grade_level ?? null,
+        year_label: ay?.year_label ?? "",
+        semester: ay?.semester ?? "",
+        start_date: ay?.start_date ?? "",
+        end_date: ay?.end_date ?? "",
+      };
+    };
+    if (lower.includes("where ew.id = $1")) {
+      const row = store.adm_effective_weeks.find((w) => String(w.id) === String(params[0]));
+      return row ? [enrich(row)] : [];
+    }
+    if (lower.includes("where ew.academic_year_id = $1 and ew.teacher_id = $2")) {
+      return store.adm_effective_weeks
+        .filter((w) => String(w.academic_year_id) === String(params[0]) && String(w.teacher_id) === String(params[1]))
+        .map(enrich);
+    }
+    return store.adm_effective_weeks
+      .filter((w) => String(w.academic_year_id) === String(params[0]))
+      .map(enrich);
+  }
+  if (/^insert into adm_effective_weeks\b/i.test(sql)) {
+    const row = {
+      id: params[0],
+      academic_year_id: params[1],
+      teacher_id: params[2],
+      subject_id: Number(params[3]),
+      class_id: params[4] != null ? Number(params[4]) : null,
+      working_days_per_week: Number(params[5] ?? 5),
+      total_weeks: Number(params[6] ?? 0),
+      non_effective_weeks: Number(params[7] ?? 0),
+      effective_weeks: Number(params[8] ?? 0),
+      effective_days: Number(params[9] ?? 0),
+      jp_per_week: Number(params[10] ?? 2),
+      total_effective_jp: Number(params[11] ?? 0),
+      breakdown_json: typeof params[12] === "string" ? JSON.parse(params[12]) : params[12],
+      notes: params[13] ?? null,
+      status: "draft",
+      created_at: nowIso(),
+      updated_at: nowIso(),
+    };
+    store.adm_effective_weeks.push(row);
+    return [{ ...row }];
+  }
+  if (/^update adm_effective_weeks set working_days_per_week = \$1/i.test(sql)) {
+    const row = store.adm_effective_weeks.find((w) => String(w.id) === String(params[9]));
+    if (row) {
+      row.working_days_per_week = Number(params[0] ?? 5);
+      row.total_weeks = Number(params[1] ?? 0);
+      row.non_effective_weeks = Number(params[2] ?? 0);
+      row.effective_weeks = Number(params[3] ?? 0);
+      row.effective_days = Number(params[4] ?? 0);
+      row.jp_per_week = Number(params[5] ?? 2);
+      row.total_effective_jp = Number(params[6] ?? 0);
+      row.breakdown_json = typeof params[7] === "string" ? JSON.parse(params[7]) : params[7];
+      row.notes = params[8] ?? null;
+      row.updated_at = nowIso();
+    }
+    return [];
+  }
+  if (/^delete from adm_effective_weeks where id = \$1/i.test(sql)) {
+    store.adm_effective_weeks = store.adm_effective_weeks.filter((w) => String(w.id) !== String(params[0]));
+    return [];
+  }
+
+  // ── uploads (storage metadata mock) ──────────────────────────────────
+  if (/^insert into uploads\b/i.test(sql)) {
+    const row = {
+      id: params[0],
+      owner_id: params[1] ?? null,
+      file_name: params[2],
+      stored_name: params[3],
+      mime_type: params[4] ?? null,
+      size_bytes: Number(params[5] ?? 0),
+      path: params[6],
+      kind: params[7] ?? "general",
+      reference: params.length >= 9 ? (params[8] ?? null) : null,
+      created_at: nowIso(),
+    };
+    store.uploads.push(row);
+    return [{ ...row }];
+  }
+  if (/^select .+ from uploads where id = \$1/i.test(sql)) {
+    const row = store.uploads.find((u) => String(u.id) === String(params[0]));
+    return row ? [{ ...row }] : [];
+  }
+  if (/^delete from uploads where id = \$1/i.test(sql)) {
+    store.uploads = store.uploads.filter((u) => String(u.id) !== String(params[0]));
+    return [];
+  }
+  if (lower.includes("from uploads u")) {
+    return store.uploads.map((u) => {
+      const owner = store.users.find((x) => String(x.id) === String(u.owner_id));
+      return { ...u, owner_name: owner?.full_name ?? null };
+    });
+  }
+
+  // ── learning_modules (minimal mock support for LMS & Modul Ajar sync) ─
+  if (/^select id from learning_modules where id = \$1/i.test(sql)) {
+    const row = store.learning_modules.find((m) => String(m.id) === String(params[0]));
+    return row ? [{ id: row.id }] : [];
+  }
+  if (/^select id, title, subject_id, class_id, published from learning_modules\b/i.test(sql)) {
+    const list = lower.includes("where teacher_id = $1")
+      ? store.learning_modules.filter((m) => String(m.teacher_id) === String(params[0]))
+      : store.learning_modules;
+    return [...list];
+  }
+  if (/^insert into learning_modules\b/i.test(sql)) {
+    const row = {
+      id: params[0],
+      teacher_id: params[1],
+      class_id: params[2] != null ? Number(params[2]) : null,
+      subject_id: params[3] != null ? Number(params[3]) : null,
+      title: params[4],
+      description: params[5] ?? "",
+      content: params[6] ?? "",
+      attachment_url: params[7] ?? null,
+      attachment_name: params[8] ?? null,
+      attachment_mime: params[9] ?? null,
+      estimated_minutes: Number(params[10] ?? 10),
+      published: Boolean(params[11]),
+      created_at: nowIso(),
+      updated_at: nowIso(),
+    };
+    store.learning_modules.push(row);
+    return [{ ...row }];
+  }
+  if (/^update learning_modules set class_id = \$1/i.test(sql)) {
+    const row = store.learning_modules.find((m) => String(m.id) === String(params[9]));
+    if (row) {
+      row.class_id = params[0] != null ? Number(params[0]) : null;
+      row.subject_id = params[1] != null ? Number(params[1]) : null;
+      row.title = params[2];
+      row.description = params[3];
+      row.content = params[4];
+      row.attachment_url = params[5] ?? null;
+      row.attachment_name = params[6] ?? null;
+      row.estimated_minutes = Number(params[7] ?? 10);
+      row.published = Boolean(params[8]);
+      row.updated_at = nowIso();
+    }
+    return [];
+  }
+  if (/^insert into learning_module_classes\b/i.test(sql)) {
+    store.learning_module_classes.push({ module_id: params[0], class_id: Number(params[1]) });
+    return [];
+  }
+
+  // ── Administrasi Guru Phase 2 (in-memory mock) ────────────────────────
+  // adm_cp_atp
+  if (/^select (?:min_score|\*) from adm_kktp where id = \$1/i.test(sql)) {
+    const row = store.adm_kktp.find((r) => String(r.id) === String(params[0]));
+    return row ? [{ ...row }] : [];
+  }
+  if (/^select (?:material_topic|\*) from adm_cp_atp where id = \$1/i.test(sql)) {
+    const row = store.adm_cp_atp.find((r) => String(r.id) === String(params[0]));
+    return row ? [{ ...row }] : [];
+  }
+  if (lower.includes("from adm_cp_atp ca")) {
+    const enrich = (r: any) => {
+      const u = store.users.find((x) => String(x.id) === String(r.teacher_id));
+      const s = store.subjects.find((x) => Number(x.id) === Number(r.subject_id));
+      return {
+        ...r,
+        teacher_name: u?.full_name ?? "",
+        teacher_nip: u?.nip ?? null,
+        subject_name: s?.subject_name ?? "",
+        subject_code: s?.subject_code ?? "",
+      };
+    };
+    if (lower.includes("where ca.id = $1")) {
+      const row = store.adm_cp_atp.find((r) => String(r.id) === String(params[0]));
+      return row ? [enrich(row)] : [];
+    }
+    const list = lower.includes("ca.teacher_id = $2")
+      ? store.adm_cp_atp.filter((r) => String(r.academic_year_id) === String(params[0]) && String(r.teacher_id) === String(params[1]))
+      : store.adm_cp_atp.filter((r) => String(r.academic_year_id) === String(params[0]));
+    return list
+      .sort((a, b) => String(a.semester).localeCompare(String(b.semester)) || Number(a.atp_order) - Number(b.atp_order))
+      .map(enrich);
+  }
+  if (/^insert into adm_cp_atp\b/i.test(sql)) {
+    const row = {
+      id: params[0],
+      academic_year_id: params[1],
+      teacher_id: params[2],
+      subject_id: Number(params[3]),
+      grade_level: params[4],
+      fase: params[5],
+      semester: params[6],
+      elemen: params[7],
+      cp_text: params[8],
+      tp_code: params[9],
+      tp_text: params[10],
+      material_topic: params[11],
+      atp_order: Number(params[12] ?? 1),
+      jp_allocation: Number(params[13] ?? 4),
+      status: "draft",
+      created_at: nowIso(),
+      updated_at: nowIso(),
+    };
+    store.adm_cp_atp.push(row);
+    return [{ ...row }];
+  }
+  if (/^update adm_cp_atp set subject_id = \$1/i.test(sql)) {
+    const row = store.adm_cp_atp.find((r) => String(r.id) === String(params[11]));
+    if (row) {
+      row.subject_id = Number(params[0]);
+      row.grade_level = params[1];
+      row.fase = params[2];
+      row.semester = params[3];
+      row.elemen = params[4];
+      row.cp_text = params[5];
+      row.tp_code = params[6];
+      row.tp_text = params[7];
+      row.material_topic = params[8];
+      row.atp_order = Number(params[9] ?? 1);
+      row.jp_allocation = Number(params[10] ?? 4);
+      row.updated_at = nowIso();
+    }
+    return [];
+  }
+  if (/^delete from adm_cp_atp where id = \$1/i.test(sql)) {
+    store.adm_cp_atp = store.adm_cp_atp.filter((r) => String(r.id) !== String(params[0]));
+    return [];
+  }
+
+  // adm_kktp
+  if (/^select \* from adm_kktp where id = \$1/i.test(sql)) {
+    const row = store.adm_kktp.find((r) => String(r.id) === String(params[0]));
+    return row ? [{ ...row }] : [];
+  }
+  if (lower.includes("from adm_kktp kk")) {
+    const enrich = (r: any) => {
+      const u = store.users.find((x) => String(x.id) === String(r.teacher_id));
+      const s = store.subjects.find((x) => Number(x.id) === Number(r.subject_id));
+      const c = r.class_id != null ? store.classes.find((x) => Number(x.id) === Number(r.class_id)) : null;
+      const ca = r.cp_atp_id ? store.adm_cp_atp.find((x) => String(x.id) === String(r.cp_atp_id)) : null;
+      const ay = store.adm_academic_years.find((x) => String(x.id) === String(r.academic_year_id));
+      return {
+        ...r,
+        teacher_name: u?.full_name ?? "",
+        teacher_nip: u?.nip ?? null,
+        subject_name: s?.subject_name ?? "",
+        subject_code: s?.subject_code ?? "",
+        class_name: c?.class_name ?? null,
+        grade_level: c?.grade_level ?? null,
+        tp_code: ca?.tp_code ?? null,
+        material_topic: ca?.material_topic ?? null,
+        year_label: ay?.year_label ?? "",
+        semester: ay?.semester ?? "",
+      };
+    };
+    if (lower.includes("where kk.id = $1")) {
+      const row = store.adm_kktp.find((r) => String(r.id) === String(params[0]));
+      return row ? [enrich(row)] : [];
+    }
+    const list = lower.includes("kk.teacher_id = $2")
+      ? store.adm_kktp.filter((r) => String(r.academic_year_id) === String(params[0]) && String(r.teacher_id) === String(params[1]))
+      : store.adm_kktp.filter((r) => String(r.academic_year_id) === String(params[0]));
+    return list.map(enrich);
+  }
+  if (/^insert into adm_kktp\b/i.test(sql)) {
+    const row = {
+      id: params[0],
+      academic_year_id: params[1],
+      teacher_id: params[2],
+      subject_id: Number(params[3]),
+      class_id: params[4] != null ? Number(params[4]) : null,
+      cp_atp_id: params[5] ?? null,
+      title: params[6],
+      approach: params[7],
+      min_score: Number(params[8] ?? 75),
+      intervals_json: typeof params[9] === "string" ? JSON.parse(params[9]) : params[9],
+      criteria_json: typeof params[10] === "string" ? JSON.parse(params[10]) : params[10],
+      notes: params[11] ?? null,
+      status: "draft",
+      created_at: nowIso(),
+      updated_at: nowIso(),
+    };
+    store.adm_kktp.push(row);
+    return [{ ...row }];
+  }
+  if (/^update adm_kktp set subject_id = \$1/i.test(sql)) {
+    const row = store.adm_kktp.find((r) => String(r.id) === String(params[9]));
+    if (row) {
+      row.subject_id = Number(params[0]);
+      row.class_id = params[1] != null ? Number(params[1]) : null;
+      row.cp_atp_id = params[2] ?? null;
+      row.title = params[3];
+      row.approach = params[4];
+      row.min_score = Number(params[5] ?? 75);
+      row.intervals_json = typeof params[6] === "string" ? JSON.parse(params[6]) : params[6];
+      row.criteria_json = typeof params[7] === "string" ? JSON.parse(params[7]) : params[7];
+      row.notes = params[8] ?? null;
+      row.updated_at = nowIso();
+    }
+    return [];
+  }
+  if (/^delete from adm_kktp where id = \$1/i.test(sql)) {
+    store.adm_kktp = store.adm_kktp.filter((r) => String(r.id) !== String(params[0]));
+    return [];
+  }
+
+  // adm_prota
+  if (/^select \* from adm_prota where id = \$1/i.test(sql)) {
+    const row = store.adm_prota.find((r) => String(r.id) === String(params[0]));
+    return row ? [{ ...row }] : [];
+  }
+  if (lower.includes("from adm_prota pt")) {
+    const enrich = (r: any) => {
+      const u = store.users.find((x) => String(x.id) === String(r.teacher_id));
+      const s = store.subjects.find((x) => Number(x.id) === Number(r.subject_id));
+      const ew = r.effective_week_id ? store.adm_effective_weeks.find((x) => String(x.id) === String(r.effective_week_id)) : null;
+      const ay = store.adm_academic_years.find((x) => String(x.id) === String(r.academic_year_id));
+      return {
+        ...r,
+        teacher_name: u?.full_name ?? "",
+        teacher_nip: u?.nip ?? null,
+        subject_name: s?.subject_name ?? "",
+        subject_code: s?.subject_code ?? "",
+        effective_week_jp: ew ? Number(ew.total_effective_jp) : null,
+        year_label: ay?.year_label ?? "",
+      };
+    };
+    if (lower.includes("where pt.id = $1")) {
+      const row = store.adm_prota.find((r) => String(r.id) === String(params[0]));
+      return row ? [enrich(row)] : [];
+    }
+    const list = lower.includes("pt.teacher_id = $2")
+      ? store.adm_prota.filter((r) => String(r.academic_year_id) === String(params[0]) && String(r.teacher_id) === String(params[1]))
+      : store.adm_prota.filter((r) => String(r.academic_year_id) === String(params[0]));
+    return list.map(enrich);
+  }
+  if (/^insert into adm_prota\b/i.test(sql)) {
+    const row = {
+      id: params[0],
+      academic_year_id: params[1],
+      teacher_id: params[2],
+      subject_id: Number(params[3]),
+      grade_level: params[4],
+      effective_week_id: params[5] ?? null,
+      title: params[6],
+      items_json: typeof params[7] === "string" ? JSON.parse(params[7]) : params[7],
+      total_jp: Number(params[8] ?? 0),
+      notes: params[9] ?? null,
+      status: "draft",
+      created_at: nowIso(),
+      updated_at: nowIso(),
+    };
+    store.adm_prota.push(row);
+    return [{ ...row }];
+  }
+  if (/^update adm_prota set subject_id = \$1/i.test(sql)) {
+    const row = store.adm_prota.find((r) => String(r.id) === String(params[7]));
+    if (row) {
+      row.subject_id = Number(params[0]);
+      row.grade_level = params[1];
+      row.effective_week_id = params[2] ?? null;
+      row.title = params[3];
+      row.items_json = typeof params[4] === "string" ? JSON.parse(params[4]) : params[4];
+      row.total_jp = Number(params[5] ?? 0);
+      row.notes = params[6] ?? null;
+      row.updated_at = nowIso();
+    }
+    return [];
+  }
+  if (/^delete from adm_prota where id = \$1/i.test(sql)) {
+    store.adm_prota = store.adm_prota.filter((r) => String(r.id) !== String(params[0]));
+    return [];
+  }
+
+  // adm_promes
+  if (/^select \* from adm_promes where id = \$1/i.test(sql)) {
+    const row = store.adm_promes.find((r) => String(r.id) === String(params[0]));
+    return row ? [{ ...row }] : [];
+  }
+  if (lower.includes("from adm_promes pm")) {
+    const enrich = (r: any) => {
+      const u = store.users.find((x) => String(x.id) === String(r.teacher_id));
+      const s = store.subjects.find((x) => Number(x.id) === Number(r.subject_id));
+      const c = r.class_id != null ? store.classes.find((x) => Number(x.id) === Number(r.class_id)) : null;
+      const ew = r.effective_week_id ? store.adm_effective_weeks.find((x) => String(x.id) === String(r.effective_week_id)) : null;
+      const pt = r.prota_id ? store.adm_prota.find((x) => String(x.id) === String(r.prota_id)) : null;
+      const ay = store.adm_academic_years.find((x) => String(x.id) === String(r.academic_year_id));
+      return {
+        ...r,
+        teacher_name: u?.full_name ?? "",
+        teacher_nip: u?.nip ?? null,
+        subject_name: s?.subject_name ?? "",
+        subject_code: s?.subject_code ?? "",
+        class_name: c?.class_name ?? null,
+        grade_level: c?.grade_level ?? null,
+        effective_week_jp: ew ? Number(ew.total_effective_jp) : null,
+        prota_title: pt?.title ?? null,
+        year_label: ay?.year_label ?? "",
+      };
+    };
+    if (lower.includes("where pm.id = $1")) {
+      const row = store.adm_promes.find((r) => String(r.id) === String(params[0]));
+      return row ? [enrich(row)] : [];
+    }
+    const list = lower.includes("pm.teacher_id = $2")
+      ? store.adm_promes.filter((r) => String(r.academic_year_id) === String(params[0]) && String(r.teacher_id) === String(params[1]))
+      : store.adm_promes.filter((r) => String(r.academic_year_id) === String(params[0]));
+    return list.map(enrich);
+  }
+  if (/^insert into adm_promes\b/i.test(sql)) {
+    const row = {
+      id: params[0],
+      academic_year_id: params[1],
+      teacher_id: params[2],
+      subject_id: Number(params[3]),
+      class_id: params[4] != null ? Number(params[4]) : null,
+      prota_id: params[5] ?? null,
+      effective_week_id: params[6] ?? null,
+      semester: params[7],
+      title: params[8],
+      schedule_matrix_json: typeof params[9] === "string" ? JSON.parse(params[9]) : params[9],
+      total_jp: Number(params[10] ?? 0),
+      notes: params[11] ?? null,
+      status: "draft",
+      created_at: nowIso(),
+      updated_at: nowIso(),
+    };
+    store.adm_promes.push(row);
+    return [{ ...row }];
+  }
+  if (/^update adm_promes set subject_id = \$1/i.test(sql)) {
+    const row = store.adm_promes.find((r) => String(r.id) === String(params[9]));
+    if (row) {
+      row.subject_id = Number(params[0]);
+      row.class_id = params[1] != null ? Number(params[1]) : null;
+      row.prota_id = params[2] ?? null;
+      row.effective_week_id = params[3] ?? null;
+      row.semester = params[4];
+      row.title = params[5];
+      row.schedule_matrix_json = typeof params[6] === "string" ? JSON.parse(params[6]) : params[6];
+      row.total_jp = Number(params[7] ?? 0);
+      row.notes = params[8] ?? null;
+      row.updated_at = nowIso();
+    }
+    return [];
+  }
+  if (/^delete from adm_promes where id = \$1/i.test(sql)) {
+    store.adm_promes = store.adm_promes.filter((r) => String(r.id) !== String(params[0]));
+    return [];
+  }
+
+  // adm_lesson_plans
+  if (/^select \* from adm_lesson_plans where id = \$1/i.test(sql)) {
+    const row = store.adm_lesson_plans.find((r) => String(r.id) === String(params[0]));
+    return row ? [{ ...row }] : [];
+  }
+  if (lower.includes("from adm_lesson_plans lp")) {
+    const enrich = (r: any) => {
+      const u = store.users.find((x) => String(x.id) === String(r.teacher_id));
+      const s = store.subjects.find((x) => Number(x.id) === Number(r.subject_id));
+      const c = r.class_id != null ? store.classes.find((x) => Number(x.id) === Number(r.class_id)) : null;
+      const ca = r.cp_atp_id ? store.adm_cp_atp.find((x) => String(x.id) === String(r.cp_atp_id)) : null;
+      const lm = r.learning_module_id ? store.learning_modules.find((x) => String(x.id) === String(r.learning_module_id)) : null;
+      const ay = store.adm_academic_years.find((x) => String(x.id) === String(r.academic_year_id));
+      return {
+        ...r,
+        teacher_name: u?.full_name ?? "",
+        teacher_nip: u?.nip ?? null,
+        subject_name: s?.subject_name ?? "",
+        subject_code: s?.subject_code ?? "",
+        class_name: c?.class_name ?? null,
+        grade_level: c?.grade_level ?? null,
+        tp_code: ca?.tp_code ?? null,
+        material_topic: ca?.material_topic ?? null,
+        learning_module_title: lm?.title ?? null,
+        year_label: ay?.year_label ?? "",
+      };
+    };
+    if (lower.includes("where lp.id = $1")) {
+      const row = store.adm_lesson_plans.find((r) => String(r.id) === String(params[0]));
+      return row ? [enrich(row)] : [];
+    }
+    const list = lower.includes("lp.teacher_id = $2")
+      ? store.adm_lesson_plans.filter((r) => String(r.academic_year_id) === String(params[0]) && String(r.teacher_id) === String(params[1]))
+      : store.adm_lesson_plans.filter((r) => String(r.academic_year_id) === String(params[0]));
+    return list.map(enrich);
+  }
+  if (/^insert into adm_lesson_plans\b/i.test(sql)) {
+    const row = {
+      id: params[0],
+      academic_year_id: params[1],
+      teacher_id: params[2],
+      subject_id: Number(params[3]),
+      class_id: params[4] != null ? Number(params[4]) : null,
+      cp_atp_id: params[5] ?? null,
+      learning_module_id: params[6] ?? null,
+      title: params[7],
+      fase: params[8],
+      duration_jp: Number(params[9] ?? 2),
+      learning_model: params[10] ?? null,
+      p5_dimensions_json: typeof params[11] === "string" ? JSON.parse(params[11]) : params[11],
+      objectives: params[12],
+      activities_json: typeof params[13] === "string" ? JSON.parse(params[13]) : params[13],
+      assessment_plan: params[14] ?? null,
+      reflection: params[15] ?? null,
+      attachment_url: params[16] ?? null,
+      attachment_name: params[17] ?? null,
+      status: "draft",
+      created_at: nowIso(),
+      updated_at: nowIso(),
+    };
+    store.adm_lesson_plans.push(row);
+    return [{ ...row }];
+  }
+  if (/^update adm_lesson_plans set learning_module_id = \$1/i.test(sql)) {
+    const row = store.adm_lesson_plans.find((r) => String(r.id) === String(params[1]));
+    if (row) {
+      row.learning_module_id = params[0] ?? null;
+      row.updated_at = nowIso();
+    }
+    return [];
+  }
+  if (/^update adm_lesson_plans set subject_id = \$1/i.test(sql)) {
+    const row = store.adm_lesson_plans.find((r) => String(r.id) === String(params[15]));
+    if (row) {
+      row.subject_id = Number(params[0]);
+      row.class_id = params[1] != null ? Number(params[1]) : null;
+      row.cp_atp_id = params[2] ?? null;
+      row.learning_module_id = params[3] ?? null;
+      row.title = params[4];
+      row.fase = params[5];
+      row.duration_jp = Number(params[6] ?? 2);
+      row.learning_model = params[7] ?? null;
+      row.p5_dimensions_json = typeof params[8] === "string" ? JSON.parse(params[8]) : params[8];
+      row.objectives = params[9];
+      row.activities_json = typeof params[10] === "string" ? JSON.parse(params[10]) : params[10];
+      row.assessment_plan = params[11] ?? null;
+      row.reflection = params[12] ?? null;
+      row.attachment_url = params[13] ?? null;
+      row.attachment_name = params[14] ?? null;
+      row.updated_at = nowIso();
+    }
+    return [];
+  }
+  if (/^delete from adm_lesson_plans where id = \$1/i.test(sql)) {
+    store.adm_lesson_plans = store.adm_lesson_plans.filter((r) => String(r.id) !== String(params[0]));
+    return [];
+  }
+
+  // ── Administrasi Guru Phase 3 (in-memory mock) ────────────────────────
+  // adm_teaching_schedules
+  if (/^select \* from adm_teaching_schedules where id = \$1/i.test(sql)) {
+    const row = store.adm_teaching_schedules.find((r) => String(r.id) === String(params[0]));
+    return row ? [{ ...row }] : [];
+  }
+  if (lower.includes("from adm_teaching_schedules sch")) {
+    const enrich = (r: any) => {
+      const u = store.users.find((x) => String(x.id) === String(r.teacher_id));
+      const c = store.classes.find((x) => Number(x.id) === Number(r.class_id));
+      const s = store.subjects.find((x) => Number(x.id) === Number(r.subject_id));
+      return {
+        ...r,
+        teacher_name: u?.full_name ?? "",
+        teacher_nip: u?.nip ?? null,
+        class_name: c?.class_name ?? null,
+        grade_level: c?.grade_level ?? null,
+        subject_name: s?.subject_name ?? "",
+        subject_code: s?.subject_code ?? "",
+      };
+    };
+    if (lower.includes("where sch.id = $1")) {
+      const row = store.adm_teaching_schedules.find((r) => String(r.id) === String(params[0]));
+      return row ? [enrich(row)] : [];
+    }
+    if (lower.includes("sch.teacher_id = $2 and sch.day_of_week = $3")) {
+      return store.adm_teaching_schedules
+        .filter(
+          (r) =>
+            String(r.academic_year_id) === String(params[0]) &&
+            String(r.teacher_id) === String(params[1]) &&
+            Number(r.day_of_week) === Number(params[2]),
+        )
+        .map(enrich);
+    }
+    if (lower.includes("sch.class_id = $2 and sch.day_of_week = $3")) {
+      return store.adm_teaching_schedules
+        .filter(
+          (r) =>
+            String(r.academic_year_id) === String(params[0]) &&
+            Number(r.class_id) === Number(params[1]) &&
+            Number(r.day_of_week) === Number(params[2]),
+        )
+        .map(enrich);
+    }
+    const list = lower.includes("sch.teacher_id = $2")
+      ? store.adm_teaching_schedules.filter(
+          (r) => String(r.academic_year_id) === String(params[0]) && String(r.teacher_id) === String(params[1]),
+        )
+      : store.adm_teaching_schedules.filter((r) => String(r.academic_year_id) === String(params[0]));
+    return list
+      .sort((a, b) => Number(a.day_of_week) - Number(b.day_of_week) || Number(a.period_start) - Number(b.period_start))
+      .map(enrich);
+  }
+  if (/^insert into adm_teaching_schedules\b/i.test(sql)) {
+    const row = {
+      id: params[0],
+      academic_year_id: params[1],
+      teacher_id: params[2],
+      class_id: Number(params[3]),
+      subject_id: Number(params[4]),
+      day_of_week: Number(params[5]),
+      period_start: Number(params[6]),
+      period_end: Number(params[7]),
+      start_time: params[8] ?? null,
+      end_time: params[9] ?? null,
+      room_name: params[10] ?? null,
+      notes: params[11] ?? null,
+      created_at: nowIso(),
+      updated_at: nowIso(),
+    };
+    store.adm_teaching_schedules.push(row);
+    return [{ ...row }];
+  }
+  if (/^update adm_teaching_schedules set class_id = \$1/i.test(sql)) {
+    const row = store.adm_teaching_schedules.find((r) => String(r.id) === String(params[9]));
+    if (row) {
+      row.class_id = Number(params[0]);
+      row.subject_id = Number(params[1]);
+      row.day_of_week = Number(params[2]);
+      row.period_start = Number(params[3]);
+      row.period_end = Number(params[4]);
+      row.start_time = params[5] ?? null;
+      row.end_time = params[6] ?? null;
+      row.room_name = params[7] ?? null;
+      row.notes = params[8] ?? null;
+      row.updated_at = nowIso();
+    }
+    return [];
+  }
+  if (/^delete from adm_teaching_schedules where id = \$1/i.test(sql)) {
+    const sid = String(params[0]);
+    store.adm_teaching_schedules = store.adm_teaching_schedules.filter((r) => String(r.id) !== sid);
+    for (const j of store.adm_teaching_journals) {
+      if (String(j.schedule_id) === sid) j.schedule_id = null;
+    }
+    return [];
+  }
+
+  // adm_teaching_journals
+  if (/^select \* from adm_teaching_journals where id = \$1/i.test(sql)) {
+    const row = store.adm_teaching_journals.find((r) => String(r.id) === String(params[0]));
+    return row ? [{ ...row }] : [];
+  }
+  if (lower.includes("from adm_teaching_journals j") && !lower.includes("from adm_student_attendances a")) {
+    const enrich = (r: any) => {
+      const u = store.users.find((x) => String(x.id) === String(r.teacher_id));
+      const c = store.classes.find((x) => Number(x.id) === Number(r.class_id));
+      const s = store.subjects.find((x) => Number(x.id) === Number(r.subject_id));
+      const ca = r.cp_atp_id ? store.adm_cp_atp.find((x) => String(x.id) === String(r.cp_atp_id)) : null;
+      const pm = r.promes_id ? store.adm_promes.find((x) => String(x.id) === String(r.promes_id)) : null;
+      return {
+        ...r,
+        teacher_name: u?.full_name ?? "",
+        teacher_nip: u?.nip ?? null,
+        class_name: c?.class_name ?? null,
+        grade_level: c?.grade_level ?? null,
+        subject_name: s?.subject_name ?? "",
+        subject_code: s?.subject_code ?? "",
+        tp_code: ca?.tp_code ?? null,
+        material_topic: ca?.material_topic ?? null,
+        promes_title: pm?.title ?? null,
+      };
+    };
+    if (lower.includes("where j.id = $1")) {
+      const row = store.adm_teaching_journals.find((r) => String(r.id) === String(params[0]));
+      return row ? [enrich(row)] : [];
+    }
+    const list = lower.includes("j.teacher_id = $2")
+      ? store.adm_teaching_journals.filter(
+          (r) => String(r.academic_year_id) === String(params[0]) && String(r.teacher_id) === String(params[1]),
+        )
+      : store.adm_teaching_journals.filter((r) => String(r.academic_year_id) === String(params[0]));
+    return list
+      .sort((a, b) => String(b.teach_date).localeCompare(String(a.teach_date)) || String(b.created_at).localeCompare(String(a.created_at)))
+      .map(enrich);
+  }
+  if (/^insert into adm_teaching_journals\b/i.test(sql)) {
+    const row = {
+      id: params[0],
+      academic_year_id: params[1],
+      teacher_id: params[2],
+      schedule_id: params[3] ?? null,
+      class_id: Number(params[4]),
+      subject_id: Number(params[5]),
+      cp_atp_id: params[6] ?? null,
+      promes_id: params[7] ?? null,
+      teach_date: params[8],
+      period_range: params[9] ?? "",
+      topic_title: params[10],
+      learning_method: params[11] ?? null,
+      activities_summary: params[12] ?? null,
+      obstacles: params[13] ?? null,
+      teacher_reflection: params[14] ?? null,
+      follow_up: params[15] ?? null,
+      is_completed: Boolean(params[16]),
+      status: "draft",
+      created_at: nowIso(),
+      updated_at: nowIso(),
+    };
+    store.adm_teaching_journals.push(row);
+    return [{ ...row }];
+  }
+  if (/^update adm_teaching_journals set schedule_id = \$1/i.test(sql)) {
+    const row = store.adm_teaching_journals.find((r) => String(r.id) === String(params[14]));
+    if (row) {
+      row.schedule_id = params[0] ?? null;
+      row.class_id = Number(params[1]);
+      row.subject_id = Number(params[2]);
+      row.cp_atp_id = params[3] ?? null;
+      row.promes_id = params[4] ?? null;
+      row.teach_date = params[5];
+      row.period_range = params[6] ?? "";
+      row.topic_title = params[7];
+      row.learning_method = params[8] ?? null;
+      row.activities_summary = params[9] ?? null;
+      row.obstacles = params[10] ?? null;
+      row.teacher_reflection = params[11] ?? null;
+      row.follow_up = params[12] ?? null;
+      row.is_completed = Boolean(params[13]);
+      row.updated_at = nowIso();
+    }
+    return [];
+  }
+  if (/^delete from adm_teaching_journals where id = \$1/i.test(sql)) {
+    const jId = String(params[0]);
+    store.adm_teaching_journals = store.adm_teaching_journals.filter((r) => String(r.id) !== jId);
+    store.adm_student_attendances = store.adm_student_attendances.filter((a) => String(a.journal_id) !== jId);
+    return [];
+  }
+
+  // adm_student_attendances
+  if (lower.includes("from adm_student_attendances a") && lower.includes("j.academic_year_id = $1")) {
+    const ayId = String(params[0]);
+    const yearJournalIds = new Set(
+      store.adm_teaching_journals
+        .filter((j) => String(j.academic_year_id) === ayId)
+        .map((j) => String(j.id)),
+    );
+    return store.adm_student_attendances
+      .filter((a) => yearJournalIds.has(String(a.journal_id)))
+      .map((a) => ({ ...a }));
+  }
+  if (/^select \* from adm_student_attendances where journal_id = \$1/i.test(sql)) {
+    return store.adm_student_attendances
+      .filter((a) => String(a.journal_id) === String(params[0]))
+      .map((a) => ({ ...a }));
+  }
+  if (/^insert into adm_student_attendances\b/i.test(sql)) {
+    const hasLiteralH = params.length === 3 && lower.includes("'h',null");
+    const row = {
+      id: params[0],
+      journal_id: params[1],
+      student_id: params[2],
+      status: hasLiteralH ? "H" : String(params[3] || "H"),
+      notes: hasLiteralH ? null : (params[4] ?? null),
+      updated_at: nowIso(),
+    };
+    const existingIdx = store.adm_student_attendances.findIndex(
+      (a) => String(a.journal_id) === String(row.journal_id) && String(a.student_id) === String(row.student_id),
+    );
+    if (existingIdx >= 0) store.adm_student_attendances[existingIdx] = row;
+    else store.adm_student_attendances.push(row);
+    return [{ ...row }];
+  }
+  if (/^update adm_student_attendances set status = \$1/i.test(sql)) {
+    const row = store.adm_student_attendances.find((a) => String(a.id) === String(params[2]));
+    if (row) {
+      row.status = String(params[0] || "H");
+      row.notes = params[1] ?? null;
+      row.updated_at = nowIso();
+    }
+    return [];
+  }
+
+  // ── Administrasi Guru Phase 4 (in-memory mock) ────────────────────────
+  // adm_assessment_blueprints
+  if (/^select \* from adm_assessment_blueprints where id = \$1/i.test(sql)) {
+    const row = store.adm_assessment_blueprints.find((r) => String(r.id) === String(params[0]));
+    return row ? [{ ...row }] : [];
+  }
+  if (lower.includes("from adm_assessment_blueprints bp")) {
+    const enrich = (r: any) => {
+      const u = store.users.find((x) => String(x.id) === String(r.teacher_id));
+      const s = store.subjects.find((x) => Number(x.id) === Number(r.subject_id));
+      const c = r.class_id != null ? store.classes.find((x) => Number(x.id) === Number(r.class_id)) : null;
+      const qb = r.question_bank_id ? store.question_banks.find((x) => String(x.id) === String(r.question_bank_id)) : null;
+      return {
+        ...r,
+        teacher_name: u?.full_name ?? "",
+        teacher_nip: u?.nip ?? null,
+        subject_name: s?.subject_name ?? "",
+        subject_code: s?.subject_code ?? "",
+        class_name: c?.class_name ?? null,
+        grade_level: c?.grade_level ?? null,
+        question_bank_title: qb?.title ?? null,
+      };
+    };
+    if (lower.includes("where bp.id = $1")) {
+      const row = store.adm_assessment_blueprints.find((r) => String(r.id) === String(params[0]));
+      return row ? [enrich(row)] : [];
+    }
+    const list = lower.includes("bp.teacher_id = $2")
+      ? store.adm_assessment_blueprints.filter(
+          (r) => String(r.academic_year_id) === String(params[0]) && String(r.teacher_id) === String(params[1]),
+        )
+      : store.adm_assessment_blueprints.filter((r) => String(r.academic_year_id) === String(params[0]));
+    return list.map(enrich);
+  }
+  if (/^insert into adm_assessment_blueprints\b/i.test(sql)) {
+    const row = {
+      id: params[0],
+      academic_year_id: params[1],
+      teacher_id: params[2],
+      subject_id: Number(params[3]),
+      class_id: params[4] != null ? Number(params[4]) : null,
+      question_bank_id: params[5] ?? null,
+      title: params[6],
+      assessment_type: params[7] ?? "sumatif",
+      notes: params[8] ?? null,
+      status: "draft",
+      created_at: nowIso(),
+      updated_at: nowIso(),
+    };
+    store.adm_assessment_blueprints.push(row);
+    return [{ ...row }];
+  }
+  if (/^update adm_assessment_blueprints set question_bank_id = \$1/i.test(sql)) {
+    const row = store.adm_assessment_blueprints.find((r) => String(r.id) === String(params[1]));
+    if (row) {
+      row.question_bank_id = params[0] ?? null;
+      row.updated_at = nowIso();
+    }
+    return [];
+  }
+  if (/^update adm_assessment_blueprints set subject_id = \$1/i.test(sql)) {
+    const row = store.adm_assessment_blueprints.find((r) => String(r.id) === String(params[6]));
+    if (row) {
+      row.subject_id = Number(params[0]);
+      row.class_id = params[1] != null ? Number(params[1]) : null;
+      row.question_bank_id = params[2] ?? null;
+      row.title = params[3];
+      row.assessment_type = params[4];
+      row.notes = params[5] ?? null;
+      row.updated_at = nowIso();
+    }
+    return [];
+  }
+  if (/^delete from adm_assessment_blueprints where id = \$1/i.test(sql)) {
+    const bpId = String(params[0]);
+    store.adm_assessment_blueprints = store.adm_assessment_blueprints.filter((r) => String(r.id) !== bpId);
+    store.adm_blueprint_items = store.adm_blueprint_items.filter((i) => String(i.blueprint_id) !== bpId);
+    return [];
+  }
+
+  // adm_blueprint_items
+  if (lower.includes("from adm_blueprint_items bpi") && lower.includes("bp.academic_year_id = $1")) {
+    const ayId = String(params[0]);
+    const bpIds = new Set(
+      store.adm_assessment_blueprints.filter((b) => String(b.academic_year_id) === ayId).map((b) => String(b.id)),
+    );
+    return store.adm_blueprint_items
+      .filter((i) => bpIds.has(String(i.blueprint_id)))
+      .sort((a, b) => Number(a.question_number) - Number(b.question_number))
+      .map((i) => {
+        const ca = i.cp_atp_id ? store.adm_cp_atp.find((c) => String(c.id) === String(i.cp_atp_id)) : null;
+        const q = i.question_id ? store.questions.find((qq) => String(qq.id) === String(i.question_id)) : null;
+        return {
+          ...i,
+          tp_code: ca?.tp_code ?? null,
+          cp_material_topic: ca?.material_topic ?? null,
+          linked_question_content: q?.content ?? null,
+        };
+      });
+  }
+  if (lower.includes("from adm_blueprint_items bpi") && lower.includes("where bpi.blueprint_id = $1")) {
+    return store.adm_blueprint_items
+      .filter((i) => String(i.blueprint_id) === String(params[0]))
+      .sort((a, b) => Number(a.question_number) - Number(b.question_number))
+      .map((i) => {
+        const ca = i.cp_atp_id ? store.adm_cp_atp.find((c) => String(c.id) === String(i.cp_atp_id)) : null;
+        const q = i.question_id ? store.questions.find((qq) => String(qq.id) === String(i.question_id)) : null;
+        return {
+          ...i,
+          tp_code: ca?.tp_code ?? null,
+          cp_material_topic: ca?.material_topic ?? null,
+          linked_question_content: q?.content ?? null,
+        };
+      });
+  }
+  if (/^select .+ from adm_blueprint_items where blueprint_id = \$1/i.test(sql)) {
+    return store.adm_blueprint_items
+      .filter((i) => String(i.blueprint_id) === String(params[0]))
+      .map((i) => ({ ...i }));
+  }
+  if (/^select \* from adm_blueprint_items where id = \$1 and blueprint_id = \$2/i.test(sql)) {
+    const row = store.adm_blueprint_items.find(
+      (i) => String(i.id) === String(params[0]) && String(i.blueprint_id) === String(params[1]),
+    );
+    return row ? [{ ...row }] : [];
+  }
+  if (/^insert into adm_blueprint_items\b/i.test(sql)) {
+    const row = {
+      id: params[0],
+      blueprint_id: params[1],
+      cp_atp_id: params[2] ?? null,
+      question_id: params[3] ?? null,
+      question_number: Number(params[4] ?? 1),
+      material_topic: params[5] ?? "",
+      indicator: params[6],
+      cognitive_level: params[7] ?? "C2",
+      question_type: params[8] ?? "single_choice",
+      difficulty: params[9] ?? "medium",
+      score_weight: Number(params[10] ?? 1),
+      created_at: nowIso(),
+      updated_at: nowIso(),
+    };
+    store.adm_blueprint_items.push(row);
+    return [{ ...row }];
+  }
+  if (/^update adm_blueprint_items set cp_atp_id = \$1/i.test(sql)) {
+    const row = store.adm_blueprint_items.find(
+      (i) => String(i.id) === String(params[9]) && String(i.blueprint_id) === String(params[10]),
+    );
+    if (row) {
+      row.cp_atp_id = params[0] ?? null;
+      row.question_id = params[1] ?? null;
+      row.question_number = Number(params[2] ?? 1);
+      row.material_topic = params[3] ?? "";
+      row.indicator = params[4];
+      row.cognitive_level = params[5] ?? "C2";
+      row.question_type = params[6] ?? "single_choice";
+      row.difficulty = params[7] ?? "medium";
+      row.score_weight = Number(params[8] ?? 1);
+      row.updated_at = nowIso();
+    }
+    return [];
+  }
+  if (/^delete from adm_blueprint_items where id = \$1/i.test(sql)) {
+    store.adm_blueprint_items = store.adm_blueprint_items.filter((i) => String(i.id) !== String(params[0]));
+    return [];
+  }
+
+  // adm_grade_assessments
+  if (/^select \* from adm_grade_assessments where id = \$1/i.test(sql)) {
+    const row = store.adm_grade_assessments.find((g) => String(g.id) === String(params[0]));
+    return row ? [{ ...row }] : [];
+  }
+  if (lower.includes("from adm_grade_assessments ga")) {
+    const enrich = (r: any) => {
+      const u = store.users.find((x) => String(x.id) === String(r.teacher_id));
+      const s = store.subjects.find((x) => Number(x.id) === Number(r.subject_id));
+      const c = store.classes.find((x) => Number(x.id) === Number(r.class_id));
+      const kk = r.kktp_id ? store.adm_kktp.find((x) => String(x.id) === String(r.kktp_id)) : null;
+      const ca = r.cp_atp_id ? store.adm_cp_atp.find((x) => String(x.id) === String(r.cp_atp_id)) : null;
+      return {
+        ...r,
+        teacher_name: u?.full_name ?? "",
+        teacher_nip: u?.nip ?? null,
+        subject_name: s?.subject_name ?? "",
+        subject_code: s?.subject_code ?? "",
+        class_name: c?.class_name ?? null,
+        grade_level: c?.grade_level ?? null,
+        kktp_title: kk?.title ?? null,
+        tp_code: ca?.tp_code ?? null,
+        material_topic: ca?.material_topic ?? null,
+      };
+    };
+    if (lower.includes("where ga.id = $1")) {
+      const row = store.adm_grade_assessments.find((g) => String(g.id) === String(params[0]));
+      return row ? [enrich(row)] : [];
+    }
+    const list = lower.includes("ga.teacher_id = $2")
+      ? store.adm_grade_assessments.filter(
+          (g) => String(g.academic_year_id) === String(params[0]) && String(g.teacher_id) === String(params[1]),
+        )
+      : store.adm_grade_assessments.filter((g) => String(g.academic_year_id) === String(params[0]));
+    return list.map(enrich);
+  }
+  if (/^insert into adm_grade_assessments\b/i.test(sql)) {
+    const hasNullCpAtpLiteral = lower.includes(", null, $7");
+    const row = {
+      id: params[0],
+      academic_year_id: params[1],
+      teacher_id: params[2],
+      subject_id: Number(params[3]),
+      class_id: Number(params[4]),
+      kktp_id: params[5] ?? null,
+      cp_atp_id: hasNullCpAtpLiteral ? null : (params[6] ?? null),
+      title: hasNullCpAtpLiteral ? params[6] : params[7],
+      category: hasNullCpAtpLiteral ? params[7] : params[8],
+      source_type: hasNullCpAtpLiteral
+        ? (lower.includes("'exam'") ? "exam" : "assignment")
+        : params[9],
+      source_id: hasNullCpAtpLiteral ? (params[8] ?? null) : (params[10] ?? null),
+      assessment_date: hasNullCpAtpLiteral ? (params[9] ?? null) : (params[11] ?? null),
+      max_score: hasNullCpAtpLiteral ? 100 : Number(params[12] ?? 100),
+      weight: hasNullCpAtpLiteral ? 1 : Number(params[13] ?? 1),
+      kktp_threshold: hasNullCpAtpLiteral ? Number(params[10] ?? 75) : Number(params[14] ?? 75),
+      status: "draft",
+      created_at: nowIso(),
+      updated_at: nowIso(),
+    };
+    store.adm_grade_assessments.push(row);
+    return [{ ...row }];
+  }
+  if (/^update adm_grade_assessments set source_type = /i.test(sql)) {
+    const row = store.adm_grade_assessments.find((g) => String(g.id) === String(params[1]));
+    if (row) {
+      row.source_type = lower.includes("'exam'") ? "exam" : "assignment";
+      row.source_id = params[0] ?? null;
+      row.updated_at = nowIso();
+    }
+    return [];
+  }
+  if (/^update adm_grade_assessments set subject_id = \$1/i.test(sql)) {
+    const row = store.adm_grade_assessments.find((g) => String(g.id) === String(params[10]));
+    if (row) {
+      row.subject_id = Number(params[0]);
+      row.class_id = Number(params[1]);
+      row.kktp_id = params[2] ?? null;
+      row.cp_atp_id = params[3] ?? null;
+      row.title = params[4];
+      row.category = params[5];
+      row.assessment_date = params[6] ?? null;
+      row.max_score = Number(params[7] ?? 100);
+      row.weight = Number(params[8] ?? 1);
+      row.kktp_threshold = Number(params[9] ?? 75);
+      row.updated_at = nowIso();
+    }
+    return [];
+  }
+  if (/^delete from adm_grade_assessments where id = \$1/i.test(sql)) {
+    const gaId = String(params[0]);
+    store.adm_grade_assessments = store.adm_grade_assessments.filter((g) => String(g.id) !== gaId);
+    store.adm_student_grades = store.adm_student_grades.filter((g) => String(g.grade_assessment_id) !== gaId);
+    store.adm_remedial_enrichment = store.adm_remedial_enrichment.filter((r) => String(r.grade_assessment_id) !== gaId);
+    return [];
+  }
+
+  // adm_student_grades
+  if (lower.includes("from adm_student_grades sg") && lower.includes("ga.academic_year_id = $1")) {
+    const ayId = String(params[0]);
+    const gaIds = new Set(
+      store.adm_grade_assessments.filter((g) => String(g.academic_year_id) === ayId).map((g) => String(g.id)),
+    );
+    return store.adm_student_grades.filter((g) => gaIds.has(String(g.grade_assessment_id))).map((g) => ({ ...g }));
+  }
+  if (/^select .+ from adm_student_grades where grade_assessment_id = \$1/i.test(sql)) {
+    return store.adm_student_grades
+      .filter((g) => String(g.grade_assessment_id) === String(params[0]))
+      .map((g) => ({ ...g }));
+  }
+  if (/^insert into adm_student_grades\b/i.test(sql)) {
+    const row = {
+      id: params[0],
+      grade_assessment_id: params[1],
+      student_id: params[2],
+      score: Number(params[3] ?? 0),
+      is_passed: Boolean(params[4]),
+      notes: params[5] ?? null,
+      updated_at: nowIso(),
+    };
+    const idx = store.adm_student_grades.findIndex(
+      (g) => String(g.grade_assessment_id) === String(row.grade_assessment_id) && String(g.student_id) === String(row.student_id),
+    );
+    if (idx >= 0) store.adm_student_grades[idx] = row;
+    else store.adm_student_grades.push(row);
+    return [{ ...row }];
+  }
+  if (/^update adm_student_grades set is_passed = \$1/i.test(sql)) {
+    const row = store.adm_student_grades.find((g) => String(g.id) === String(params[1]));
+    if (row) {
+      row.is_passed = Boolean(params[0]);
+      row.updated_at = nowIso();
+    }
+    return [];
+  }
+  if (/^update adm_student_grades set score = \$1/i.test(sql)) {
+    const row = store.adm_student_grades.find((g) => String(g.id) === String(params[3]));
+    if (row) {
+      row.score = Number(params[0] ?? 0);
+      row.is_passed = Boolean(params[1]);
+      row.notes = params[2] ?? null;
+      row.updated_at = nowIso();
+    }
+    return [];
+  }
+
+  // adm_remedial_enrichment
+  if (/^select \* from adm_remedial_enrichment where id = \$1/i.test(sql)) {
+    const row = store.adm_remedial_enrichment.find((r) => String(r.id) === String(params[0]));
+    return row ? [{ ...row }] : [];
+  }
+  if (/^select id from adm_remedial_enrichment where grade_assessment_id = \$1 and student_id = \$2/i.test(sql)) {
+    const row = store.adm_remedial_enrichment.find(
+      (r) => String(r.grade_assessment_id) === String(params[0]) && String(r.student_id) === String(params[1]),
+    );
+    return row ? [{ id: row.id }] : [];
+  }
+  if (/^select \* from adm_remedial_enrichment where grade_assessment_id = \$1/i.test(sql)) {
+    return store.adm_remedial_enrichment
+      .filter((r) => String(r.grade_assessment_id) === String(params[0]))
+      .map((r) => ({ ...r }));
+  }
+  if (lower.includes("from adm_remedial_enrichment re")) {
+    const enrich = (r: any) => {
+      const stu = store.users.find((u) => String(u.id) === String(r.student_id));
+      const sp = store.student_profiles.find((p) => String(p.user_id) === String(r.student_id));
+      const ga = store.adm_grade_assessments.find((g) => String(g.id) === String(r.grade_assessment_id));
+      const cls = ga ? store.classes.find((c) => Number(c.id) === Number(ga.class_id)) : null;
+      const subj = ga ? store.subjects.find((s) => Number(s.id) === Number(ga.subject_id)) : null;
+      const teacher = store.users.find((u) => String(u.id) === String(r.teacher_id));
+      return {
+        ...r,
+        student_name: stu?.full_name ?? "",
+        student_username: stu?.username ?? "",
+        student_number: sp?.student_number ?? null,
+        assessment_title: ga?.title ?? "",
+        class_id: ga?.class_id ?? null,
+        subject_id: ga?.subject_id ?? null,
+        max_score: ga?.max_score ?? 100,
+        assessment_date: ga?.assessment_date ?? null,
+        class_name: cls?.class_name ?? null,
+        grade_level: cls?.grade_level ?? null,
+        subject_name: subj?.subject_name ?? "",
+        subject_code: subj?.subject_code ?? "",
+        teacher_name: teacher?.full_name ?? "",
+      };
+    };
+    const list = lower.includes("re.teacher_id = $2")
+      ? store.adm_remedial_enrichment.filter(
+          (r) => String(r.academic_year_id) === String(params[0]) && String(r.teacher_id) === String(params[1]),
+        )
+      : store.adm_remedial_enrichment.filter((r) => String(r.academic_year_id) === String(params[0]));
+    return list.map(enrich);
+  }
+  if (/^insert into adm_remedial_enrichment\b/i.test(sql)) {
+    const hasNullEnd = lower.includes("null, 'pending', null");
+    const row = {
+      id: params[0],
+      academic_year_id: params[1],
+      teacher_id: params[2],
+      grade_assessment_id: params[3],
+      student_id: params[4],
+      program_type: params[5],
+      initial_score: Number(params[6] ?? 0),
+      target_kktp: Number(params[7] ?? 75),
+      activity_plan: params[8] ?? "",
+      scheduled_date: params[9] ?? null,
+      final_score: hasNullEnd ? null : (params[10] != null ? Number(params[10]) : null),
+      completion_status: hasNullEnd ? "pending" : (params[11] ?? "pending"),
+      notes: hasNullEnd ? null : (params[12] ?? null),
+      created_at: nowIso(),
+      updated_at: nowIso(),
+    };
+    const idx = store.adm_remedial_enrichment.findIndex(
+      (r) => String(r.grade_assessment_id) === String(row.grade_assessment_id) && String(r.student_id) === String(row.student_id),
+    );
+    if (idx >= 0) store.adm_remedial_enrichment[idx] = row;
+    else store.adm_remedial_enrichment.push(row);
+    return [{ ...row }];
+  }
+  if (/^update adm_remedial_enrichment set program_type = \$1, initial_score = \$2/i.test(sql)) {
+    const row = store.adm_remedial_enrichment.find((r) => String(r.id) === String(params[5]) || String(r.id) === String(params[8]));
+    if (row && params.length === 6) {
+      row.program_type = params[0];
+      row.initial_score = Number(params[1] ?? 0);
+      row.target_kktp = Number(params[2] ?? 75);
+      row.activity_plan = params[3] ?? "";
+      row.scheduled_date = params[4] ?? null;
+      row.updated_at = nowIso();
+    } else if (row && params.length >= 9) {
+      row.program_type = params[0];
+      row.initial_score = Number(params[1] ?? 0);
+      row.target_kktp = Number(params[2] ?? 75);
+      row.activity_plan = params[3] ?? "";
+      row.scheduled_date = params[4] ?? null;
+      row.final_score = params[5] != null ? Number(params[5]) : null;
+      row.completion_status = params[6] ?? "pending";
+      row.notes = params[7] ?? null;
+      row.updated_at = nowIso();
+    }
+    return [];
+  }
+  if (/^update adm_remedial_enrichment set program_type = \$1, activity_plan = \$2/i.test(sql)) {
+    const row = store.adm_remedial_enrichment.find((r) => String(r.id) === String(params[6]));
+    if (row) {
+      row.program_type = params[0];
+      row.activity_plan = params[1] ?? "";
+      row.scheduled_date = params[2] ?? null;
+      row.final_score = params[3] != null ? Number(params[3]) : null;
+      row.completion_status = params[4] ?? "pending";
+      row.notes = params[5] ?? null;
+      row.updated_at = nowIso();
+    }
+    return [];
+  }
+  if (/^delete from adm_remedial_enrichment where id = \$1/i.test(sql)) {
+    store.adm_remedial_enrichment = store.adm_remedial_enrichment.filter((r) => String(r.id) !== String(params[0]));
+    return [];
   }
 
   // Generic COUNT fallback

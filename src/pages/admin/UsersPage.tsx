@@ -26,7 +26,7 @@ import {
   type SubjectRow,
   type UserImportResult,
 } from "../../lib/api";
-import { mapRole, unmapRole, type Role } from "../../lib/types";
+import { mapRole, unmapRole, type AcademicRole, type Role } from "../../lib/types";
 import { useI18n } from "../../i18n";
 import { C, S, alpha } from "../../styles/tokens";
 import { Badge, Btn, Field, Modal, Notice, controlStyle } from "../../components/ui";
@@ -54,6 +54,8 @@ interface User {
   username: string;
   name: string;
   role: Role;
+  academicRole: AcademicRole;
+  nip?: string;
   /** Raw class id as returned by the API (string when the driver is PostgreSQL). */
   classId?: string;
   studentNumber?: string;
@@ -92,6 +94,8 @@ function mapDbUser(row: UserRow, subjects: SubjectRow[], classes: ClassRow[]): U
     username: row.username,
     name: row.full_name,
     role: mapRole(row.role as any),
+    academicRole: (row.academic_role as AcademicRole) || "none",
+    nip: row.nip ?? undefined,
     // Keep the raw id (string on PostgreSQL, number on MySQL) — `classKey()`
     // normalises it wherever it is compared against a dropdown value.
     classId: row.class_id != null ? classKey(row.class_id) : undefined,
@@ -133,11 +137,20 @@ const USER_ACCESSORS: Accessors<User, UserSortKey> = {
   updated: (u) => u.createdAt,
 };
 
+const ACADEMIC_ROLE_LABELS: Record<AcademicRole, string> = {
+  none: "Tidak Ada",
+  guru: "Guru Mapel",
+  waka_kurikulum: "Waka Kurikulum",
+  kepala_sekolah: "Kepala Sekolah",
+};
+
 interface FormState {
   fullName: string;
   username: string;
   password: string;
   role: Role;
+  academicRole: AcademicRole;
+  nip: string;
   classId: string;
   studentNumber: string;
   /** Student contact details (email / WhatsApp / address). */
@@ -154,6 +167,8 @@ const emptyForm: FormState = {
   username: "",
   password: "",
   role: "student",
+  academicRole: "none",
+  nip: "",
   classId: "",
   studentNumber: "",
   email: "",
@@ -169,6 +184,8 @@ function formForUser(u: User): FormState {
     username: u.username,
     password: "",
     role: u.role,
+    academicRole: u.academicRole || (u.role === "teacher" ? "guru" : "none"),
+    nip: u.nip ?? "",
     classId: u.classId != null ? String(u.classId) : "",
     studentNumber: u.studentNumber ?? "",
     email: u.email ?? "",
@@ -403,6 +420,8 @@ export default function UsersPage() {
           fullName: form.fullName.trim(),
           password: form.password,
           role: unmapRole(form.role),
+          academicRole: form.role === "student" ? "none" : form.academicRole,
+          nip: form.role === "student" ? null : form.nip.trim() || null,
           classId: form.classId ? Number(form.classId) : null,
           studentNumber: form.studentNumber.trim() || undefined,
           // Contact details are only meaningful for students; sending explicit
@@ -420,6 +439,8 @@ export default function UsersPage() {
           username: form.username.trim(),
           fullName: form.fullName.trim(),
           role: unmapRole(form.role),
+          academicRole: form.role === "student" ? "none" : form.academicRole,
+          nip: form.role === "student" ? null : form.nip.trim() || null,
           classId: form.classId ? Number(form.classId) : null,
           studentNumber: form.studentNumber.trim() || undefined,
           email: form.role === "student" ? form.email.trim() || null : undefined,
@@ -708,6 +729,10 @@ export default function UsersPage() {
                       <div className="text-sm font-medium" style={{ color: C.base.text }}>{u.name}</div>
                       <div className="text-xs" style={{ color: C.base.textFaint }}>
                         @{u.username}
+                        {u.role !== "student" && u.academicRole && u.academicRole !== "none"
+                          ? ` · ${ACADEMIC_ROLE_LABELS[u.academicRole]}`
+                          : ""}
+                        {u.role !== "student" && u.nip ? ` · NIP ${u.nip}` : ""}
                         {u.studentNumber ? ` · NISN ${u.studentNumber}` : ""}
                         {u.email ? ` · ${u.email}` : ""}
                         {u.phone ? ` · WA ${u.phone}` : ""}
@@ -818,12 +843,56 @@ export default function UsersPage() {
             />
           </Field>
           <Field label="Role">
-            <select value={form.role} onChange={(e) => setField({ role: e.target.value as Role })} style={controlStyle}>
+            <select
+              value={form.role}
+              onChange={(e) => {
+                const nextRole = e.target.value as Role;
+                setField({
+                  role: nextRole,
+                  academicRole:
+                    nextRole === "student"
+                      ? "none"
+                      : nextRole === "teacher" && form.academicRole === "none"
+                        ? "guru"
+                        : form.academicRole,
+                });
+              }}
+              style={controlStyle}
+            >
               <option value="student">Student</option>
               <option value="teacher">Teacher / Examiner</option>
               <option value="admin">Super Admin</option>
             </select>
           </Field>
+          {(form.role === "teacher" || form.role === "admin") && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Field
+                label={t("Jabatan Akademik")}
+                hint={t("Menentukan hak validasi di modul Administrasi Guru.")}
+              >
+                <select
+                  value={form.academicRole}
+                  onChange={(e) => setField({ academicRole: e.target.value as AcademicRole })}
+                  style={controlStyle}
+                >
+                  <option value="none">{t("Tidak Ada / Operator")}</option>
+                  <option value="guru">{t("Guru Mata Pelajaran")}</option>
+                  <option value="waka_kurikulum">{t("Waka Kurikulum (Validator)")}</option>
+                  <option value="kepala_sekolah">{t("Kepala Sekolah (Validator)")}</option>
+                </select>
+              </Field>
+              <Field label={t("NIP / NUPTK")} hint={t("Opsional, ditampilkan pada dokumen resmi.")}>
+                <input
+                  type="text"
+                  placeholder={t("e.g. 19850412 201001 1 004")}
+                  value={form.nip}
+                  onChange={(e) => setField({ nip: e.target.value })}
+                  style={controlStyle}
+                  maxLength={32}
+                />
+              </Field>
+            </div>
+          )}
           {form.role === "teacher" && (
             <>
               <Field label={t("Kelas yang Diampu (bisa lebih dari satu)")}>

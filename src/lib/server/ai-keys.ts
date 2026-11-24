@@ -25,6 +25,10 @@ export function getBuiltInAiApiKey(providerId: string | null | undefined): strin
     return String(process.env.NVIDIA_API_KEY || "").trim();
   }
 
+  if (id === "freellmapi") {
+    return String(process.env.FREELLMAPI_API_KEY || process.env.FREE_LLM_API_KEY || "").trim();
+  }
+
   const descriptor = getAiProvider(id);
   if (descriptor.apiKeyEnv) {
     return String(process.env[descriptor.apiKeyEnv] ?? "").trim();

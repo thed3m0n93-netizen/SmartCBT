@@ -298,6 +298,31 @@ export function drawCharacterSprite(
       ctx.fillStyle = 'rgba(0,0,0,0.16)';
       ctx.fillRect(sx - 2 + sway * 0.5, sy - 14, 1.5, 10);
       ctx.fillRect(sx + 2.5 + sway * 0.5, sy - 14, 1.5, 10);
+    } else if (style === 'long') {
+      const sway = legSwing * 0.25;
+      // Skin legs + white socks + shoes below knee-length school skirt
+      ctx.fillStyle = skinCol;
+      ctx.fillRect(sx - 5.5, sy - 9 + legSwing * 0.85, 4.5, 7);
+      ctx.fillRect(sx + 1, sy - 9 - legSwing * 0.85, 4.5, 7);
+      ctx.fillStyle = '#f8fafc';
+      ctx.fillRect(sx - 5.5, sy - 4 + legSwing * 0.85, 4.5, 2.5);
+      ctx.fillRect(sx + 1, sy - 4 - legSwing * 0.85, 4.5, 2.5);
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(sx - 6, sy - 2 + legSwing * 0.85, 5, 3);
+      ctx.fillRect(sx + 1, sy - 2 - legSwing * 0.85, 5, 3);
+
+      // Pleated school skirt
+      ctx.fillStyle = pants;
+      ctx.beginPath();
+      ctx.moveTo(sx - 8, sy - 15);
+      ctx.lineTo(sx + 8, sy - 15);
+      ctx.lineTo(sx + 10.2 + sway, sy - 6);
+      ctx.lineTo(sx - 10.2 + sway, sy - 6);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = 'rgba(0,0,0,0.18)';
+      ctx.fillRect(sx - 3 + sway * 0.4, sy - 14, 1.4, 7.5);
+      ctx.fillRect(sx + 2 + sway * 0.4, sy - 14, 1.4, 7.5);
     } else {
       ctx.fillStyle = pants;
       ctx.fillRect(sx - 6, sy - 14 + legSwing, 5, 14);
@@ -305,21 +330,6 @@ export function drawCharacterSprite(
       ctx.fillStyle = '#0f172a';
       ctx.fillRect(sx - 6, sy - 2 + legSwing, 5, 3);
       ctx.fillRect(sx + 1, sy - 2 - legSwing, 5, 3);
-
-      if (style === 'long') {
-        const sway = legSwing * 0.25;
-        ctx.fillStyle = pants;
-        ctx.beginPath();
-        ctx.moveTo(sx - 8, sy - 15);
-        ctx.lineTo(sx + 8, sy - 15);
-        ctx.lineTo(sx + 9.5 + sway, sy - 7);
-        ctx.lineTo(sx - 9.5 + sway, sy - 7);
-        ctx.closePath();
-        ctx.fill();
-        ctx.fillStyle = 'rgba(0,0,0,0.18)';
-        ctx.fillRect(sx - 3, sy - 14, 1.4, 6.5);
-        ctx.fillRect(sx + 2, sy - 14, 1.4, 6.5);
-      }
     }
   } else {
     ctx.fillStyle = pants;
@@ -430,8 +440,12 @@ export function drawCharacterSprite(
       ctx.arc(sx, sy - 42, 10, Math.PI, Math.PI * 2);
       ctx.fill();
       if (style === 'long') {
-        ctx.fillRect(sx - 9.8, sy - 42, 3.3, 18 + hairBounce * 0.5);
-        ctx.fillRect(sx + 6.5, sy - 42, 3.3, 18 + hairBounce * 0.5);
+        if (p.dir === 's' || p.dir === 'e') {
+          ctx.fillRect(sx - 9.8, sy - 42, 3.3, 18 + hairBounce * 0.5);
+        }
+        if (p.dir === 's' || p.dir === 'w') {
+          ctx.fillRect(sx + 6.5, sy - 42, 3.3, 18 + hairBounce * 0.5);
+        }
         ctx.beginPath();
         ctx.moveTo(sx - 8, sy - 42);
         ctx.quadraticCurveTo(sx - 3, sy - 40, sx - 0.5, sy - 44);

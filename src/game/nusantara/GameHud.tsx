@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   HelpCircle,
   LayoutDashboard,
+  UserCog,
   Volume2,
   VolumeX,
   X,
@@ -93,6 +94,7 @@ interface GameHudProps {
   onToggleControls: () => void;
   onCloseControls: () => void;
   onOpenStudy: () => void;
+  onOpenCustomizer: () => void;
   onInteract: () => void;
   onExitToLobby?: () => void;
   onExitToDashboard?: () => void;
@@ -119,6 +121,7 @@ export const GameHud: React.FC<GameHudProps> = ({
   onToggleControls,
   onCloseControls,
   onOpenStudy,
+  onOpenCustomizer,
   onInteract,
   onExitToLobby,
   onExitToDashboard,
@@ -236,32 +239,39 @@ export const GameHud: React.FC<GameHudProps> = ({
         </div>
 
         <div className="pointer-events-auto flex flex-col items-end gap-1.5 shrink-0">
-          {(onExitToLobby || onExitToDashboard) && (
-            <div className="flex items-center gap-1">
-              {onExitToLobby && (
-                <button
-                  type="button"
-                  onClick={onExitToLobby}
-                  className="inline-flex items-center gap-1 px-2 py-1.5 text-[11px] font-semibold rounded-lg border border-slate-700/75 bg-slate-900/85 text-slate-300 hover:text-white hover:bg-slate-800 backdrop-blur transition-colors cursor-pointer"
-                  title="Kembali ke lobby"
-                >
-                  <ArrowLeft className="w-3 h-3" />
-                  <span>Lobby</span>
-                </button>
-              )}
-              {onExitToDashboard && (
-                <button
-                  type="button"
-                  onClick={onExitToDashboard}
-                  className="inline-flex items-center gap-1 px-2 py-1.5 text-[11px] font-semibold rounded-lg border border-slate-700/75 bg-slate-900/85 text-slate-200 hover:text-white hover:bg-slate-800 backdrop-blur transition-colors cursor-pointer"
-                  title="Kembali ke Dashboard Mode Biasa"
-                >
-                  <LayoutDashboard className="w-3 h-3" />
-                  <span>Mode Biasa</span>
-                </button>
-              )}
-            </div>
-          )}
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={onOpenCustomizer}
+              className="inline-flex items-center gap-1 px-2 py-1.5 text-[11px] font-semibold rounded-lg border border-sky-500/40 bg-sky-950/75 text-sky-200 hover:text-white hover:bg-sky-900 backdrop-blur transition-colors cursor-pointer"
+              title="Ganti karakter & seragam"
+            >
+              <UserCog className="w-3 h-3" />
+              <span>Karakter</span>
+            </button>
+            {onExitToLobby && (
+              <button
+                type="button"
+                onClick={onExitToLobby}
+                className="inline-flex items-center gap-1 px-2 py-1.5 text-[11px] font-semibold rounded-lg border border-slate-700/75 bg-slate-900/85 text-slate-300 hover:text-white hover:bg-slate-800 backdrop-blur transition-colors cursor-pointer"
+                title="Kembali ke lobby"
+              >
+                <ArrowLeft className="w-3 h-3" />
+                <span>Lobby</span>
+              </button>
+            )}
+            {onExitToDashboard && (
+              <button
+                type="button"
+                onClick={onExitToDashboard}
+                className="inline-flex items-center gap-1 px-2 py-1.5 text-[11px] font-semibold rounded-lg border border-slate-700/75 bg-slate-900/85 text-slate-200 hover:text-white hover:bg-slate-800 backdrop-blur transition-colors cursor-pointer"
+                title="Kembali ke Dashboard Mode Biasa"
+              >
+                <LayoutDashboard className="w-3 h-3" />
+                <span>Mode Biasa</span>
+              </button>
+            )}
+          </div>
 
           <div className="bg-slate-900/85 backdrop-blur-md border border-slate-700/75 rounded-xl p-1 flex items-center gap-0.5 shadow-lg">
             <button
@@ -310,32 +320,39 @@ export const GameHud: React.FC<GameHudProps> = ({
 
       {/* Desktop / Tablet Top-Right Dock */}
       <div className="hidden md:flex pointer-events-auto fixed top-3.5 right-3.5 flex-col items-end gap-2">
-        {(onExitToLobby || onExitToDashboard) && (
-          <div className="flex items-center gap-1.5">
-            {onExitToLobby && (
-              <button
-                type="button"
-                onClick={onExitToLobby}
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold rounded-lg border border-slate-700/75 bg-slate-900/85 text-slate-300 hover:text-white hover:bg-slate-800 backdrop-blur transition-colors cursor-pointer"
-                title="Kembali ke lobby"
-              >
-                <ArrowLeft className="w-3 h-3" />
-                <span>Lobby</span>
-              </button>
-            )}
-            {onExitToDashboard && (
-              <button
-                type="button"
-                onClick={onExitToDashboard}
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold rounded-lg border border-slate-700/75 bg-slate-900/85 text-slate-200 hover:text-white hover:bg-slate-800 backdrop-blur transition-colors cursor-pointer"
-                title="Kembali ke Dashboard Mode Biasa"
-              >
-                <LayoutDashboard className="w-3 h-3" />
-                <span>Mode Biasa</span>
-              </button>
-            )}
-          </div>
-        )}
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={onOpenCustomizer}
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold rounded-lg border border-sky-500/40 bg-sky-950/75 text-sky-200 hover:text-white hover:bg-sky-900 backdrop-blur transition-colors cursor-pointer"
+            title="Ganti karakter & seragam"
+          >
+            <UserCog className="w-3 h-3" />
+            <span>Karakter</span>
+          </button>
+          {onExitToLobby && (
+            <button
+              type="button"
+              onClick={onExitToLobby}
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold rounded-lg border border-slate-700/75 bg-slate-900/85 text-slate-300 hover:text-white hover:bg-slate-800 backdrop-blur transition-colors cursor-pointer"
+              title="Kembali ke lobby"
+            >
+              <ArrowLeft className="w-3 h-3" />
+              <span>Lobby</span>
+            </button>
+          )}
+          {onExitToDashboard && (
+            <button
+              type="button"
+              onClick={onExitToDashboard}
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold rounded-lg border border-slate-700/75 bg-slate-900/85 text-slate-200 hover:text-white hover:bg-slate-800 backdrop-blur transition-colors cursor-pointer"
+              title="Kembali ke Dashboard Mode Biasa"
+            >
+              <LayoutDashboard className="w-3 h-3" />
+              <span>Mode Biasa</span>
+            </button>
+          )}
+        </div>
 
         <div className="bg-slate-900/85 backdrop-blur-md border border-slate-700/75 rounded-xl p-2 shadow-lg">
           {!isTouch && (

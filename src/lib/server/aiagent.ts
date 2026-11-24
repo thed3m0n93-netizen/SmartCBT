@@ -1064,10 +1064,28 @@ async function handleFetchAiModels(_req: any, res: any, body: any) {
         : Array.isArray(data?.models)
           ? data.models
           : [];
-      const extracted = rawList
+      const hasAvailabilityFlag = rawList.some((item: any) => typeof item?.available === "boolean");
+      const usableList = hasAvailabilityFlag
+        ? (() => {
+            const avail = rawList.filter((item: any) => item?.available !== false);
+            const ready = avail.filter((item: any) => item?.execution_status !== "exhausted");
+            return ready.length > 0 ? ready : avail;
+          })()
+        : rawList;
+      const extracted = usableList
         .map((item: any) => String(item?.id ?? item?.name ?? "").trim())
         .filter(Boolean);
-      models = Array.from(new Set<string>(extracted)).sort((a, b) => a.localeCompare(b));
+      const priority = ["auto", "fusion"];
+      models = Array.from(new Set<string>(extracted)).sort((a, b) => {
+        const ia = priority.indexOf(a);
+        const ib = priority.indexOf(b);
+        if (ia !== -1 || ib !== -1) {
+          if (ia === -1) return 1;
+          if (ib === -1) return -1;
+          return ia - ib;
+        }
+        return a.localeCompare(b);
+      });
     } else if (descriptor.protocol === "ollama") {
       const resp = await fetch(`${baseUrl}/api/tags`, {
         method: "GET",

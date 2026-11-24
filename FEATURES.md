@@ -504,12 +504,177 @@
    - **Tahap 5 — Push Dapodik:** Matev, nilai akhir per rombel, monitoring status,
      retry, dry-run — baru setelah Tahap 1 memastikan referensi ID lengkap.
 
+## 17. Modul Administrasi Guru — Kurikulum Merdeka (BLUEPRINT & ROADMAP)
+
+> **Status dokumen:** Phase 4 Selesai (**2026-11-24** — Penilaian & Evaluasi: Kisi-Kisi terhubung Bank Soal, Buku Nilai berbasis KKTP + sinkronisasi otomatis Ujian CBT & Tugas, Leger Nilai Multi-Asesmen, Analisis Remedial/Pengayaan otomatis, serta ekspor Excel & pratinjau cetak PDF terverifikasi; menunggu konfirmasi untuk Phase 5).
+> Blueprint ini dirancang 100% kompatibel dengan arsitektur **SmartCBT** yang sudah ada:
+> React 19 + TypeScript + Tailwind CSS v4 + React Router v8, backend Node HTTP dispatcher
+> (`src/lib/server/index.ts`, `standalone.ts`), dual-dialect DB **PostgreSQL/Supabase & MySQL/MariaDB**
+> (`src/lib/db.ts`, `schema.ts`) plus `mock-db.ts`, otorisasi token & kepemilikan (`ownership.ts`),
+> `audit_logs`, `uploads`, `xlsx`, `qrcode`, dan mode cetak PDF in-app (`#smartcbt-print-report` + `@media print`).
+
+### 17.1 Arsitektur & Integrasi dengan Modul Eksisting
+
+1. **Strategi Peran & Hak Akses (`users.academic_role` + `ownership.ts`):**
+   - Kolom `users.role` tetap dipertahankan (`'super_admin' | 'teacher' | 'student'`) agar constraint DB eksisting dan seluruh alur CBT tidak terganggu.
+   - Ditambahkan kolom/atribut fungsional `users.academic_role` (`'none' | 'guru' | 'waka_kurikulum' | 'kepala_sekolah'`) serta `users.nip VARCHAR(32)` untuk kebutuhan kop & tanda tangan dokumen resmi.
+   - **Hak akses terstruktur:**
+     - **Guru (`teacher`)**: mengelola perangkat ajar, jadwal, jurnal, presensi, kisi-kisi, buku nilai, dan remedial/pengayaan milik sendiri (ditegakkan dengan `NOT_OWNER` untuk guru lain).
+     - **Waka Kurikulum & Kepala Sekolah (`academic_role IN ('waka_kurikulum','kepala_sekolah')`)**: membaca seluruh dokumen guru yang diajukan, menelaah, memberi catatan revisi, menyetujui/mengesahkan dokumen dengan QR Code digital, serta mengelola Kaldik sekolah.
+     - **Admin (`admin`/`super_admin`)**: mengelola Tahun Ajaran/Semester, Kaldik sekolah, penunjukan `academic_role`, dan akses supervisi lintas guru.
+2. **Integrasi Langsung ke Data Master & CBT Eksisting (Zero Duplication):**
+   - Memakai ulang `classes` (`grade_level` dipetakan ke Fase A–F Kurikulum Merdeka), `subjects`, `teacher_assignments` (`teacher_id` + `class_id` + `subject_id`), dan `student_profiles` (`class_id`, `student_number`/NISN).
+   - **Kisi-Kisi ↔ Bank Soal**: item kisi-kisi dapat ditautkan ke `question_banks.id` / `questions.id` yang sudah ada.
+   - **Modul Ajar ↔ LMS**: Modul Ajar/RPP dapat melampirkan file via `/api/storage/upload-contextual` (`kind: 'adm-lesson-plan'`) atau ditautkan ke `learning_modules.id`.
+   - **Buku Nilai ↔ Ujian CBT & Tugas**: komponen nilai Asesmen di Buku Nilai dapat **menarik nilai otomatis** dari `exams` (`exam_results`) dan `assignments` (`assignment_submissions`) lalu membandingkannya dengan **KKTP** untuk membentuk daftar **Remedial/Pengayaan**.
+   - **Export & Pengesahan**: memanfaatkan `xlsx` (ekspor Excel multi-sheet), `qrcode` (QR verifikasi pengesahan dokumen), `settings` (kop surat sekolah, nama/NIP kepala sekolah, tahun ajaran aktif), dan `#smartcbt-print-report` (`window.print()` PDF A4 tanpa `window.open()`).
+
+### 17.2 Relasi Data & Arsitektur Modul (ERD Konseptual)
+
+```text
+[settings / academic_years] (Tahun Ajaran & Semester Aktif)
+       │
+       ├──< [adm_calendar_events] (Kaldik: efektif, libur nasional/semester, agenda)
+       │          │
+       │          ▼ (kalkulasi otomatis)
+       └──< [adm_effective_weeks] (Minggu Efektif & JP Efektif per Mapel/Semester)
+                  │
+                  ├──────────────────────┐
+                  ▼                      ▼
+       [adm_prota] (Program Tahunan)   [adm_promes] (Program Semester per Minggu)
+                  │                      │
+                  └──────────┬───────────┘
+                             │ terhubung ke TP/ATP
+                             ▼
+[subjects] + [classes] ──< [adm_cp_atp] (CP, Elemen, TP, Alur Tujuan Pembelajaran)
+                             │
+       ┌─────────────────────┼──────────────────────┬────────────────────────┐
+       ▼                     ▼                      ▼                        ▼
+[adm_kktp]            [adm_lesson_plans]     [adm_teaching_journals]  [adm_assessment_blueprints]
+(Standar Ketuntasan)  (Modul Ajar / RPP)     (Jurnal Mengajar Harian) (Kisi-Kisi Asesmen)
+       │                │  ▲                    ▲           │                │
+       │                ▼  │                    │           ▼                ▼
+       │         [learning_modules]   [adm_schedules] [adm_attendances]  [question_banks / questions]
+       │                                (Jadwal Guru)  (Presensi Siswa)
+       ▼                                                    ▲
+[adm_grade_books & adm_student_grades] ◄── (sync nilai) ── [exams / exam_results & assignments]
+       │
+       ▼ (otomatis < KKTP vs >= KKTP)
+[adm_remedial_enrichment] (Program Remedial & Pengayaan)
+
+─────────────────────────────────────────────────────────────────────────────
+[adm_document_approvals] + [adm_approval_logs] (Polimorfik: entity_type + entity_id)
+  Status: draft → submitted → revision → approved (QR Signature + Verify Hash)
+```
+
+### 17.3 Daftar Modul Database Schema / Models (Dual-Dialect: PostgreSQL & MySQL + `mock-db.ts`)
+
+Seluruh tabel wajib didaftarkan di `src/lib/server/schema.ts` (`CORE_TABLES`, `SCHEMA_GROUPS` grup baru `adm_guru`, `PG_DDL`, `MYSQL_DDL`, `UPDATE_TABLES`, `COLUMN_MIGRATIONS`), `src/lib/server/backup.ts`, `src/lib/server/setup.ts`, `src/lib/mock-db.ts`, serta memiliki *lazy self-heal* (`ensureAdmGuruTables()`).
+
+| No | Tabel / Perubahan | Kolom Utama & Relasi | Keterangan |
+|---|---|---|---|
+| 1 | `users` *(alter)* | `+ academic_role VARCHAR(24) DEFAULT 'none'`, `+ nip VARCHAR(32) NULL` | Menandai `guru`, `waka_kurikulum`, `kepala_sekolah` |
+| 2 | `adm_academic_years` | `id`, `year_label` (`2026/2027`), `semester` (`ganjil`/`genap`), `start_date`, `end_date`, `is_active` | Periode aktif administrasi guru |
+| 3 | `adm_calendar_events` | `id`, `academic_year_id`, `title`, `event_type` (`effective_day`/`holiday_national`/`holiday_semester`/`school_agenda`/`exam_period`), `start_date`, `end_date`, `is_effective`, `notes`, `created_by` | Kalender Pendidikan (Kaldik) |
+| 4 | `adm_effective_weeks` | `id`, `academic_year_id`, `teacher_id`, `subject_id`, `class_id`, `total_weeks`, `non_effective_weeks`, `effective_weeks`, `jp_per_week`, `total_effective_jp`, `breakdown_json`, `status` | Hasil kalkulasi Minggu Efektif & JP Efektif |
+| 5 | `adm_cp_atp` | `id`, `academic_year_id`, `teacher_id`, `subject_id`, `grade_level`, `fase` (`A`–`F`), `semester`, `elemen`, `cp_text`, `tp_code`, `tp_text`, `atp_order`, `jp_allocation`, `material_topic`, `status` | Manajemen CP, TP, dan ATP/Silabus |
+| 6 | `adm_kktp` | `id`, `academic_year_id`, `teacher_id`, `subject_id`, `class_id`, `cp_atp_id`, `approach` (`interval`/`description`/`rubric`), `min_score`, `intervals_json`, `criteria_json`, `notes` | Penentuan KKTP / KKM per mapel/TP |
+| 7 | `adm_prota` | `id`, `academic_year_id`, `teacher_id`, `subject_id`, `grade_level`, `effective_week_id`, `title`, `items_json` (mapping TP ↔ alokasi JP ↔ semester), `total_jp`, `status` | Program Tahunan (distribusi materi semester 1 & 2) |
+| 8 | `adm_promes` | `id`, `academic_year_id`, `teacher_id`, `subject_id`, `class_id`, `prota_id`, `effective_week_id`, `semester`, `title`, `schedule_matrix_json` (TP ↔ bulan & minggu ke-1..5), `total_jp`, `status` | Program Semester berbasis Minggu Efektif |
+| 9 | `adm_lesson_plans` | `id`, `academic_year_id`, `teacher_id`, `subject_id`, `class_id`, `cp_atp_id`, `learning_module_id` (FK opsional), `title`, `fase`, `duration_jp`, `p5_dimensions_json`, `objectives`, `activities_json` (pendahuluan/inti/penutup), `assessment_plan`, `reflection`, `attachment_url`, `attachment_name`, `status` | Modul Ajar / RPP (form terstruktur + unggah file) |
+| 10 | `adm_teaching_schedules` | `id`, `academic_year_id`, `teacher_id`, `class_id`, `subject_id`, `day_of_week` (`1`–`6`), `period_start`, `period_end`, `start_time`, `end_time`, `room_name` | Jadwal Mengajar Guru |
+| 11 | `adm_teaching_journals` | `id`, `academic_year_id`, `teacher_id`, `schedule_id` (opsional), `class_id`, `subject_id`, `cp_atp_id` (opsional), `teach_date`, `period_range`, `topic_title`, `learning_method`, `activities_summary`, `obstacles`, `teacher_reflection`, `is_completed`, `status` | Jurnal Mengajar Harian (Agenda Kelas) |
+| 12 | `adm_student_attendances` | `id`, `journal_id` (FK → `adm_teaching_journals`), `student_id` (FK → `users`), `status` (`H`/`S`/`I`/`A`), `notes` | Presensi / Daftar Hadir siswa per pertemuan |
+| 13 | `adm_assessment_blueprints` & `adm_blueprint_items` | Header: `id`, `academic_year_id`, `teacher_id`, `subject_id`, `class_id`, `question_bank_id` (opsional), `title`, `assessment_type` (`diagnostik`/`formatif`/`sumatif`), `status`. Items: `id`, `blueprint_id`, `cp_atp_id`, `question_id` (opsional), `question_number`, `indicator`, `cognitive_level` (`C1`–`C6`), `question_type`, `difficulty`, `score_weight` | Kisi-Kisi & Bank Soal terintegrasi |
+| 14 | `adm_grade_assessments` & `adm_student_grades` | Header asesmen nilai: `id`, `academic_year_id`, `teacher_id`, `subject_id`, `class_id`, `kktp_id`, `cp_atp_id`, `title`, `category` (`diagnostik`/`formatif`/`sumatif_lm`/`sumatif_as`), `source_type` (`manual`/`exam`/`assignment`), `source_id`, `max_score`, `weight`, `kktp_threshold`, `status`. Nilai: `id`, `grade_assessment_id`, `student_id`, `score`, `is_passed`, `notes` | Buku Nilai berbasis KKTP + sinkronisasi Ujian/Tugas CBT |
+| 15 | `adm_remedial_enrichment` | `id`, `grade_assessment_id`, `student_id`, `program_type` (`remedial`/`enrichment`), `initial_score`, `target_kktp`, `activity_plan`, `scheduled_date`, `final_score`, `completion_status` (`pending`/`in_progress`/`completed`), `notes` | Analisis Evaluasi & Program Remedial / Pengayaan |
+| 16 | `adm_document_approvals` & `adm_approval_logs` | Approval: `id`, `academic_year_id`, `teacher_id`, `entity_type`, `entity_id`, `doc_title`, `status` (`draft`/`submitted`/`revision`/`approved`), `submitted_at`, `reviewed_by`, `reviewed_at`, `revision_note`, `verify_code` (unik untuk QR), `signature_hash`, `signer_name`, `signer_nip`, `signer_role`. Logs: `id`, `approval_id`, `actor_id`, `action`, `note`, `created_at` | Alur Validasi Kepsek/Waka Kurikulum + TTD Digital / QR |
+
+### 17.4 Spesifikasi Backend API & Logika Bisnis (`src/lib/server/adm-guru/*`)
+
+Semua endpoint di bawah namespace `/api/adm/*` wajib melewati autentikasi sesi dispatcher dan guard peran (`requireStaff`, `requireTeacherOrOwner`, `requireValidator`, `requireAdmin`), kecuali endpoint verifikasi QR publik read-only:
+
+- **Tahun Ajaran & Kaldik (`calendar.ts`):**
+  - `GET/POST/PUT/DELETE /api/adm/academic-years` & `POST /api/adm/academic-years/:id/activate`
+  - `GET/POST/PUT/DELETE /api/adm/calendar` (filter tahun ajaran & bulan)
+  - `GET/POST /api/adm/effective-weeks/calculate` — menghitung total minggu kalender semester, memotong hari/minggu tidak efektif dari Kaldik (`is_effective = false`), mengalikan minggu efektif dengan `jp_per_week`, lalu menyimpan ke `adm_effective_weeks`.
+- **Perencanaan Kurikulum (`planning.ts`):**
+  - `GET/POST/PUT/DELETE /api/adm/cp-atp` + endpoint import/duplikasi antar kelas/semester.
+  - `GET/POST/PUT/DELETE /api/adm/kktp` (interval nilai, deskripsi kriteria, rubrik).
+  - `GET/POST/PUT/DELETE /api/adm/prota` & `/api/adm/promes` (validasi total JP agar sinkron dengan `adm_effective_weeks.total_effective_jp`).
+  - `GET/POST/PUT/DELETE /api/adm/lesson-plans` (Modul Ajar/RPP, mendukung lampiran `upload-contextual` & sinkronisasi ke `learning_modules`).
+- **Pelaksanaan Harian (`execution.ts`):**
+  - `GET/POST/PUT/DELETE /api/adm/schedules` (deteksi bentrok jam kelas/guru).
+  - `GET/POST/PUT/DELETE /api/adm/journals` (integrasi pilihan TP/topik dari Promes/ATP).
+  - `GET/PUT /api/adm/journals/:id/attendance` (muat roster siswa kelas otomatis + simpan presensi H/S/I/A).
+  - `GET /api/adm/attendance/summary` (rekap kehadiran per siswa/kelas/rentang tanggal).
+- **Penilaian & Evaluasi (`assessment.ts`):**
+  - `GET/POST/PUT/DELETE /api/adm/blueprints` & items (tautan ke `question_banks` / `questions`).
+  - `GET/POST/PUT/DELETE /api/adm/grades/assessments` & `PUT /api/adm/grades/scores`
+  - `POST /api/adm/grades/sync-cbt` — menarik skor siswa dari `exam_results` atau `assignment_submissions` yang dipilih dan menghitung ketuntasan terhadap KKTP.
+  - `GET/POST/PUT /api/adm/remedial-enrichment` & `POST /api/adm/remedial-enrichment/auto-generate` — otomatis mengelompokkan siswa `< KKTP` ke Remedial dan `>= KKTP` ke Pengayaan.
+- **Validasi, QR Pengesahan & Export (`approval.ts`, `export.ts`):**
+  - `GET /api/adm/approvals` (filter untuk guru: dokumen saya; untuk Kepsek/Waka: antrean masuk `submitted`/`revision`/`approved`).
+  - `POST /api/adm/approvals/submit`, `POST /api/adm/approvals/:id/review` (`action: 'revision' | 'approved'`, catatan revisi, generate `verify_code` + `signature_hash` + Data URL QR Code dari `qrcode`).
+  - `GET /api/adm/verify/:code` *(publik read-only)* — mengembalikan status keaslian dokumen yang sudah disahkan tanpa membocorkan data sensitif siswa.
+  - `GET /api/adm/export/:docType/:id/xlsx` — ekspor spreadsheet `.xlsx` terformat menggunakan `xlsx`.
+
+### 17.5 Spesifikasi Frontend UI/UX & Navigasi (`src/pages/teacher/adm/*`, `src/components/adm/*`)
+
+1. **Navigasi Sidebar (`src/components/Sidebar.tsx` & `src/app/routes.tsx`):**
+   - Menambahkan grup sidebar **"Administrasi Guru"** untuk peran `teacher` dan `admin` (serta indikator akses validator untuk Kepsek/Waka Kurikulum):
+     - `Ringkasan & Kaldik` (`/teacher/adm/overview` — ringkasan kesiapan perangkat ajar, Kaldik & Minggu Efektif)
+     - `Perencanaan (CP/ATP, Prota, Promes, Modul)` (`/teacher/adm/planning`)
+     - `Pelaksanaan (Jadwal, Jurnal & Presensi)` (`/teacher/adm/execution`)
+     - `Penilaian (Kisi-Kisi, Buku Nilai & Remedial)` (`/teacher/adm/assessment`)
+     - `Validasi & Pengesahan` (`/teacher/adm/approvals` — ajukan dokumen guru & panel telaah/TTD QR Kepala Sekolah/Waka Kurikulum)
+   - Rute publik verifikasi QR dokumen: `/verify-doc/:code`.
+   - Pengaturan `academic_role` & `nip` pada `UsersPage.tsx` dan profil Tahun Ajaran/Kepala Sekolah pada `SettingsPage.tsx`.
+2. **Desain Antarmuka & Komponen Bersama:**
+   - Memakai komponen `Card`, `SectionCard`, `Btn`, `Modal`, `Notice`, `DataTable` (`src/components/ui.tsx`), tema Light/Dark (`src/styles/tokens.ts`), dan responsif mobile/tablet.
+   - **Status Badge Konsisten:** `Draft` (netral), `Diajukan` (biru/amber), `Revisi` (merah/oranye dengan tooltip/panel catatan), `Disetujui` (hijau + ikon lencana QR).
+   - **Pratinjau Cetak PDF (`AdmPrintPreviewModal.tsx`):** menggunakan ID cetak `#smartcbt-print-report` dan `@media print` A4 dengan kop surat sekolah otomatis dari `settings`, metadata tahun ajaran/semester, tabel dokumen, blok tanda tangan guru + Kepala Sekolah, serta **QR Code pengesahan** bila berstatus `Disetujui`.
+
+### 17.6 Checklist Tahapan Pengerjaan (Phase 1 – Phase 6)
+
+#### Phase 1 — Fondasi Skema, Tahun Ajaran, Kaldik & Perhitungan Minggu Efektif
+- [x] Perluas `users` (`academic_role`, `nip`) + buat tabel `adm_academic_years`, `adm_calendar_events`, `adm_effective_weeks` di `schema.ts` (PG & MySQL), `mock-db.ts`, `backup.ts`, `setup.ts`, dan helper *self-heal*.
+- [x] Buat modul backend `src/lib/server/adm-guru/guards.ts` & `calendar.ts` (CRUD Tahun Ajaran, Kaldik, mesin kalkulasi otomatis Minggu Efektif & JP Efektif).
+- [x] Tambah pengaturan `academic_role` & `nip` di `UsersPage.tsx` / `auth-users.ts` serta Tahun Ajaran & Kepala Sekolah di `SettingsPage.tsx`.
+- [x] Buat halaman `Overview & Kaldik` (`/teacher/adm/overview`) + navigasi Sidebar grup **Administrasi Guru**, termasuk kalkulator interaktif Minggu Efektif + ekspor dasar.
+- [x] Catat progres Phase 1 di `CHANGELOG.md` & verifikasi `tsc --noEmit` + `build` + `build:server` + tes kalkulasi Minggu Efektif.
+
+#### Phase 2 — Perencanaan Pembelajaran Inti (CP/ATP, KKTP, Prota, Promes & Modul Ajar/RPP)
+- [x] Tambah tabel `adm_cp_atp`, `adm_kktp`, `adm_prota`, `adm_promes`, `adm_lesson_plans` di `schema.ts`, `mock-db.ts`, `backup.ts`, dan *self-heal*.
+- [x] Implementasi backend `src/lib/server/adm-guru/planning.ts` (CRUD CP/ATP/Silabus, KKTP 3 pendekatan, Prota, Promes berbasis Minggu Efektif, Modul Ajar/RPP + upload lampiran & link ke `learning_modules`).
+- [x] Buat UI terpadu `/teacher/adm/planning` (tab CP/ATP, KKTP, Prota, Promes matriks minggu, dan Modul Ajar/RPP).
+- [x] Catat progres Phase 2 di `CHANGELOG.md` & verifikasi build + uji endpoint perencanaan.
+
+#### Phase 3 — Pelaksanaan Pembelajaran Harian (Jadwal, Jurnal Mengajar & Presensi Siswa)
+- [x] Tambah tabel `adm_teaching_schedules`, `adm_teaching_journals`, `adm_student_attendances` di `schema.ts`, `mock-db.ts`, `backup.ts`, dan *self-heal*.
+- [x] Implementasi backend `src/lib/server/adm-guru/execution.ts` (CRUD Jadwal Mengajar dengan cek bentrok, Jurnal Mengajar terintegrasi Promes/ATP, dan Presensi H/S/I/A per pertemuan + rekap per kelas/siswa).
+- [x] Buat UI terpadu `/teacher/adm/execution` (Jadwal mingguan, input Jurnal + Presensi siswa satu layar dengan aksi cepat "Hadir Semua", dan tab Rekap Kehadiran).
+- [x] Catat progres Phase 3 di `CHANGELOG.md` & verifikasi build + uji integrasi jurnal-presensi.
+
+#### Phase 4 — Penilaian & Evaluasi (Kisi-Kisi, Buku Nilai & Analisis Remedial/Pengayaan)
+- [x] Tambah tabel `adm_assessment_blueprints`, `adm_blueprint_items`, `adm_grade_assessments`, `adm_student_grades`, `adm_remedial_enrichment` di `schema.ts`, `mock-db.ts`, `backup.ts`, dan *self-heal*.
+- [x] Implementasi backend `src/lib/server/adm-guru/assessment.ts` (Kisi-Kisi Diagnostik/Formatif/Sumatif + link Bank Soal, Buku Nilai berbasis KKTP + sinkronisasi otomatis nilai `exam_results` & `assignment_submissions`, dan auto-generate Remedial/Pengayaan).
+- [x] Buat UI terpadu `/teacher/adm/assessment` (Kisi-Kisi & tautan Bank Soal, Buku Nilai + import/export Excel, dan Analisis Ketuntasan + Program Remedial/Pengayaan).
+- [x] Catat progres Phase 4 di `CHANGELOG.md` & verifikasi build + uji kalkulasi KKTP/remedial.
+
+#### Phase 5 — Alur Validasi Kepsek/Waka Kurikulum, Tanda Tangan Digital QR & Export PDF/Excel Lengkap
+- [ ] Tambah tabel `adm_document_approvals` & `adm_approval_logs` di `schema.ts`, `mock-db.ts`, `backup.ts`, dan *self-heal*.
+- [ ] Implementasi backend `src/lib/server/adm-guru/approval.ts` & `export.ts` (submit, revisi, approve, generate QR Code + signature hash, endpoint verifikasi publik `/api/adm/verify/:code`, dan ekspor `.xlsx` seluruh dokumen).
+- [ ] Buat UI `/teacher/adm/approvals` (tab Pengajuan Dokumen Guru & Panel Validasi Kepala Sekolah/Waka Kurikulum), halaman verifikasi publik `/verify-doc/:code`, serta `AdmPrintPreviewModal` PDF A4 dengan kop sekolah & QR pengesahan di semua sub-modul.
+- [ ] Catat progres Phase 5 di `CHANGELOG.md` & verifikasi matriks otorisasi (guru vs validator vs siswa) + uji cetak & QR.
+
+#### Phase 6 — Audit Trail, Integrasi Dashboard, Paritas Backup/MockDB & Verifikasi E2E
+- [ ] Lengkapi `recordAuditLog` di seluruh aksi kritikal Administrasi Guru (aktivasi tahun ajaran, submit, revisi, approve, sinkronisasi nilai) dan pastikan backup/restore + `mock-db.ts` mencakup seluruh 16 entitas baru.
+- [ ] Tambah widget progres Administrasi Guru di `AdminDashboard.tsx` & ringkasan status dokumen guru, serta lengkapi terjemahan `src/i18n/dictionaries.ts`.
+- [ ] Jalankan uji regresi menyeluruh (`tsc --noEmit`, unit & API tests, `npm run build`, `npm run build:server`) dan sinkronkan status final di `FEATURES.md` & `CHANGELOG.md`.
+
 ---
 
-Catatan: dokumen ini disinkronkan terhadap kode pada **build 137 (2026-11-12)**.
-Perbaikan yang tertangkap di `BUGLIST.md` dan `CHANGELOG.md` (route
-monitoring/grading 500, activity dashboard, progres modul 15%, sesi stale,
-provider AI + timeout, branding, Berita build 132–134, sasaran kelas mapel
-build 135) semuanya sudah berstatus ✅; pekerjaan 7 Okt–10 Nov yang sebelumnya
-tidak tercatat kini direkonstruksi sebagai build 136 di `CHANGELOG.md`.
+Catatan: bagian §1–§16 disinkronkan terhadap kode pada **build 148**, sedangkan **§17 (Modul Administrasi Guru)** ditambahkan pada **2026-11-23 (Phase 0 — Planning)** sebagai blueprint pengembangan bertahap.
+
 

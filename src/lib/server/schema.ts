@@ -48,6 +48,22 @@ export const CORE_TABLES = [
   "settings",
   "audit_logs",
   "game_nusantara_state",
+  "adm_academic_years",
+  "adm_calendar_events",
+  "adm_effective_weeks",
+  "adm_cp_atp",
+  "adm_kktp",
+  "adm_prota",
+  "adm_promes",
+  "adm_lesson_plans",
+  "adm_teaching_schedules",
+  "adm_teaching_journals",
+  "adm_student_attendances",
+  "adm_assessment_blueprints",
+  "adm_blueprint_items",
+  "adm_grade_assessments",
+  "adm_student_grades",
+  "adm_remedial_enrichment",
 ] as const;
 
 /**
@@ -119,6 +135,29 @@ export const SCHEMA_GROUPS: readonly SchemaGroup[] = [
     icon: "📰",
     tables: ["news"],
   },
+  {
+    id: "adm_guru",
+    label: "Administrasi Guru",
+    icon: "📘",
+    tables: [
+      "adm_academic_years",
+      "adm_calendar_events",
+      "adm_effective_weeks",
+      "adm_cp_atp",
+      "adm_kktp",
+      "adm_prota",
+      "adm_promes",
+      "adm_lesson_plans",
+      "adm_teaching_schedules",
+      "adm_teaching_journals",
+      "adm_student_attendances",
+      "adm_assessment_blueprints",
+      "adm_blueprint_items",
+      "adm_grade_assessments",
+      "adm_student_grades",
+      "adm_remedial_enrichment",
+    ],
+  },
 ];
 
 /** Table -> group lookup used to label each row in the status response. */
@@ -150,6 +189,9 @@ $$;`,
     full_name     VARCHAR(128) NOT NULL,
     role          VARCHAR(16)  NOT NULL
                     CHECK (role IN ('super_admin', 'teacher', 'student')),
+    academic_role VARCHAR(24)  NOT NULL DEFAULT 'none'
+                    CHECK (academic_role IN ('none', 'guru', 'waka_kurikulum', 'kepala_sekolah')),
+    nip           VARCHAR(32)  NULL,
     status        VARCHAR(10)  NOT NULL DEFAULT 'active'
                     CHECK (status IN ('active', 'inactive')),
     created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
@@ -754,6 +796,526 @@ CREATE INDEX IF NOT EXISTS idx_news_author     ON news (author_id);`,
 CREATE INDEX IF NOT EXISTS idx_audit_logs_action     ON audit_logs (action);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_actor      ON audit_logs (actor_id);`,
   },
+  {
+    label: "Tabel adm_academic_years (Tahun Ajaran & Semester)",
+    sql: `CREATE TABLE IF NOT EXISTS adm_academic_years (
+    id                    UUID        NOT NULL DEFAULT gen_random_uuid(),
+    year_label            VARCHAR(16) NOT NULL,
+    semester              VARCHAR(10) NOT NULL CHECK (semester IN ('ganjil', 'genap')),
+    start_date            VARCHAR(10) NOT NULL,
+    end_date              VARCHAR(10) NOT NULL,
+    working_days_per_week INT         NOT NULL DEFAULT 5 CHECK (working_days_per_week IN (5, 6)),
+    is_active             BOOLEAN     NOT NULL DEFAULT FALSE,
+    created_by            UUID        NULL,
+    created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT pk_adm_academic_years PRIMARY KEY (id),
+    CONSTRAINT uq_adm_year_semester  UNIQUE (year_label, semester),
+    CONSTRAINT fk_adm_ay_creator     FOREIGN KEY (created_by)
+        REFERENCES users (id) ON DELETE SET NULL ON UPDATE CASCADE
+);`,
+  },
+  {
+    label: "Tabel adm_calendar_events (Kalender Pendidikan)",
+    sql: `CREATE TABLE IF NOT EXISTS adm_calendar_events (
+    id               UUID         NOT NULL DEFAULT gen_random_uuid(),
+    academic_year_id UUID         NOT NULL,
+    title            VARCHAR(200) NOT NULL,
+    event_type       VARCHAR(32)  NOT NULL
+                       CHECK (event_type IN ('effective_day','holiday_national','holiday_semester','school_agenda','exam_period')),
+    start_date       VARCHAR(10)  NOT NULL,
+    end_date         VARCHAR(10)  NOT NULL,
+    is_effective     BOOLEAN      NOT NULL DEFAULT TRUE,
+    notes            TEXT         NULL,
+    created_by       UUID         NULL,
+    created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT pk_adm_calendar_events PRIMARY KEY (id),
+    CONSTRAINT fk_adm_ce_year         FOREIGN KEY (academic_year_id)
+        REFERENCES adm_academic_years (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_ce_creator      FOREIGN KEY (created_by)
+        REFERENCES users (id) ON DELETE SET NULL ON UPDATE CASCADE
+);`,
+  },
+  {
+    label: "Tabel adm_effective_weeks (Perhitungan Minggu Efektif & JP)",
+    sql: `CREATE TABLE IF NOT EXISTS adm_effective_weeks (
+    id                    UUID        NOT NULL DEFAULT gen_random_uuid(),
+    academic_year_id      UUID        NOT NULL,
+    teacher_id            UUID        NOT NULL,
+    subject_id            BIGINT      NOT NULL,
+    class_id              BIGINT      NULL,
+    working_days_per_week INT         NOT NULL DEFAULT 5 CHECK (working_days_per_week IN (5, 6)),
+    total_weeks           INT         NOT NULL DEFAULT 0,
+    non_effective_weeks   INT         NOT NULL DEFAULT 0,
+    effective_weeks       INT         NOT NULL DEFAULT 0,
+    effective_days        INT         NOT NULL DEFAULT 0,
+    jp_per_week           INT         NOT NULL DEFAULT 2,
+    total_effective_jp    INT         NOT NULL DEFAULT 0,
+    breakdown_json        JSONB       NULL,
+    notes                 TEXT        NULL,
+    status                VARCHAR(16) NOT NULL DEFAULT 'draft'
+                            CHECK (status IN ('draft','submitted','revision','approved')),
+    created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT pk_adm_effective_weeks PRIMARY KEY (id),
+    CONSTRAINT fk_adm_ew_year         FOREIGN KEY (academic_year_id)
+        REFERENCES adm_academic_years (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_ew_teacher      FOREIGN KEY (teacher_id)
+        REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_ew_subject      FOREIGN KEY (subject_id)
+        REFERENCES subjects (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_ew_class        FOREIGN KEY (class_id)
+        REFERENCES classes (id) ON DELETE SET NULL ON UPDATE CASCADE
+);`,
+  },
+  {
+    label: "Index Administrasi Guru Phase 1",
+    sql: `CREATE INDEX IF NOT EXISTS idx_adm_ay_active      ON adm_academic_years (is_active);
+CREATE INDEX IF NOT EXISTS idx_adm_ce_year_date   ON adm_calendar_events (academic_year_id, start_date);
+CREATE INDEX IF NOT EXISTS idx_adm_ew_teacher     ON adm_effective_weeks (teacher_id, academic_year_id);`,
+  },
+  {
+    label: "Tabel adm_cp_atp (CP, TP & Alur Tujuan Pembelajaran)",
+    sql: `CREATE TABLE IF NOT EXISTS adm_cp_atp (
+    id               UUID         NOT NULL DEFAULT gen_random_uuid(),
+    academic_year_id UUID         NOT NULL,
+    teacher_id       UUID         NOT NULL,
+    subject_id       BIGINT       NOT NULL,
+    grade_level      VARCHAR(16)  NOT NULL,
+    fase             VARCHAR(8)   NOT NULL DEFAULT 'E',
+    semester         VARCHAR(10)  NOT NULL DEFAULT 'ganjil' CHECK (semester IN ('ganjil', 'genap')),
+    elemen           VARCHAR(160) NOT NULL,
+    cp_text          TEXT         NOT NULL,
+    tp_code          VARCHAR(32)  NOT NULL,
+    tp_text          TEXT         NOT NULL,
+    material_topic   VARCHAR(200) NOT NULL,
+    atp_order        INT          NOT NULL DEFAULT 1,
+    jp_allocation    INT          NOT NULL DEFAULT 4,
+    status           VARCHAR(16)  NOT NULL DEFAULT 'draft'
+                       CHECK (status IN ('draft','submitted','revision','approved')),
+    created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT pk_adm_cp_atp      PRIMARY KEY (id),
+    CONSTRAINT fk_adm_ca_year     FOREIGN KEY (academic_year_id)
+        REFERENCES adm_academic_years (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_ca_teacher  FOREIGN KEY (teacher_id)
+        REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_ca_subject  FOREIGN KEY (subject_id)
+        REFERENCES subjects (id) ON DELETE CASCADE ON UPDATE CASCADE
+);`,
+  },
+  {
+    label: "Tabel adm_kktp (Kriteria Ketercapaian Tujuan Pembelajaran)",
+    sql: `CREATE TABLE IF NOT EXISTS adm_kktp (
+    id               UUID         NOT NULL DEFAULT gen_random_uuid(),
+    academic_year_id UUID         NOT NULL,
+    teacher_id       UUID         NOT NULL,
+    subject_id       BIGINT       NOT NULL,
+    class_id         BIGINT       NULL,
+    cp_atp_id        UUID         NULL,
+    title            VARCHAR(200) NOT NULL,
+    approach         VARCHAR(16)  NOT NULL DEFAULT 'interval'
+                       CHECK (approach IN ('interval','description','rubric')),
+    min_score        NUMERIC(5,2) NOT NULL DEFAULT 75,
+    intervals_json   JSONB        NULL,
+    criteria_json    JSONB        NULL,
+    notes            TEXT         NULL,
+    status           VARCHAR(16)  NOT NULL DEFAULT 'draft'
+                       CHECK (status IN ('draft','submitted','revision','approved')),
+    created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT pk_adm_kktp       PRIMARY KEY (id),
+    CONSTRAINT fk_adm_kk_year    FOREIGN KEY (academic_year_id)
+        REFERENCES adm_academic_years (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_kk_teacher FOREIGN KEY (teacher_id)
+        REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_kk_subject FOREIGN KEY (subject_id)
+        REFERENCES subjects (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_kk_class   FOREIGN KEY (class_id)
+        REFERENCES classes (id) ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_kk_cpatp   FOREIGN KEY (cp_atp_id)
+        REFERENCES adm_cp_atp (id) ON DELETE SET NULL ON UPDATE CASCADE
+);`,
+  },
+  {
+    label: "Tabel adm_prota (Program Tahunan)",
+    sql: `CREATE TABLE IF NOT EXISTS adm_prota (
+    id                UUID         NOT NULL DEFAULT gen_random_uuid(),
+    academic_year_id  UUID         NOT NULL,
+    teacher_id        UUID         NOT NULL,
+    subject_id        BIGINT       NOT NULL,
+    grade_level       VARCHAR(16)  NOT NULL,
+    effective_week_id UUID         NULL,
+    title             VARCHAR(200) NOT NULL,
+    items_json        JSONB        NOT NULL,
+    total_jp          INT          NOT NULL DEFAULT 0,
+    notes             TEXT         NULL,
+    status            VARCHAR(16)  NOT NULL DEFAULT 'draft'
+                        CHECK (status IN ('draft','submitted','revision','approved')),
+    created_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT pk_adm_prota       PRIMARY KEY (id),
+    CONSTRAINT fk_adm_pt_year     FOREIGN KEY (academic_year_id)
+        REFERENCES adm_academic_years (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_pt_teacher  FOREIGN KEY (teacher_id)
+        REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_pt_subject  FOREIGN KEY (subject_id)
+        REFERENCES subjects (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_pt_ew       FOREIGN KEY (effective_week_id)
+        REFERENCES adm_effective_weeks (id) ON DELETE SET NULL ON UPDATE CASCADE
+);`,
+  },
+  {
+    label: "Tabel adm_promes (Program Semester)",
+    sql: `CREATE TABLE IF NOT EXISTS adm_promes (
+    id                   UUID         NOT NULL DEFAULT gen_random_uuid(),
+    academic_year_id     UUID         NOT NULL,
+    teacher_id           UUID         NOT NULL,
+    subject_id           BIGINT       NOT NULL,
+    class_id             BIGINT       NULL,
+    prota_id             UUID         NULL,
+    effective_week_id    UUID         NULL,
+    semester             VARCHAR(10)  NOT NULL DEFAULT 'ganjil' CHECK (semester IN ('ganjil','genap')),
+    title                VARCHAR(200) NOT NULL,
+    schedule_matrix_json JSONB        NOT NULL,
+    total_jp             INT          NOT NULL DEFAULT 0,
+    notes                TEXT         NULL,
+    status               VARCHAR(16)  NOT NULL DEFAULT 'draft'
+                           CHECK (status IN ('draft','submitted','revision','approved')),
+    created_at           TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at           TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT pk_adm_promes      PRIMARY KEY (id),
+    CONSTRAINT fk_adm_pm_year     FOREIGN KEY (academic_year_id)
+        REFERENCES adm_academic_years (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_pm_teacher  FOREIGN KEY (teacher_id)
+        REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_pm_subject  FOREIGN KEY (subject_id)
+        REFERENCES subjects (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_pm_class    FOREIGN KEY (class_id)
+        REFERENCES classes (id) ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_pm_prota    FOREIGN KEY (prota_id)
+        REFERENCES adm_prota (id) ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_pm_ew       FOREIGN KEY (effective_week_id)
+        REFERENCES adm_effective_weeks (id) ON DELETE SET NULL ON UPDATE CASCADE
+);`,
+  },
+  {
+    label: "Tabel adm_lesson_plans (Modul Ajar / RPP)",
+    sql: `CREATE TABLE IF NOT EXISTS adm_lesson_plans (
+    id                 UUID         NOT NULL DEFAULT gen_random_uuid(),
+    academic_year_id   UUID         NOT NULL,
+    teacher_id         UUID         NOT NULL,
+    subject_id         BIGINT       NOT NULL,
+    class_id           BIGINT       NULL,
+    cp_atp_id          UUID         NULL,
+    learning_module_id UUID         NULL,
+    title              VARCHAR(200) NOT NULL,
+    fase               VARCHAR(8)   NOT NULL DEFAULT 'E',
+    duration_jp        INT          NOT NULL DEFAULT 2,
+    learning_model     VARCHAR(80)  NULL,
+    p5_dimensions_json JSONB        NULL,
+    objectives         TEXT         NOT NULL,
+    activities_json    JSONB        NULL,
+    assessment_plan    TEXT         NULL,
+    reflection         TEXT         NULL,
+    attachment_url     TEXT         NULL,
+    attachment_name    VARCHAR(255) NULL,
+    status             VARCHAR(16)  NOT NULL DEFAULT 'draft'
+                         CHECK (status IN ('draft','submitted','revision','approved')),
+    created_at         TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at         TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT pk_adm_lesson_plans PRIMARY KEY (id),
+    CONSTRAINT fk_adm_lp_year      FOREIGN KEY (academic_year_id)
+        REFERENCES adm_academic_years (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_lp_teacher   FOREIGN KEY (teacher_id)
+        REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_lp_subject   FOREIGN KEY (subject_id)
+        REFERENCES subjects (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_lp_class     FOREIGN KEY (class_id)
+        REFERENCES classes (id) ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_lp_cpatp     FOREIGN KEY (cp_atp_id)
+        REFERENCES adm_cp_atp (id) ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_lp_lm        FOREIGN KEY (learning_module_id)
+        REFERENCES learning_modules (id) ON DELETE SET NULL ON UPDATE CASCADE
+);`,
+  },
+  {
+    label: "Index Administrasi Guru Phase 2",
+    sql: `CREATE INDEX IF NOT EXISTS idx_adm_cpatp_teacher   ON adm_cp_atp (teacher_id, academic_year_id, subject_id);
+CREATE INDEX IF NOT EXISTS idx_adm_kktp_teacher    ON adm_kktp (teacher_id, academic_year_id);
+CREATE INDEX IF NOT EXISTS idx_adm_prota_teacher   ON adm_prota (teacher_id, academic_year_id);
+CREATE INDEX IF NOT EXISTS idx_adm_promes_teacher  ON adm_promes (teacher_id, academic_year_id);
+CREATE INDEX IF NOT EXISTS idx_adm_lp_teacher      ON adm_lesson_plans (teacher_id, academic_year_id);`,
+  },
+  {
+    label: "Tabel adm_teaching_schedules (Jadwal Mengajar Guru)",
+    sql: `CREATE TABLE IF NOT EXISTS adm_teaching_schedules (
+    id               UUID         NOT NULL DEFAULT gen_random_uuid(),
+    academic_year_id UUID         NOT NULL,
+    teacher_id       UUID         NOT NULL,
+    class_id         BIGINT       NOT NULL,
+    subject_id       BIGINT       NOT NULL,
+    day_of_week      SMALLINT     NOT NULL,
+    period_start     SMALLINT     NOT NULL,
+    period_end       SMALLINT     NOT NULL,
+    start_time       VARCHAR(8)   NULL,
+    end_time         VARCHAR(8)   NULL,
+    room_name        VARCHAR(64)  NULL,
+    notes            VARCHAR(255) NULL,
+    created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT pk_adm_teaching_schedules PRIMARY KEY (id),
+    CONSTRAINT chk_adm_sched_day         CHECK (day_of_week BETWEEN 1 AND 6),
+    CONSTRAINT chk_adm_sched_periods     CHECK (period_start >= 1 AND period_end >= period_start),
+    CONSTRAINT fk_adm_sched_year         FOREIGN KEY (academic_year_id)
+        REFERENCES adm_academic_years (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_sched_teacher      FOREIGN KEY (teacher_id)
+        REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_sched_class        FOREIGN KEY (class_id)
+        REFERENCES classes (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_sched_subject      FOREIGN KEY (subject_id)
+        REFERENCES subjects (id) ON DELETE CASCADE ON UPDATE CASCADE
+);`,
+  },
+  {
+    label: "Tabel adm_teaching_journals (Jurnal Mengajar Harian)",
+    sql: `CREATE TABLE IF NOT EXISTS adm_teaching_journals (
+    id                 UUID         NOT NULL DEFAULT gen_random_uuid(),
+    academic_year_id   UUID         NOT NULL,
+    teacher_id         UUID         NOT NULL,
+    schedule_id        UUID         NULL,
+    class_id           BIGINT       NOT NULL,
+    subject_id         BIGINT       NOT NULL,
+    cp_atp_id          UUID         NULL,
+    promes_id          UUID         NULL,
+    teach_date         VARCHAR(10)  NOT NULL,
+    period_range       VARCHAR(48)  NOT NULL DEFAULT '',
+    topic_title        VARCHAR(200) NOT NULL,
+    learning_method    VARCHAR(120) NULL,
+    activities_summary TEXT         NULL,
+    obstacles          TEXT         NULL,
+    teacher_reflection TEXT         NULL,
+    follow_up          TEXT         NULL,
+    is_completed       BOOLEAN      NOT NULL DEFAULT TRUE,
+    status             VARCHAR(16)  NOT NULL DEFAULT 'draft',
+    created_at         TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at         TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT pk_adm_teaching_journals PRIMARY KEY (id),
+    CONSTRAINT fk_adm_jrn_year          FOREIGN KEY (academic_year_id)
+        REFERENCES adm_academic_years (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_jrn_teacher       FOREIGN KEY (teacher_id)
+        REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_jrn_schedule      FOREIGN KEY (schedule_id)
+        REFERENCES adm_teaching_schedules (id) ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_jrn_class         FOREIGN KEY (class_id)
+        REFERENCES classes (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_jrn_subject       FOREIGN KEY (subject_id)
+        REFERENCES subjects (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_jrn_cpatp         FOREIGN KEY (cp_atp_id)
+        REFERENCES adm_cp_atp (id) ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_jrn_promes        FOREIGN KEY (promes_id)
+        REFERENCES adm_promes (id) ON DELETE SET NULL ON UPDATE CASCADE
+);`,
+  },
+  {
+    label: "Tabel adm_student_attendances (Presensi Siswa per Pertemuan)",
+    sql: `CREATE TABLE IF NOT EXISTS adm_student_attendances (
+    id         UUID         NOT NULL DEFAULT gen_random_uuid(),
+    journal_id UUID         NOT NULL,
+    student_id UUID         NOT NULL,
+    status     VARCHAR(4)   NOT NULL DEFAULT 'H',
+    notes      VARCHAR(255) NULL,
+    updated_at TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT pk_adm_student_attendances PRIMARY KEY (id),
+    CONSTRAINT uq_adm_att_journal_student UNIQUE (journal_id, student_id),
+    CONSTRAINT chk_adm_att_status         CHECK (status IN ('H', 'S', 'I', 'A')),
+    CONSTRAINT fk_adm_att_journal         FOREIGN KEY (journal_id)
+        REFERENCES adm_teaching_journals (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_att_student         FOREIGN KEY (student_id)
+        REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE
+);`,
+  },
+  {
+    label: "Index Administrasi Guru Phase 3",
+    sql: `CREATE INDEX IF NOT EXISTS idx_adm_sched_teacher ON adm_teaching_schedules (teacher_id, academic_year_id, day_of_week);
+CREATE INDEX IF NOT EXISTS idx_adm_sched_class   ON adm_teaching_schedules (academic_year_id, class_id, day_of_week);
+CREATE INDEX IF NOT EXISTS idx_adm_jrn_teacher   ON adm_teaching_journals (teacher_id, academic_year_id, teach_date);
+CREATE INDEX IF NOT EXISTS idx_adm_jrn_class     ON adm_teaching_journals (class_id, teach_date);
+CREATE INDEX IF NOT EXISTS idx_adm_att_journal   ON adm_student_attendances (journal_id);
+CREATE INDEX IF NOT EXISTS idx_adm_att_student   ON adm_student_attendances (student_id);`,
+  },
+  {
+    label: "Tabel adm_assessment_blueprints (Kisi-Kisi Asesmen)",
+    sql: `CREATE TABLE IF NOT EXISTS adm_assessment_blueprints (
+    id               UUID         NOT NULL DEFAULT gen_random_uuid(),
+    academic_year_id UUID         NOT NULL,
+    teacher_id       UUID         NOT NULL,
+    subject_id       BIGINT       NOT NULL,
+    class_id         BIGINT       NULL,
+    question_bank_id UUID         NULL,
+    title            VARCHAR(200) NOT NULL,
+    assessment_type  VARCHAR(24)  NOT NULL DEFAULT 'sumatif'
+                       CHECK (assessment_type IN ('diagnostik','formatif','sumatif')),
+    notes            TEXT         NULL,
+    status           VARCHAR(16)  NOT NULL DEFAULT 'draft'
+                       CHECK (status IN ('draft','submitted','revision','approved')),
+    created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT pk_adm_assessment_blueprints PRIMARY KEY (id),
+    CONSTRAINT fk_adm_bp_year  FOREIGN KEY (academic_year_id)
+        REFERENCES adm_academic_years (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_bp_teacher FOREIGN KEY (teacher_id)
+        REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_bp_subject FOREIGN KEY (subject_id)
+        REFERENCES subjects (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_bp_class FOREIGN KEY (class_id)
+        REFERENCES classes (id) ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_bp_bank FOREIGN KEY (question_bank_id)
+        REFERENCES question_banks (id) ON DELETE SET NULL ON UPDATE CASCADE
+);`,
+  },
+  {
+    label: "Tabel adm_blueprint_items (Butir Kisi-Kisi & Soal)",
+    sql: `CREATE TABLE IF NOT EXISTS adm_blueprint_items (
+    id              UUID         NOT NULL DEFAULT gen_random_uuid(),
+    blueprint_id    UUID         NOT NULL,
+    cp_atp_id       UUID         NULL,
+    question_id     UUID         NULL,
+    question_number INT          NOT NULL DEFAULT 1,
+    material_topic  VARCHAR(200) NOT NULL DEFAULT '',
+    indicator       TEXT         NOT NULL,
+    cognitive_level VARCHAR(12)  NOT NULL DEFAULT 'C2'
+                      CHECK (cognitive_level IN ('C1','C2','C3','C4','C5','C6')),
+    question_type   VARCHAR(24)  NOT NULL DEFAULT 'single_choice',
+    difficulty      VARCHAR(16)  NOT NULL DEFAULT 'medium'
+                      CHECK (difficulty IN ('easy','medium','hard')),
+    score_weight    NUMERIC(5,2) NOT NULL DEFAULT 1.0,
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT pk_adm_blueprint_items PRIMARY KEY (id),
+    CONSTRAINT fk_adm_bpi_bp FOREIGN KEY (blueprint_id)
+        REFERENCES adm_assessment_blueprints (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_bpi_cpatp FOREIGN KEY (cp_atp_id)
+        REFERENCES adm_cp_atp (id) ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_bpi_question FOREIGN KEY (question_id)
+        REFERENCES questions (id) ON DELETE SET NULL ON UPDATE CASCADE
+);`,
+  },
+  {
+    label: "Tabel adm_grade_assessments (Komponen Buku Nilai)",
+    sql: `CREATE TABLE IF NOT EXISTS adm_grade_assessments (
+    id               UUID         NOT NULL DEFAULT gen_random_uuid(),
+    academic_year_id UUID         NOT NULL,
+    teacher_id       UUID         NOT NULL,
+    subject_id       BIGINT       NOT NULL,
+    class_id         BIGINT       NOT NULL,
+    kktp_id          UUID         NULL,
+    cp_atp_id        UUID         NULL,
+    title            VARCHAR(200) NOT NULL,
+    category         VARCHAR(24)  NOT NULL DEFAULT 'formatif'
+                       CHECK (category IN ('diagnostik','formatif','sumatif_lm','sumatif_as')),
+    source_type      VARCHAR(16)  NOT NULL DEFAULT 'manual'
+                       CHECK (source_type IN ('manual','exam','assignment')),
+    source_id        VARCHAR(64)  NULL,
+    assessment_date  VARCHAR(10)  NULL,
+    max_score        NUMERIC(7,2) NOT NULL DEFAULT 100,
+    weight           NUMERIC(5,2) NOT NULL DEFAULT 1,
+    kktp_threshold   NUMERIC(5,2) NOT NULL DEFAULT 75,
+    status           VARCHAR(16)  NOT NULL DEFAULT 'draft',
+    created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT pk_adm_grade_assessments PRIMARY KEY (id),
+    CONSTRAINT fk_adm_ga_year FOREIGN KEY (academic_year_id)
+        REFERENCES adm_academic_years (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_ga_teacher FOREIGN KEY (teacher_id)
+        REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_ga_subject FOREIGN KEY (subject_id)
+        REFERENCES subjects (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_ga_class FOREIGN KEY (class_id)
+        REFERENCES classes (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_ga_kktp FOREIGN KEY (kktp_id)
+        REFERENCES adm_kktp (id) ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_ga_cpatp FOREIGN KEY (cp_atp_id)
+        REFERENCES adm_cp_atp (id) ON DELETE SET NULL ON UPDATE CASCADE
+);`,
+  },
+  {
+    label: "Tabel adm_student_grades (Nilai Siswa per Asesmen)",
+    sql: `CREATE TABLE IF NOT EXISTS adm_student_grades (
+    id                  UUID         NOT NULL DEFAULT gen_random_uuid(),
+    grade_assessment_id UUID         NOT NULL,
+    student_id          UUID         NOT NULL,
+    score               NUMERIC(7,2) NOT NULL DEFAULT 0,
+    is_passed           BOOLEAN      NOT NULL DEFAULT FALSE,
+    notes               VARCHAR(255) NULL,
+    updated_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT pk_adm_student_grades PRIMARY KEY (id),
+    CONSTRAINT uq_adm_sg_assessment_student UNIQUE (grade_assessment_id, student_id),
+    CONSTRAINT fk_adm_sg_assessment FOREIGN KEY (grade_assessment_id)
+        REFERENCES adm_grade_assessments (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_sg_student FOREIGN KEY (student_id)
+        REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE
+);`,
+  },
+  {
+    label: "Tabel adm_remedial_enrichment (Program Remedial & Pengayaan)",
+    sql: `CREATE TABLE IF NOT EXISTS adm_remedial_enrichment (
+    id                  UUID         NOT NULL DEFAULT gen_random_uuid(),
+    academic_year_id    UUID         NOT NULL,
+    teacher_id          UUID         NOT NULL,
+    grade_assessment_id UUID         NOT NULL,
+    student_id          UUID         NOT NULL,
+    program_type        VARCHAR(16)  NOT NULL
+                          CHECK (program_type IN ('remedial','enrichment')),
+    initial_score       NUMERIC(7,2) NOT NULL DEFAULT 0,
+    target_kktp         NUMERIC(5,2) NOT NULL DEFAULT 75,
+    activity_plan       TEXT         NOT NULL DEFAULT '',
+    scheduled_date      VARCHAR(10)  NULL,
+    final_score         NUMERIC(7,2) NULL,
+    completion_status   VARCHAR(16)  NOT NULL DEFAULT 'pending'
+                          CHECK (completion_status IN ('pending','in_progress','completed')),
+    notes               TEXT         NULL,
+    created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT pk_adm_remedial_enrichment PRIMARY KEY (id),
+    CONSTRAINT uq_adm_re_assessment_student UNIQUE (grade_assessment_id, student_id),
+    CONSTRAINT fk_adm_re_year FOREIGN KEY (academic_year_id)
+        REFERENCES adm_academic_years (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_re_teacher FOREIGN KEY (teacher_id)
+        REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_re_assessment FOREIGN KEY (grade_assessment_id)
+        REFERENCES adm_grade_assessments (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_re_student FOREIGN KEY (student_id)
+        REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE
+);`,
+  },
+  {
+    label: "Index Administrasi Guru Phase 4",
+    sql: `CREATE INDEX IF NOT EXISTS idx_adm_bp_teacher  ON adm_assessment_blueprints (teacher_id, academic_year_id, subject_id);
+CREATE INDEX IF NOT EXISTS idx_adm_bpi_bp      ON adm_blueprint_items (blueprint_id, question_number);
+CREATE INDEX IF NOT EXISTS idx_adm_ga_teacher  ON adm_grade_assessments (teacher_id, academic_year_id, class_id, subject_id);
+CREATE INDEX IF NOT EXISTS idx_adm_sg_ga       ON adm_student_grades (grade_assessment_id);
+CREATE INDEX IF NOT EXISTS idx_adm_sg_student  ON adm_student_grades (student_id);
+CREATE INDEX IF NOT EXISTS idx_adm_re_ga       ON adm_remedial_enrichment (grade_assessment_id);
+CREATE INDEX IF NOT EXISTS idx_adm_re_teacher  ON adm_remedial_enrichment (teacher_id, academic_year_id, program_type);`,
+  },
 ];
 
 export const MYSQL_DDL: DdlStatement[] = [
@@ -765,6 +1327,8 @@ export const MYSQL_DDL: DdlStatement[] = [
     password_hash TEXT         NOT NULL,
     full_name     VARCHAR(128) NOT NULL,
     role          VARCHAR(16)  NOT NULL,
+    academic_role VARCHAR(24)  NOT NULL DEFAULT 'none',
+    nip           VARCHAR(32)  NULL,
     status        VARCHAR(10)  NOT NULL DEFAULT 'active',
     created_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -1333,6 +1897,500 @@ CREATE INDEX idx_asf_submission            ON assignment_submission_files (submi
 CREATE INDEX idx_audit_logs_action     ON audit_logs (action);
 CREATE INDEX idx_audit_logs_actor      ON audit_logs (actor_id);`,
   },
+  {
+    label: "Tabel adm_academic_years (Tahun Ajaran & Semester)",
+    sql: `CREATE TABLE IF NOT EXISTS adm_academic_years (
+    id                    CHAR(36)    NOT NULL,
+    year_label            VARCHAR(16) NOT NULL,
+    semester              VARCHAR(10) NOT NULL,
+    start_date            VARCHAR(10) NOT NULL,
+    end_date              VARCHAR(10) NOT NULL,
+    working_days_per_week INT         NOT NULL DEFAULT 5,
+    is_active             TINYINT(1)  NOT NULL DEFAULT 0,
+    created_by            CHAR(36)    NULL,
+    created_at            TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at            TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_adm_year_semester (year_label, semester),
+    KEY idx_adm_ay_active (is_active),
+    CONSTRAINT chk_adm_ay_semester CHECK (semester IN ('ganjil', 'genap')),
+    CONSTRAINT fk_adm_ay_creator FOREIGN KEY (created_by)
+        REFERENCES users (id) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`,
+  },
+  {
+    label: "Tabel adm_calendar_events (Kalender Pendidikan)",
+    sql: `CREATE TABLE IF NOT EXISTS adm_calendar_events (
+    id               CHAR(36)     NOT NULL,
+    academic_year_id CHAR(36)     NOT NULL,
+    title            VARCHAR(200) NOT NULL,
+    event_type       VARCHAR(32)  NOT NULL,
+    start_date       VARCHAR(10)  NOT NULL,
+    end_date         VARCHAR(10)  NOT NULL,
+    is_effective     TINYINT(1)   NOT NULL DEFAULT 1,
+    notes            TEXT         NULL,
+    created_by       CHAR(36)     NULL,
+    created_at       TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at       TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (id),
+    KEY idx_adm_ce_year_date (academic_year_id, start_date),
+    CONSTRAINT fk_adm_ce_year FOREIGN KEY (academic_year_id)
+        REFERENCES adm_academic_years (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_ce_creator FOREIGN KEY (created_by)
+        REFERENCES users (id) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`,
+  },
+  {
+    label: "Tabel adm_effective_weeks (Perhitungan Minggu Efektif & JP)",
+    sql: `CREATE TABLE IF NOT EXISTS adm_effective_weeks (
+    id                    CHAR(36)    NOT NULL,
+    academic_year_id      CHAR(36)    NOT NULL,
+    teacher_id            CHAR(36)    NOT NULL,
+    subject_id            BIGINT      NOT NULL,
+    class_id              BIGINT      NULL,
+    working_days_per_week INT         NOT NULL DEFAULT 5,
+    total_weeks           INT         NOT NULL DEFAULT 0,
+    non_effective_weeks   INT         NOT NULL DEFAULT 0,
+    effective_weeks       INT         NOT NULL DEFAULT 0,
+    effective_days        INT         NOT NULL DEFAULT 0,
+    jp_per_week           INT         NOT NULL DEFAULT 2,
+    total_effective_jp    INT         NOT NULL DEFAULT 0,
+    breakdown_json        JSON        NULL,
+    notes                 TEXT        NULL,
+    status                VARCHAR(16) NOT NULL DEFAULT 'draft',
+    created_at            TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at            TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (id),
+    KEY idx_adm_ew_teacher (teacher_id, academic_year_id),
+    CONSTRAINT fk_adm_ew_year FOREIGN KEY (academic_year_id)
+        REFERENCES adm_academic_years (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_ew_teacher FOREIGN KEY (teacher_id)
+        REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_ew_subject FOREIGN KEY (subject_id)
+        REFERENCES subjects (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_ew_class FOREIGN KEY (class_id)
+        REFERENCES classes (id) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`,
+  },
+  {
+    label: "Tabel adm_cp_atp (CP, TP & Alur Tujuan Pembelajaran)",
+    sql: `CREATE TABLE IF NOT EXISTS adm_cp_atp (
+    id               CHAR(36)     NOT NULL,
+    academic_year_id CHAR(36)     NOT NULL,
+    teacher_id       CHAR(36)     NOT NULL,
+    subject_id       BIGINT       NOT NULL,
+    grade_level      VARCHAR(16)  NOT NULL,
+    fase             VARCHAR(8)   NOT NULL DEFAULT 'E',
+    semester         VARCHAR(10)  NOT NULL DEFAULT 'ganjil',
+    elemen           VARCHAR(160) NOT NULL,
+    cp_text          TEXT         NOT NULL,
+    tp_code          VARCHAR(32)  NOT NULL,
+    tp_text          TEXT         NOT NULL,
+    material_topic   VARCHAR(200) NOT NULL,
+    atp_order        INT          NOT NULL DEFAULT 1,
+    jp_allocation    INT          NOT NULL DEFAULT 4,
+    status           VARCHAR(16)  NOT NULL DEFAULT 'draft',
+    created_at       TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at       TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (id),
+    KEY idx_adm_cpatp_teacher (teacher_id, academic_year_id, subject_id),
+    CONSTRAINT chk_adm_ca_semester CHECK (semester IN ('ganjil', 'genap')),
+    CONSTRAINT fk_adm_ca_year FOREIGN KEY (academic_year_id)
+        REFERENCES adm_academic_years (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_ca_teacher FOREIGN KEY (teacher_id)
+        REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_ca_subject FOREIGN KEY (subject_id)
+        REFERENCES subjects (id) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`,
+  },
+  {
+    label: "Tabel adm_kktp (Kriteria Ketercapaian Tujuan Pembelajaran)",
+    sql: `CREATE TABLE IF NOT EXISTS adm_kktp (
+    id               CHAR(36)     NOT NULL,
+    academic_year_id CHAR(36)     NOT NULL,
+    teacher_id       CHAR(36)     NOT NULL,
+    subject_id       BIGINT       NOT NULL,
+    class_id         BIGINT       NULL,
+    cp_atp_id        CHAR(36)     NULL,
+    title            VARCHAR(200) NOT NULL,
+    approach         VARCHAR(16)  NOT NULL DEFAULT 'interval',
+    min_score        DECIMAL(5,2) NOT NULL DEFAULT 75,
+    intervals_json   JSON         NULL,
+    criteria_json    JSON         NULL,
+    notes            TEXT         NULL,
+    status           VARCHAR(16)  NOT NULL DEFAULT 'draft',
+    created_at       TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at       TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (id),
+    KEY idx_adm_kktp_teacher (teacher_id, academic_year_id),
+    CONSTRAINT fk_adm_kk_year FOREIGN KEY (academic_year_id)
+        REFERENCES adm_academic_years (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_kk_teacher FOREIGN KEY (teacher_id)
+        REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_kk_subject FOREIGN KEY (subject_id)
+        REFERENCES subjects (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_kk_class FOREIGN KEY (class_id)
+        REFERENCES classes (id) ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_kk_cpatp FOREIGN KEY (cp_atp_id)
+        REFERENCES adm_cp_atp (id) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`,
+  },
+  {
+    label: "Tabel adm_prota (Program Tahunan)",
+    sql: `CREATE TABLE IF NOT EXISTS adm_prota (
+    id                CHAR(36)     NOT NULL,
+    academic_year_id  CHAR(36)     NOT NULL,
+    teacher_id        CHAR(36)     NOT NULL,
+    subject_id        BIGINT       NOT NULL,
+    grade_level       VARCHAR(16)  NOT NULL,
+    effective_week_id CHAR(36)     NULL,
+    title             VARCHAR(200) NOT NULL,
+    items_json        JSON         NOT NULL,
+    total_jp          INT          NOT NULL DEFAULT 0,
+    notes             TEXT         NULL,
+    status            VARCHAR(16)  NOT NULL DEFAULT 'draft',
+    created_at        TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at        TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (id),
+    KEY idx_adm_prota_teacher (teacher_id, academic_year_id),
+    CONSTRAINT fk_adm_pt_year FOREIGN KEY (academic_year_id)
+        REFERENCES adm_academic_years (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_pt_teacher FOREIGN KEY (teacher_id)
+        REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_pt_subject FOREIGN KEY (subject_id)
+        REFERENCES subjects (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_pt_ew FOREIGN KEY (effective_week_id)
+        REFERENCES adm_effective_weeks (id) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`,
+  },
+  {
+    label: "Tabel adm_promes (Program Semester)",
+    sql: `CREATE TABLE IF NOT EXISTS adm_promes (
+    id                   CHAR(36)     NOT NULL,
+    academic_year_id     CHAR(36)     NOT NULL,
+    teacher_id           CHAR(36)     NOT NULL,
+    subject_id           BIGINT       NOT NULL,
+    class_id             BIGINT       NULL,
+    prota_id             CHAR(36)     NULL,
+    effective_week_id    CHAR(36)     NULL,
+    semester             VARCHAR(10)  NOT NULL DEFAULT 'ganjil',
+    title                VARCHAR(200) NOT NULL,
+    schedule_matrix_json JSON         NOT NULL,
+    total_jp             INT          NOT NULL DEFAULT 0,
+    notes                TEXT         NULL,
+    status               VARCHAR(16)  NOT NULL DEFAULT 'draft',
+    created_at           TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at           TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (id),
+    KEY idx_adm_promes_teacher (teacher_id, academic_year_id),
+    CONSTRAINT chk_adm_pm_semester CHECK (semester IN ('ganjil', 'genap')),
+    CONSTRAINT fk_adm_pm_year FOREIGN KEY (academic_year_id)
+        REFERENCES adm_academic_years (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_pm_teacher FOREIGN KEY (teacher_id)
+        REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_pm_subject FOREIGN KEY (subject_id)
+        REFERENCES subjects (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_pm_class FOREIGN KEY (class_id)
+        REFERENCES classes (id) ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_pm_prota FOREIGN KEY (prota_id)
+        REFERENCES adm_prota (id) ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_pm_ew FOREIGN KEY (effective_week_id)
+        REFERENCES adm_effective_weeks (id) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`,
+  },
+  {
+    label: "Tabel adm_lesson_plans (Modul Ajar / RPP)",
+    sql: `CREATE TABLE IF NOT EXISTS adm_lesson_plans (
+    id                 CHAR(36)     NOT NULL,
+    academic_year_id   CHAR(36)     NOT NULL,
+    teacher_id         CHAR(36)     NOT NULL,
+    subject_id         BIGINT       NOT NULL,
+    class_id           BIGINT       NULL,
+    cp_atp_id          CHAR(36)     NULL,
+    learning_module_id CHAR(36)     NULL,
+    title              VARCHAR(200) NOT NULL,
+    fase               VARCHAR(8)   NOT NULL DEFAULT 'E',
+    duration_jp        INT          NOT NULL DEFAULT 2,
+    learning_model     VARCHAR(80)  NULL,
+    p5_dimensions_json JSON         NULL,
+    objectives         TEXT         NOT NULL,
+    activities_json    JSON         NULL,
+    assessment_plan    TEXT         NULL,
+    reflection         TEXT         NULL,
+    attachment_url     TEXT         NULL,
+    attachment_name    VARCHAR(255) NULL,
+    status             VARCHAR(16)  NOT NULL DEFAULT 'draft',
+    created_at         TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at         TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (id),
+    KEY idx_adm_lp_teacher (teacher_id, academic_year_id),
+    CONSTRAINT fk_adm_lp_year FOREIGN KEY (academic_year_id)
+        REFERENCES adm_academic_years (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_lp_teacher FOREIGN KEY (teacher_id)
+        REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_lp_subject FOREIGN KEY (subject_id)
+        REFERENCES subjects (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_lp_class FOREIGN KEY (class_id)
+        REFERENCES classes (id) ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_lp_cpatp FOREIGN KEY (cp_atp_id)
+        REFERENCES adm_cp_atp (id) ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_lp_lm FOREIGN KEY (learning_module_id)
+        REFERENCES learning_modules (id) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`,
+  },
+  {
+    label: "Tabel adm_teaching_schedules (Jadwal Mengajar Guru)",
+    sql: `CREATE TABLE IF NOT EXISTS adm_teaching_schedules (
+    id               CHAR(36)     NOT NULL,
+    academic_year_id CHAR(36)     NOT NULL,
+    teacher_id       CHAR(36)     NOT NULL,
+    class_id         BIGINT       NOT NULL,
+    subject_id       BIGINT       NOT NULL,
+    day_of_week      TINYINT      NOT NULL,
+    period_start     SMALLINT     NOT NULL,
+    period_end       SMALLINT     NOT NULL,
+    start_time       VARCHAR(8)   NULL,
+    end_time         VARCHAR(8)   NULL,
+    room_name        VARCHAR(64)  NULL,
+    notes            VARCHAR(255) NULL,
+    created_at       TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at       TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (id),
+    KEY idx_adm_sched_teacher (teacher_id, academic_year_id, day_of_week),
+    KEY idx_adm_sched_class (academic_year_id, class_id, day_of_week),
+    CONSTRAINT chk_adm_sched_day CHECK (day_of_week BETWEEN 1 AND 6),
+    CONSTRAINT fk_adm_sched_year FOREIGN KEY (academic_year_id)
+        REFERENCES adm_academic_years (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_sched_teacher FOREIGN KEY (teacher_id)
+        REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_sched_class FOREIGN KEY (class_id)
+        REFERENCES classes (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_sched_subject FOREIGN KEY (subject_id)
+        REFERENCES subjects (id) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`,
+  },
+  {
+    label: "Tabel adm_teaching_journals (Jurnal Mengajar Harian)",
+    sql: `CREATE TABLE IF NOT EXISTS adm_teaching_journals (
+    id                 CHAR(36)     NOT NULL,
+    academic_year_id   CHAR(36)     NOT NULL,
+    teacher_id         CHAR(36)     NOT NULL,
+    schedule_id        CHAR(36)     NULL,
+    class_id           BIGINT       NOT NULL,
+    subject_id         BIGINT       NOT NULL,
+    cp_atp_id          CHAR(36)     NULL,
+    promes_id          CHAR(36)     NULL,
+    teach_date         VARCHAR(10)  NOT NULL,
+    period_range       VARCHAR(48)  NOT NULL DEFAULT '',
+    topic_title        VARCHAR(200) NOT NULL,
+    learning_method    VARCHAR(120) NULL,
+    activities_summary TEXT         NULL,
+    obstacles          TEXT         NULL,
+    teacher_reflection TEXT         NULL,
+    follow_up          TEXT         NULL,
+    is_completed       TINYINT(1)   NOT NULL DEFAULT 1,
+    status             VARCHAR(16)  NOT NULL DEFAULT 'draft',
+    created_at         TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at         TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (id),
+    KEY idx_adm_jrn_teacher (teacher_id, academic_year_id, teach_date),
+    KEY idx_adm_jrn_class (class_id, teach_date),
+    CONSTRAINT fk_adm_jrn_year FOREIGN KEY (academic_year_id)
+        REFERENCES adm_academic_years (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_jrn_teacher FOREIGN KEY (teacher_id)
+        REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_jrn_schedule FOREIGN KEY (schedule_id)
+        REFERENCES adm_teaching_schedules (id) ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_jrn_class FOREIGN KEY (class_id)
+        REFERENCES classes (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_jrn_subject FOREIGN KEY (subject_id)
+        REFERENCES subjects (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_jrn_cpatp FOREIGN KEY (cp_atp_id)
+        REFERENCES adm_cp_atp (id) ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_jrn_promes FOREIGN KEY (promes_id)
+        REFERENCES adm_promes (id) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`,
+  },
+  {
+    label: "Tabel adm_student_attendances (Presensi Siswa per Pertemuan)",
+    sql: `CREATE TABLE IF NOT EXISTS adm_student_attendances (
+    id         CHAR(36)     NOT NULL,
+    journal_id CHAR(36)     NOT NULL,
+    student_id CHAR(36)     NOT NULL,
+    status     VARCHAR(4)   NOT NULL DEFAULT 'H',
+    notes      VARCHAR(255) NULL,
+    updated_at TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_adm_att_journal_student (journal_id, student_id),
+    KEY idx_adm_att_journal (journal_id),
+    KEY idx_adm_att_student (student_id),
+    CONSTRAINT chk_adm_att_status CHECK (status IN ('H', 'S', 'I', 'A')),
+    CONSTRAINT fk_adm_att_journal FOREIGN KEY (journal_id)
+        REFERENCES adm_teaching_journals (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_att_student FOREIGN KEY (student_id)
+        REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`,
+  },
+  {
+    label: "Tabel adm_assessment_blueprints (Kisi-Kisi Asesmen)",
+    sql: `CREATE TABLE IF NOT EXISTS adm_assessment_blueprints (
+    id               CHAR(36)     NOT NULL,
+    academic_year_id CHAR(36)     NOT NULL,
+    teacher_id       CHAR(36)     NOT NULL,
+    subject_id       BIGINT       NOT NULL,
+    class_id         BIGINT       NULL,
+    question_bank_id CHAR(36)     NULL,
+    title            VARCHAR(200) NOT NULL,
+    assessment_type  VARCHAR(24)  NOT NULL DEFAULT 'sumatif',
+    notes            TEXT         NULL,
+    status           VARCHAR(16)  NOT NULL DEFAULT 'draft',
+    created_at       TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at       TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (id),
+    KEY idx_adm_bp_teacher (teacher_id, academic_year_id, subject_id),
+    CONSTRAINT fk_adm_bp_year FOREIGN KEY (academic_year_id)
+        REFERENCES adm_academic_years (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_bp_teacher FOREIGN KEY (teacher_id)
+        REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_bp_subject FOREIGN KEY (subject_id)
+        REFERENCES subjects (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_bp_class FOREIGN KEY (class_id)
+        REFERENCES classes (id) ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_bp_bank FOREIGN KEY (question_bank_id)
+        REFERENCES question_banks (id) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`,
+  },
+  {
+    label: "Tabel adm_blueprint_items (Butir Kisi-Kisi & Soal)",
+    sql: `CREATE TABLE IF NOT EXISTS adm_blueprint_items (
+    id              CHAR(36)     NOT NULL,
+    blueprint_id    CHAR(36)     NOT NULL,
+    cp_atp_id       CHAR(36)     NULL,
+    question_id     CHAR(36)     NULL,
+    question_number INT          NOT NULL DEFAULT 1,
+    material_topic  VARCHAR(200) NOT NULL DEFAULT '',
+    indicator       TEXT         NOT NULL,
+    cognitive_level VARCHAR(12)  NOT NULL DEFAULT 'C2',
+    question_type   VARCHAR(24)  NOT NULL DEFAULT 'single_choice',
+    difficulty      VARCHAR(16)  NOT NULL DEFAULT 'medium',
+    score_weight    DECIMAL(5,2) NOT NULL DEFAULT 1.00,
+    created_at      TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (id),
+    KEY idx_adm_bpi_bp (blueprint_id, question_number),
+    CONSTRAINT fk_adm_bpi_bp FOREIGN KEY (blueprint_id)
+        REFERENCES adm_assessment_blueprints (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_bpi_cpatp FOREIGN KEY (cp_atp_id)
+        REFERENCES adm_cp_atp (id) ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_bpi_question FOREIGN KEY (question_id)
+        REFERENCES questions (id) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`,
+  },
+  {
+    label: "Tabel adm_grade_assessments (Komponen Buku Nilai)",
+    sql: `CREATE TABLE IF NOT EXISTS adm_grade_assessments (
+    id               CHAR(36)     NOT NULL,
+    academic_year_id CHAR(36)     NOT NULL,
+    teacher_id       CHAR(36)     NOT NULL,
+    subject_id       BIGINT       NOT NULL,
+    class_id         BIGINT       NOT NULL,
+    kktp_id          CHAR(36)     NULL,
+    cp_atp_id        CHAR(36)     NULL,
+    title            VARCHAR(200) NOT NULL,
+    category         VARCHAR(24)  NOT NULL DEFAULT 'formatif',
+    source_type      VARCHAR(16)  NOT NULL DEFAULT 'manual',
+    source_id        VARCHAR(64)  NULL,
+    assessment_date  VARCHAR(10)  NULL,
+    max_score        DECIMAL(7,2) NOT NULL DEFAULT 100.00,
+    weight           DECIMAL(5,2) NOT NULL DEFAULT 1.00,
+    kktp_threshold   DECIMAL(5,2) NOT NULL DEFAULT 75.00,
+    status           VARCHAR(16)  NOT NULL DEFAULT 'draft',
+    created_at       TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at       TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (id),
+    KEY idx_adm_ga_teacher (teacher_id, academic_year_id, class_id, subject_id),
+    CONSTRAINT fk_adm_ga_year FOREIGN KEY (academic_year_id)
+        REFERENCES adm_academic_years (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_ga_teacher FOREIGN KEY (teacher_id)
+        REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_ga_subject FOREIGN KEY (subject_id)
+        REFERENCES subjects (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_ga_class FOREIGN KEY (class_id)
+        REFERENCES classes (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_ga_kktp FOREIGN KEY (kktp_id)
+        REFERENCES adm_kktp (id) ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_ga_cpatp FOREIGN KEY (cp_atp_id)
+        REFERENCES adm_cp_atp (id) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`,
+  },
+  {
+    label: "Tabel adm_student_grades (Nilai Siswa per Asesmen)",
+    sql: `CREATE TABLE IF NOT EXISTS adm_student_grades (
+    id                  CHAR(36)     NOT NULL,
+    grade_assessment_id CHAR(36)     NOT NULL,
+    student_id          CHAR(36)     NOT NULL,
+    score               DECIMAL(7,2) NOT NULL DEFAULT 0.00,
+    is_passed           TINYINT(1)   NOT NULL DEFAULT 0,
+    notes               VARCHAR(255) NULL,
+    updated_at          TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_adm_sg_assessment_student (grade_assessment_id, student_id),
+    KEY idx_adm_sg_ga (grade_assessment_id),
+    KEY idx_adm_sg_student (student_id),
+    CONSTRAINT fk_adm_sg_assessment FOREIGN KEY (grade_assessment_id)
+        REFERENCES adm_grade_assessments (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_sg_student FOREIGN KEY (student_id)
+        REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`,
+  },
+  {
+    label: "Tabel adm_remedial_enrichment (Program Remedial & Pengayaan)",
+    sql: `CREATE TABLE IF NOT EXISTS adm_remedial_enrichment (
+    id                  CHAR(36)     NOT NULL,
+    academic_year_id    CHAR(36)     NOT NULL,
+    teacher_id          CHAR(36)     NOT NULL,
+    grade_assessment_id CHAR(36)     NOT NULL,
+    student_id          CHAR(36)     NOT NULL,
+    program_type        VARCHAR(16)  NOT NULL,
+    initial_score       DECIMAL(7,2) NOT NULL DEFAULT 0.00,
+    target_kktp         DECIMAL(5,2) NOT NULL DEFAULT 75.00,
+    activity_plan       TEXT         NOT NULL,
+    scheduled_date      VARCHAR(10)  NULL,
+    final_score         DECIMAL(7,2) NULL,
+    completion_status   VARCHAR(16)  NOT NULL DEFAULT 'pending',
+    notes               TEXT         NULL,
+    created_at          TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at          TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_adm_re_assessment_student (grade_assessment_id, student_id),
+    KEY idx_adm_re_ga (grade_assessment_id),
+    KEY idx_adm_re_teacher (teacher_id, academic_year_id, program_type),
+    CONSTRAINT fk_adm_re_year FOREIGN KEY (academic_year_id)
+        REFERENCES adm_academic_years (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_re_teacher FOREIGN KEY (teacher_id)
+        REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_re_assessment FOREIGN KEY (grade_assessment_id)
+        REFERENCES adm_grade_assessments (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_re_student FOREIGN KEY (student_id)
+        REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`,
+  },
 ];
 
 /**
@@ -1369,6 +2427,22 @@ export const UPDATE_TABLES = [
   "news",
   "audit_logs",
   "game_nusantara_state",
+  "adm_academic_years",
+  "adm_calendar_events",
+  "adm_effective_weeks",
+  "adm_cp_atp",
+  "adm_kktp",
+  "adm_prota",
+  "adm_promes",
+  "adm_lesson_plans",
+  "adm_teaching_schedules",
+  "adm_teaching_journals",
+  "adm_student_attendances",
+  "adm_assessment_blueprints",
+  "adm_blueprint_items",
+  "adm_grade_assessments",
+  "adm_student_grades",
+  "adm_remedial_enrichment",
 ] as const;
 
 export const COLUMN_MIGRATIONS: ColumnMigration[] = [
@@ -1423,6 +2497,9 @@ export const COLUMN_MIGRATIONS: ColumnMigration[] = [
   // before this column keep working and stay visible to their students.
   { label: "learning_modules.subject_id", table: "learning_modules", column: "subject_id", pg: "BIGINT NULL", mysql: "BIGINT NULL" },
   { label: "game_nusantara_state.hair_style", table: "game_nusantara_state", column: "hair_style", pg: "VARCHAR(12) NOT NULL DEFAULT 'short'", mysql: "VARCHAR(12) NOT NULL DEFAULT 'short'" },
+  // Administrasi Guru Phase 1 — peran fungsional (guru/waka/kepsek) & NIP pada users.
+  { label: "users.academic_role", table: "users", column: "academic_role", pg: "VARCHAR(24) NOT NULL DEFAULT 'none'", mysql: "VARCHAR(24) NOT NULL DEFAULT 'none'" },
+  { label: "users.nip", table: "users", column: "nip", pg: "VARCHAR(32) NULL", mysql: "VARCHAR(32) NULL" },
 ];
 
 /**
@@ -1489,7 +2566,8 @@ export const SEED_SUMMARY: readonly { label: string; detail: string }[] = [
   { label: "Bank soal", detail: "Matematika — 3 soal (pilihan ganda, jamak, esai)" },
   { label: "Ujian", detail: "UAS Matematika XII IPA 1 (terbit, mulai +1 jam)" },
   { label: "Sesi siswa", detail: "Andi Prasetyo sedang mengerjakan soal pertama" },
-  { label: "Pengaturan sekolah", detail: "Nama, alamat, kontak, dan branding" },
+  { label: "Pengaturan sekolah", detail: "Nama, alamat, kontak, branding, dan pengesahan" },
+  { label: "Administrasi Guru", detail: "Tahun Ajaran 2026/2027 (Ganjil) + agenda Kaldik awal" },
 ];
 
 /** Missing keys the /api/settings + AI Agent + export endpoints fall back on. */
@@ -1501,6 +2579,13 @@ export const SETTINGS_SEED_KEYS: { key: string; value: string }[] = [
   { key: "school_website", value: "" },
   { key: "school_logo", value: "" },
   { key: "school_background", value: "" },
+  { key: "school_city", value: "" },
+  { key: "active_academic_year", value: "2026/2027" },
+  { key: "active_semester", value: "ganjil" },
+  { key: "principal_name", value: "" },
+  { key: "principal_nip", value: "" },
+  { key: "curriculum_vice_name", value: "" },
+  { key: "curriculum_vice_nip", value: "" },
   { key: "ai_provider", value: "gemini" },
   { key: "ai_model", value: "gemini-4-hydrogen" },
   { key: "ai_api_key", value: "" },

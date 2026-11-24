@@ -1,6 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, LayoutDashboard } from 'lucide-react';
+import { ArrowLeft, LayoutDashboard, X } from 'lucide-react';
 import { useAuth } from '../../app/AuthContext';
+import { apiFetch } from '../../lib/api';
+import {
+  CharacterCustomizerFields,
+  CharacterPreview,
+  DEFAULT_CHARACTER_CONFIG,
+  sanitizeCharacterConfig,
+} from './CharacterCustomizer';
 import { GameChatPanel } from './GameChatPanel';
 import { GameHud } from './GameHud';
 import { Gamepad, type VirtualDirection } from './Gamepad';
@@ -24,7 +31,6 @@ import {
   SCHEDULES,
   buildSchoolMap,
   getZoneName,
-  type HairStyle,
   type PlayerRole,
   type QuizQuestion,
   type SchoolPhase,
@@ -32,6 +38,7 @@ import {
 import { soundFX } from './sound';
 import {
   QUICK_EMOTES,
+  type CharacterConfig,
   type ChatMessage,
   type GameState,
   type HudStats,
@@ -39,6 +46,28 @@ import {
 } from './types';
 import { useGameToasts } from './useGameToasts';
 import { useNusantaraSocket } from './useNusantaraSocket';
+
+function appearanceStorageKey(userId?: string | null): string {
+  return `smartcbt:nusantara-appearance:${userId || 'anon'}`;
+}
+
+function readCachedAppearance(userId?: string | null): CharacterConfig | null {
+  try {
+    const raw = localStorage.getItem(appearanceStorageKey(userId));
+    if (!raw) return null;
+    return sanitizeCharacterConfig(JSON.parse(raw));
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedAppearance(userId: string | null | undefined, config: CharacterConfig): void {
+  try {
+    localStorage.setItem(appearanceStorageKey(userId), JSON.stringify(config));
+  } catch {
+    /* ignore storage errors */
+  }
+}
 
 export interface GameNusantaraProps {
   onExitToLobby?: () => void;
@@ -82,6 +111,14 @@ export default function GameNusantara({ onExitToLobby, onExitToDashboard }: Game
   const [playerRole, setPlayerRole] = useState<PlayerRole>('sma');
   const [lobbyLabel, setLobbyLabel] = useState<string | null>(null);
   const [studyOpen, setStudyOpen] = useState(false);
+  const [customizerOpen, setCustomizerOpen] = useState(false);
+  const [savedCharacter, setSavedCharacter] = useState<CharacterConfig | null>(() =>
+    readCachedAppearance(authUser?.id)
+  );
+  const [activeCharacter, setActiveCharacter] = useState<CharacterConfig>(
+    () => readCachedAppearance(authUser?.id) ?? DEFAULT_CHARACTER_CONFIG
+  );
+  const [draftCharacter, setDraftCharacter] = useState<CharacterConfig>(DEFAULT_CHARACTER_CONFIG);
   const [chatOpen, setChatOpen] = useState(!isTouch);
   const [hudStats, setHudStats] = useState<HudStats>({ xp: 0, money: 10000, energy: 100 });
   const [onlineCount, setOnlineCount] = useState(1);
@@ -96,48 +133,87 @@ export default function GameNusantara({ onExitToLobby, onExitToDashboard }: Game
 
   const { toasts, triggerToast, dismissToast } = useGameToasts();
 
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch<{
+      role: PlayerRole;
+      hairStyle: CharacterConfig['hairStyle'];
+      hairColor: string;
+      skinColor: string;
+      hasSaved?: boolean;
+    }>('/api/game/nusantara/appearance')
+      .then((res) => {
+        if (cancelled || !res?.hasSaved) return;
+        const clean = sanitizeCharacterConfig(res);
+        setSavedCharacter(clean);
+        writeCachedAppearance(authUser?.id, clean);
+      })
+      .catch(() => {
+        /* fallback to cached/default appearance */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [authUser?.id]);
+
   const appendChat = useCallback((msg: ChatMessage) => {
     setChatLog((prev) => [...prev.slice(-45), msg]);
   }, []);
 
-  const { joinGame, emitMove, sendChat, sendEmote, sendInteract, sendQuizAnswer } =
-    useNusantaraSocket({
-      playersRef,
-      selfIdRef,
-      energyRef,
-      chatBubblesRef,
-      emotesRef,
-      worldEffectsRef,
-      moveTargetRef,
-      phaseRef,
-      onInitSuccess: (data) => {
-        setPlayerName(data.playerName);
-        setPlayerRole(data.playerRole);
-        setOnlineCount(data.onlineCount);
-        setLobbyLabel(data.lobbyLabel);
-        setHudStats(data.hudStats);
-        setPhase(data.phase);
-        setPhaseTimer(data.timer);
-        setConnecting(false);
-        setConnError(null);
-        setGameState('PLAYING');
-      },
-      onOnlineCountChange: setOnlineCount,
-      onPhaseChange: (nextPhase, timer) => {
-        setPhase(nextPhase);
-        setPhaseTimer(timer);
-      },
-      onStatsUpdate: (stats) => {
-        setHudStats((prev) => ({ ...prev, xp: stats.xp, money: stats.money }));
-      },
-      onAppendChat: appendChat,
-      onTriggerToast: triggerToast,
-      onQuizClose: () => setActiveQuiz(null),
-      onConnectionState: (isConn, err) => {
-        setConnecting(isConn);
-        setConnError(err);
-      },
-    });
+  const {
+    joinGame,
+    updateAppearance,
+    emitMove,
+    sendChat,
+    sendEmote,
+    sendInteract,
+    sendQuizAnswer,
+  } = useNusantaraSocket({
+    playersRef,
+    selfIdRef,
+    energyRef,
+    chatBubblesRef,
+    emotesRef,
+    worldEffectsRef,
+    moveTargetRef,
+    phaseRef,
+    onInitSuccess: (data) => {
+      setPlayerName(data.playerName);
+      setPlayerRole(data.playerRole);
+      setActiveCharacter(data.cosmetics);
+      setSavedCharacter(data.cosmetics);
+      writeCachedAppearance(authUser?.id, data.cosmetics);
+      setOnlineCount(data.onlineCount);
+      setLobbyLabel(data.lobbyLabel);
+      setHudStats(data.hudStats);
+      setPhase(data.phase);
+      setPhaseTimer(data.timer);
+      setConnecting(false);
+      setConnError(null);
+      setGameState('PLAYING');
+    },
+    onSelfAppearanceChange: (cosmetics) => {
+      setPlayerRole(cosmetics.role);
+      setActiveCharacter(cosmetics);
+      setSavedCharacter(cosmetics);
+      writeCachedAppearance(authUser?.id, cosmetics);
+    },
+    onOnlineCountChange: setOnlineCount,
+    onPhaseChange: (nextPhase, timer) => {
+      setPhase(nextPhase);
+      setPhaseTimer(timer);
+    },
+    onStatsUpdate: (stats) => {
+      setHudStats((prev) => ({ ...prev, xp: stats.xp, money: stats.money }));
+    },
+    onAppendChat: appendChat,
+    onTriggerToast: triggerToast,
+    onQuizClose: () => setActiveQuiz(null),
+    onConnectionState: (isConn, err) => {
+      setConnecting(isConn);
+      setConnError(err);
+    },
+  });
 
   const applyVirtualDirection = useCallback((dir: VirtualDirection | null) => {
     const k = keysRef.current;
@@ -232,10 +308,11 @@ export default function GameNusantara({ onExitToLobby, onExitToDashboard }: Game
         return;
       }
 
-      if (activeQuiz || studyOpen) {
+      if (activeQuiz || studyOpen || customizerOpen) {
         if (e.key === 'Escape') {
           setActiveQuiz(null);
           setStudyOpen(false);
+          setCustomizerOpen(false);
         }
         return;
       }
@@ -280,7 +357,7 @@ export default function GameNusantara({ onExitToLobby, onExitToDashboard }: Game
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
     };
-  }, [activeQuiz, studyOpen, gameState, performInteraction, sendEmote]);
+  }, [activeQuiz, studyOpen, customizerOpen, gameState, performInteraction, sendEmote]);
 
   // Main 60fps Simulation & Render Loop
   useEffect(() => {
@@ -460,17 +537,51 @@ export default function GameNusantara({ onExitToLobby, onExitToDashboard }: Game
     return () => cancelAnimationFrame(rafId);
   }, [emitMove, gameState, schoolMap]);
 
-  const handleJoin = (config: {
-    role: PlayerRole;
-    hairStyle: HairStyle;
-    hairColor: string;
-    skinColor: string;
-  }) => {
-    joinGame(config);
+  const handleJoin = (config: CharacterConfig) => {
+    const clean = sanitizeCharacterConfig(config);
+    setSavedCharacter(clean);
+    setActiveCharacter(clean);
+    writeCachedAppearance(authUser?.id, clean);
+    joinGame(clean);
+  };
+
+  const handleOpenCustomizer = () => {
+    const selfId = selfIdRef.current;
+    const me = selfId ? playersRef.current[selfId] : null;
+    const current = me
+      ? sanitizeCharacterConfig({
+          role: me.role,
+          hairStyle: me.hairStyle,
+          hairColor: me.hairColor,
+          skinColor: me.skinColor,
+        })
+      : activeCharacter;
+    setDraftCharacter(current);
+    setCustomizerOpen(true);
+  };
+
+  const handleApplyInGameAppearance = (e: React.FormEvent) => {
+    e.preventDefault();
+    const clean = sanitizeCharacterConfig(draftCharacter);
+    const selfId = selfIdRef.current;
+    if (selfId && playersRef.current[selfId]) {
+      playersRef.current[selfId].role = clean.role;
+      playersRef.current[selfId].hairStyle = clean.hairStyle;
+      playersRef.current[selfId].hairColor = clean.hairColor;
+      playersRef.current[selfId].skinColor = clean.skinColor;
+    }
+    setPlayerRole(clean.role);
+    setActiveCharacter(clean);
+    setSavedCharacter(clean);
+    writeCachedAppearance(authUser?.id, clean);
+    updateAppearance(clean);
+    setCustomizerOpen(false);
+    soundFX.playInteract(true);
+    triggerToast('Karakter berhasil diperbarui!', 'ok');
   };
 
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (gameState !== 'PLAYING' || activeQuiz || studyOpen) return;
+    if (gameState !== 'PLAYING' || activeQuiz || studyOpen || customizerOpen) return;
     const world = screenToWorld(
       e.clientX,
       e.clientY,
@@ -521,6 +632,7 @@ export default function GameNusantara({ onExitToLobby, onExitToDashboard }: Game
         <>
           <LoginScreen
             accountName={authUser?.name ?? 'Siswa'}
+            initialConfig={savedCharacter}
             onJoin={handleJoin}
             connecting={connecting}
             errorMsg={connError}
@@ -577,12 +689,13 @@ export default function GameNusantara({ onExitToLobby, onExitToDashboard }: Game
             onToggleControls={() => setShowControls((v) => !v)}
             onCloseControls={() => setShowControls(false)}
             onOpenStudy={() => setStudyOpen(true)}
+            onOpenCustomizer={handleOpenCustomizer}
             onInteract={performInteraction}
             onExitToLobby={onExitToLobby}
             onExitToDashboard={onExitToDashboard}
           />
 
-          {isTouch && !chatOpen && !studyOpen && !activeQuiz && (
+          {isTouch && !chatOpen && !studyOpen && !activeQuiz && !customizerOpen && (
             <Gamepad
               onDirection={applyVirtualDirection}
               onInteract={performInteraction}
@@ -600,6 +713,55 @@ export default function GameNusantara({ onExitToLobby, onExitToDashboard }: Game
             onSendChat={sendChat}
             onSendEmote={sendEmote}
           />
+        </div>
+      )}
+
+      {customizerOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="w-full max-w-lg bg-slate-900 border border-slate-700/80 rounded-xl shadow-2xl overflow-hidden my-auto">
+            <div className="p-5 sm:p-6">
+              <div className="flex items-start justify-between gap-4 pb-4 border-b border-slate-800">
+                <div>
+                  <h2 className="text-lg sm:text-xl font-bold text-slate-50">
+                    Ubah Tampilan Karakter
+                  </h2>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Perubahan langsung terlihat di ruang kelas dan tersimpan ke akunmu.
+                  </p>
+                </div>
+                <div className="flex items-start gap-2">
+                  <CharacterPreview name={playerName} config={draftCharacter} />
+                  <button
+                    type="button"
+                    onClick={() => setCustomizerOpen(false)}
+                    aria-label="Tutup pengaturan karakter"
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              <form onSubmit={handleApplyInGameAppearance} className="mt-4 space-y-4">
+                <CharacterCustomizerFields value={draftCharacter} onChange={setDraftCharacter} />
+                <div className="pt-2 flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setCustomizerOpen(false)}
+                    className="px-4 py-2 min-h-[40px] rounded-lg border border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800 text-sm font-medium transition-colors cursor-pointer"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 min-h-[40px] rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-sm font-semibold transition-colors cursor-pointer"
+                  >
+                    Terapkan Karakter
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
         </div>
       )}
 

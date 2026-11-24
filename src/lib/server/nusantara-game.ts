@@ -14,6 +14,7 @@ import type { Http2Server, Http2SecureServer } from "node:http2";
 import { Server, type Socket } from "socket.io";
 import { getSession } from "./auth-session.js";
 import { addRoute, json, type AuthenticatedRequest } from "./utils.js";
+import type { GameStateRow } from "./nusantara-store.js";
 import {
   NusantaraRoomRegistry,
   resolveLobbyDescriptor,
@@ -51,6 +52,67 @@ const VALID_UNIFORMS: PlayerRole[] = ["sma", "smp", "osis", "guru"];
 const VALID_HAIR_STYLES: HairStyle[] = ["short", "long", "hijab"];
 const VALID_DIRS: Direction[] = ["n", "s", "e", "w"];
 const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
+
+export interface CosmeticPayload {
+  role?: string;
+  hairStyle?: string;
+  hairColor?: string;
+  skinColor?: string;
+}
+
+export interface ResolvedCosmetics {
+  role: PlayerRole;
+  hairStyle: HairStyle;
+  hairColor: string;
+  skinColor: string;
+}
+
+export function resolveCosmetics(
+  payload?: CosmeticPayload | null,
+  fallback?: {
+    role?: string | null;
+    hairStyle?: string | null;
+    hairColor?: string | null;
+    skinColor?: string | null;
+  } | null
+): ResolvedCosmetics {
+  const role: PlayerRole = VALID_UNIFORMS.includes(payload?.role as PlayerRole)
+    ? (payload?.role as PlayerRole)
+    : VALID_UNIFORMS.includes(fallback?.role as PlayerRole)
+      ? (fallback?.role as PlayerRole)
+      : "sma";
+
+  const hairStyle: HairStyle = VALID_HAIR_STYLES.includes(payload?.hairStyle as HairStyle)
+    ? (payload?.hairStyle as HairStyle)
+    : VALID_HAIR_STYLES.includes(fallback?.hairStyle as HairStyle)
+      ? (fallback?.hairStyle as HairStyle)
+      : "short";
+
+  const defaultHairColor = hairStyle === "hijab" ? "#f8fafc" : "#1e293b";
+  const hairColor = HEX_COLOR.test(String(payload?.hairColor ?? ""))
+    ? String(payload?.hairColor)
+    : HEX_COLOR.test(String(fallback?.hairColor ?? ""))
+      ? String(fallback?.hairColor)
+      : defaultHairColor;
+
+  const skinColor = HEX_COLOR.test(String(payload?.skinColor ?? ""))
+    ? String(payload?.skinColor)
+    : HEX_COLOR.test(String(fallback?.skinColor ?? ""))
+      ? String(fallback?.skinColor)
+      : "#f6d198";
+
+  return { role, hairStyle, hairColor, skinColor };
+}
+
+function cosmeticsFromSavedRow(saved: GameStateRow | null) {
+  if (!saved) return null;
+  return {
+    role: saved.uniform,
+    hairStyle: saved.hair_style,
+    hairColor: saved.hair_color,
+    skinColor: saved.skin_color,
+  };
+}
 
 function isWalkableServer(wx: number, wy: number): boolean {
   const gx = Math.floor(wx);
@@ -98,11 +160,16 @@ function emitToRoomExceptSender(
  * registering a fresh connection, preventing duplicate ghost avatars when
  * a student opens a new tab or reconnects.
  */
-function evictPreviousUserSockets(io: Server, userId: string, currentSocketId: string): void {
-  const existingIds = registry.findSocketsByUserId(userId);
+function evictPreviousUserSockets(
+  io: Server,
+  roomRegistry: NusantaraRoomRegistry,
+  userId: string,
+  currentSocketId: string
+): void {
+  const existingIds = roomRegistry.findSocketsByUserId(userId);
   for (const oldSocketId of existingIds) {
     if (oldSocketId === currentSocketId) continue;
-    const removed = registry.removePlayer(oldSocketId);
+    const removed = roomRegistry.removePlayer(oldSocketId);
     if (removed) {
       emitToRoom(io, removed.meta.room, "playerLeft", oldSocketId);
       void saveGameState(removed.meta.userId, removed.player, removed.meta.classId);
@@ -117,7 +184,7 @@ function evictPreviousUserSockets(io: Server, userId: string, currentSocketId: s
   }
 }
 
-function registerHandlers(io: Server): void {
+function registerHandlers(io: Server, roomRegistry: NusantaraRoomRegistry): void {
   io.use((socket, next) => {
     const token = String((socket.handshake.auth as any)?.token ?? "").trim();
     const user = getSession(token || undefined);
@@ -130,136 +197,190 @@ function registerHandlers(io: Server): void {
   });
 
   io.on("connection", (socket: Socket) => {
-    socket.on(
-      "joinGame",
-      async (payload?: {
-        role?: string;
-        hairStyle?: string;
-        hairColor?: string;
-        skinColor?: string;
-      }) => {
-        const user = (socket.data as any).smartcbtUser as
-          | { id: string; full_name?: string; username?: string; role: string }
-          | undefined;
-        if (!user || !registry.beginJoin(socket.id)) return;
+    socket.on("joinGame", async (payload?: CosmeticPayload) => {
+      const user = (socket.data as any).smartcbtUser as
+        | { id: string; full_name?: string; username?: string; role: string }
+        | undefined;
+      if (!user) return;
 
-        try {
-          let lobby: LobbyDescriptor;
-          try {
-            lobby = await resolveAuthoritativeLobby(user);
-          } catch (err) {
-            console.error("[nusantara] resolve authoritative lobby failed:", err);
-            if (socket.connected) {
-              socket.emit("joinError", {
-                message: "Gagal memverifikasi data kelas dari server. Coba masuk kembali.",
-              });
-            }
-            return;
-          }
+      // If the exact same socket is already registered in a room and re-emits
+      // joinGame (e.g., retry or appearance change), update in place rather than
+      // silently dropping the request.
+      const alreadyJoined = roomRegistry.getPlayer(socket.id);
+      if (alreadyJoined) {
+        const nextCosmetics = resolveCosmetics(payload, alreadyJoined.player);
+        alreadyJoined.player.role = nextCosmetics.role;
+        alreadyJoined.player.hairStyle = nextCosmetics.hairStyle;
+        alreadyJoined.player.hairColor = nextCosmetics.hairColor;
+        alreadyJoined.player.skinColor = nextCosmetics.skinColor;
 
-          const saved = await loadGameState(user.id);
-          if (!socket.connected) return;
+        void saveGameState(
+          alreadyJoined.meta.userId,
+          alreadyJoined.player,
+          alreadyJoined.meta.classId
+        );
 
-          // Evict older tabs/connections of the same user only after DB verification succeeds.
-          evictPreviousUserSockets(io, user.id, socket.id);
-
-          // NAMA SELALU dari akun — payload.name tidak pernah dibaca.
-          const displayName =
-            String(user.full_name || user.username || "Siswa").trim().slice(0, 24) || "Siswa";
-          const uniform = VALID_UNIFORMS.includes(payload?.role as PlayerRole)
-            ? (payload?.role as PlayerRole)
-            : (saved?.uniform as PlayerRole) || "sma";
-          const hairStyle: HairStyle = VALID_HAIR_STYLES.includes(payload?.hairStyle as HairStyle)
-            ? (payload?.hairStyle as HairStyle)
-            : VALID_HAIR_STYLES.includes(saved?.hair_style as HairStyle)
-              ? (saved?.hair_style as HairStyle)
-              : "short";
-          const hairColor = HEX_COLOR.test(String(payload?.hairColor ?? ""))
-            ? String(payload?.hairColor)
-            : saved?.hair_color || (hairStyle === "hijab" ? "#f8fafc" : "#1e293b");
-          const skinColor = HEX_COLOR.test(String(payload?.skinColor ?? ""))
-            ? String(payload?.skinColor)
-            : saved?.skin_color || "#f6d198";
-
-          const savedX = Number(saved?.wx);
-          const savedY = Number(saved?.wy);
-          const useSaved =
-            Number.isFinite(savedX) &&
-            Number.isFinite(savedY) &&
-            isWalkableServer(savedX, savedY);
-          const spawnX = useSaved ? savedX : 15.5 + (Math.random() * 1.6 - 0.8);
-          const spawnY = useSaved ? savedY : 27.5 + (Math.random() * 1.2 - 0.6);
-          const dir = VALID_DIRS.includes(saved?.dir as Direction)
-            ? (saved?.dir as Direction)
-            : "s";
-
-          const newPlayer: PlayerState = {
-            id: socket.id,
-            name: displayName,
-            role: uniform,
-            hairStyle,
-            hairColor,
-            skinColor,
-            wx: spawnX,
-            wy: spawnY,
-            dir,
-            moving: false,
-            sprinting: false,
-            sitting: false,
-            jumpOffset: 0,
-            xp: Math.max(0, Number(saved?.xp) || 0),
-            money: Math.max(0, Number(saved?.money) || 10000),
-            energy: 100,
-          };
-
-          await leaveNonSelfRooms(socket);
-          if (!socket.connected) return;
-
-          await socket.join(lobby.room);
-          if (!socket.connected) return;
-
-          registry.registerPlayer(socket.id, newPlayer, {
-            userId: String(user.id),
-            role: user.role,
-            room: lobby.room,
-            classId: lobby.classId,
-            classLabel: lobby.label,
-          });
-
-          socket.emit("initGame", {
-            selfId: socket.id,
-            players: registry.snapshotRoom(lobby.room, lobby.classId),
-            phase: SCHEDULES[scheduleIndex],
-            timer: scheduleTimer,
-            lobby: {
-              room: lobby.room,
-              kind: lobby.kind,
-              label: lobby.label,
-              classId: lobby.classId,
-            },
-            profile: {
-              name: displayName,
-              xp: newPlayer.xp,
-              money: newPlayer.money,
-              restored: useSaved,
-            },
-          });
-
-          emitToRoomExceptSender(socket, lobby.room, "playerJoined", {
-            ...newPlayer,
-            room: lobby.room,
-          });
-          emitToRoom(
-            io,
-            lobby.room,
-            "systemChat",
-            `${displayName} baru saja memasuki gerbang sekolah.`
-          );
-        } finally {
-          registry.endJoin(socket.id);
-        }
+        socket.emit("initGame", {
+          selfId: socket.id,
+          players: roomRegistry.snapshotRoom(
+            alreadyJoined.meta.room,
+            alreadyJoined.meta.classId
+          ),
+          phase: SCHEDULES[scheduleIndex],
+          timer: scheduleTimer,
+          lobby: {
+            room: alreadyJoined.meta.room,
+            kind: alreadyJoined.meta.role === "student" ? "class" : "staff",
+            label: alreadyJoined.meta.classLabel,
+            classId: alreadyJoined.meta.classId,
+          },
+          profile: {
+            name: alreadyJoined.player.name,
+            xp: alreadyJoined.player.xp,
+            money: alreadyJoined.player.money,
+            restored: false,
+          },
+        });
+        emitToRoom(io, alreadyJoined.meta.room, "playerUpdated", {
+          id: socket.id,
+          room: alreadyJoined.meta.room,
+          role: alreadyJoined.player.role,
+          hairStyle: alreadyJoined.player.hairStyle,
+          hairColor: alreadyJoined.player.hairColor,
+          skinColor: alreadyJoined.player.skinColor,
+        });
+        return;
       }
-    );
+
+      if (!roomRegistry.beginJoin(socket.id)) return;
+
+      try {
+        let lobby: LobbyDescriptor;
+        try {
+          lobby = await resolveAuthoritativeLobby(user);
+        } catch (err) {
+          console.error("[nusantara] resolve authoritative lobby failed:", err);
+          if (socket.connected) {
+            socket.emit("joinError", {
+              message: "Gagal memverifikasi data kelas dari server. Coba masuk kembali.",
+            });
+          }
+          return;
+        }
+
+        const saved = await loadGameState(user.id);
+        if (!socket.connected) return;
+
+        // Evict older tabs/connections of the same user only after DB verification succeeds.
+        evictPreviousUserSockets(io, roomRegistry, user.id, socket.id);
+
+        // NAMA SELALU dari akun — payload.name tidak pernah dibaca.
+        const displayName =
+          String(user.full_name || user.username || "Siswa").trim().slice(0, 24) || "Siswa";
+        const cosmetics = resolveCosmetics(payload, cosmeticsFromSavedRow(saved));
+
+        const savedX = Number(saved?.wx);
+        const savedY = Number(saved?.wy);
+        const useSaved =
+          Number.isFinite(savedX) &&
+          Number.isFinite(savedY) &&
+          isWalkableServer(savedX, savedY);
+        const spawnX = useSaved ? savedX : 15.5 + (Math.random() * 1.6 - 0.8);
+        const spawnY = useSaved ? savedY : 27.5 + (Math.random() * 1.2 - 0.6);
+        const dir = VALID_DIRS.includes(saved?.dir as Direction)
+          ? (saved?.dir as Direction)
+          : "s";
+
+        const newPlayer: PlayerState = {
+          id: socket.id,
+          name: displayName,
+          role: cosmetics.role,
+          hairStyle: cosmetics.hairStyle,
+          hairColor: cosmetics.hairColor,
+          skinColor: cosmetics.skinColor,
+          wx: spawnX,
+          wy: spawnY,
+          dir,
+          moving: false,
+          sprinting: false,
+          sitting: false,
+          jumpOffset: 0,
+          xp: Math.max(0, Number(saved?.xp) || 0),
+          money: Math.max(0, Number(saved?.money) || 10000),
+          energy: 100,
+        };
+
+        await leaveNonSelfRooms(socket);
+        if (!socket.connected) return;
+
+        await socket.join(lobby.room);
+        if (!socket.connected) return;
+
+        roomRegistry.registerPlayer(socket.id, newPlayer, {
+          userId: String(user.id),
+          role: user.role,
+          room: lobby.room,
+          classId: lobby.classId,
+          classLabel: lobby.label,
+        });
+
+        // Persist selected character immediately so reloads/re-entries remember it.
+        void saveGameState(String(user.id), newPlayer, lobby.classId);
+
+        socket.emit("initGame", {
+          selfId: socket.id,
+          players: roomRegistry.snapshotRoom(lobby.room, lobby.classId),
+          phase: SCHEDULES[scheduleIndex],
+          timer: scheduleTimer,
+          lobby: {
+            room: lobby.room,
+            kind: lobby.kind,
+            label: lobby.label,
+            classId: lobby.classId,
+          },
+          profile: {
+            name: displayName,
+            xp: newPlayer.xp,
+            money: newPlayer.money,
+            restored: useSaved,
+          },
+        });
+
+        emitToRoomExceptSender(socket, lobby.room, "playerJoined", {
+          ...newPlayer,
+          room: lobby.room,
+        });
+        emitToRoom(
+          io,
+          lobby.room,
+          "systemChat",
+          `${displayName} baru saja memasuki gerbang sekolah.`
+        );
+      } finally {
+        roomRegistry.endJoin(socket.id);
+      }
+    });
+
+    socket.on("updateAppearance", (payload?: CosmeticPayload) => {
+      const entry = roomRegistry.getPlayer(socket.id);
+      if (!entry) return;
+      const { player: p, meta: m } = entry;
+      const nextCosmetics = resolveCosmetics(payload, p);
+      p.role = nextCosmetics.role;
+      p.hairStyle = nextCosmetics.hairStyle;
+      p.hairColor = nextCosmetics.hairColor;
+      p.skinColor = nextCosmetics.skinColor;
+
+      void saveGameState(m.userId, p, m.classId);
+      emitToRoom(io, m.room, "playerUpdated", {
+        id: socket.id,
+        room: m.room,
+        role: p.role,
+        hairStyle: p.hairStyle,
+        hairColor: p.hairColor,
+        skinColor: p.skinColor,
+      });
+    });
 
     socket.on(
       "playerMove",
@@ -272,7 +393,7 @@ function registerHandlers(io: Server): void {
         sitting?: boolean;
         jumpOffset?: number;
       }) => {
-        const entry = registry.getPlayer(socket.id);
+        const entry = roomRegistry.getPlayer(socket.id);
         if (!entry || !data) return;
         const { player: p, meta: m } = entry;
 
@@ -308,7 +429,7 @@ function registerHandlers(io: Server): void {
     );
 
     socket.on("chatMessage", (msg: unknown) => {
-      const entry = registry.getPlayer(socket.id);
+      const entry = roomRegistry.getPlayer(socket.id);
       if (!entry || typeof msg !== "string") return;
       const { player: p, meta: m } = entry;
       const cleanMsg = msg.trim().slice(0, 90);
@@ -325,7 +446,7 @@ function registerHandlers(io: Server): void {
     });
 
     socket.on("emote", (emoji: unknown) => {
-      const entry = registry.getPlayer(socket.id);
+      const entry = roomRegistry.getPlayer(socket.id);
       if (!entry || typeof emoji !== "string") return;
       const { meta: m } = entry;
       const cleanEmoji = emoji.trim().slice(0, 4);
@@ -339,11 +460,11 @@ function registerHandlers(io: Server): void {
     });
 
     socket.on("interactAction", (actionType: unknown) => {
-      const entry = registry.getPlayer(socket.id);
+      const entry = roomRegistry.getPlayer(socket.id);
       if (!entry || typeof actionType !== "string") return;
       const { player: p, meta: m } = entry;
 
-      if (actionType !== "buy_food" && !registry.checkActionCooldown(socket.id, 800)) {
+      if (actionType !== "buy_food" && !roomRegistry.checkActionCooldown(socket.id, 800)) {
         return;
       }
 
@@ -378,7 +499,7 @@ function registerHandlers(io: Server): void {
     });
 
     socket.on("quizAnswer", (payload?: { questionId?: number; selectedIndex?: number }) => {
-      const entry = registry.getPlayer(socket.id);
+      const entry = roomRegistry.getPlayer(socket.id);
       if (!entry) return;
       const { player: p } = entry;
       const q = QUIZ_BANK.find((item) => item.id === payload?.questionId);
@@ -401,7 +522,7 @@ function registerHandlers(io: Server): void {
     });
 
     socket.on("disconnect", () => {
-      const removed = registry.removePlayer(socket.id);
+      const removed = roomRegistry.removePlayer(socket.id);
       if (!removed) return;
       const { player: p, meta: m } = removed;
       emitToRoom(io, m.room, "systemChat", `${p.name} telah pulang dari sekolah.`);
@@ -448,6 +569,22 @@ export type GameAttachTarget =
   | Http2Server
   | Http2SecureServer;
 
+export function createNusantaraServer(
+  httpServer: GameAttachTarget,
+  options: { roomRegistry?: NusantaraRoomRegistry; startLoops?: boolean } = {}
+): Server {
+  const io = new Server(httpServer, {
+    path: GAME_SOCKET_PATH,
+    cors: { origin: "*" },
+    serveClient: false,
+  });
+  registerHandlers(io, options.roomRegistry ?? new NusantaraRoomRegistry());
+  if (options.startLoops) {
+    startWorldLoops(io);
+  }
+  return io;
+}
+
 /**
  * Pasang server game di http.Server SmartCBT (dipanggil sekali dari
  * standalone.ts dan plugin dev Vite). Idempoten.
@@ -459,7 +596,7 @@ export function attachNusantaraGame(httpServer: GameAttachTarget): Server {
     cors: { origin: "*" },
     serveClient: false,
   });
-  registerHandlers(io);
+  registerHandlers(io, registry);
   startWorldLoops(io);
   attached = io;
   console.log(`[nusantara] game socket ready at ${GAME_SOCKET_PATH} (lobi per kelas, in-memory)`);
@@ -478,6 +615,20 @@ export function getNusantaraGameStatus() {
     socketPath: GAME_SOCKET_PATH,
   };
 }
+
+// GET /api/game/nusantara/appearance — muat kosmetik karakter tersimpan user saat ini.
+addRoute("GET", /^\/api\/game\/nusantara\/appearance$/, async (req: AuthenticatedRequest, res) => {
+  const user = req.authUser;
+  if (!user) {
+    return json(res, { error: "Autentikasi diperlukan." }, 401);
+  }
+  const saved = await loadGameState(user.id);
+  const resolved = resolveCosmetics(null, cosmeticsFromSavedRow(saved));
+  json(res, {
+    ...resolved,
+    hasSaved: Boolean(saved),
+  });
+});
 
 // GET /api/game/nusantara/status — staff-only, ikut dispatcher /api.
 addRoute("GET", /^\/api\/game\/nusantara\/status$/, async (req: AuthenticatedRequest, res) => {

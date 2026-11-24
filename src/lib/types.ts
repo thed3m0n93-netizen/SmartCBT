@@ -11,6 +11,9 @@
 export const DB_ROLES = ["super_admin", "teacher", "student"] as const;
 export type DBRole = (typeof DB_ROLES)[number];
 
+export const ACADEMIC_ROLES = ["none", "guru", "waka_kurikulum", "kepala_sekolah"] as const;
+export type AcademicRole = (typeof ACADEMIC_ROLES)[number];
+
 /** Maps DB role → frontend role for compatibility with existing AuthContext. */
 export function mapRole(dbRole: DBRole): Role {
   switch (dbRole) {
@@ -45,6 +48,8 @@ export interface User {
   password_hash?: string;
   full_name: string;
   role: DBRole;
+  academic_role?: AcademicRole;
+  nip?: string | null;
   status: "active" | "inactive";
   created_at: string;
   updated_at: string;
@@ -210,6 +215,8 @@ export interface AuthUser {
   id: string;
   name: string;
   role: Role;
+  academicRole?: AcademicRole;
+  nip?: string | null;
   email: string;
   institution: string;
   avatar?: string;

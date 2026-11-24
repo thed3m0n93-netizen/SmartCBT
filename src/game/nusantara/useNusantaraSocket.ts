@@ -10,7 +10,7 @@ import type {
 } from './isoRenderer';
 import { soundFX } from './sound';
 import type { HairStyle, PlayerRole, PlayerState, SchoolPhase } from './schoolMap';
-import type { ChatMessage, GameToast, HudStats, LobbyInfo } from './types';
+import type { CharacterConfig, ChatMessage, GameToast, HudStats, LobbyInfo } from './types';
 
 interface UseNusantaraSocketOptions {
   playersRef: MutableRefObject<Record<string, RenderPlayer>>;
@@ -24,12 +24,14 @@ interface UseNusantaraSocketOptions {
   onInitSuccess: (payload: {
     playerName: string;
     playerRole: PlayerRole;
+    cosmetics: CharacterConfig;
     onlineCount: number;
     lobbyLabel: string | null;
     hudStats: HudStats;
     phase: SchoolPhase;
     timer: number;
   }) => void;
+  onSelfAppearanceChange?: (cosmetics: CharacterConfig) => void;
   onOnlineCountChange: (count: number) => void;
   onPhaseChange: (phase: SchoolPhase, timer: number) => void;
   onStatsUpdate: (stats: { xp: number; money: number }) => void;
@@ -63,6 +65,7 @@ function toRenderPlayer(p: PlayerState): RenderPlayer {
 export function useNusantaraSocket(opts: UseNusantaraSocketOptions) {
   const socketRef = useRef<Socket | null>(null);
   const activeRoomRef = useRef<string | null>(null);
+  const pendingJoinRef = useRef<CharacterConfig | null>(null);
 
   const optsRef = useRef(opts);
   optsRef.current = opts;
@@ -70,7 +73,7 @@ export function useNusantaraSocket(opts: UseNusantaraSocketOptions) {
   useEffect(() => {
     const socket = io({
       path: '/game-socket.io',
-      auth: { token: getAuthToken() ?? '' },
+      auth: (cb) => cb({ token: getAuthToken() ?? '' }),
       transports: ['websocket', 'polling'],
       reconnectionAttempts: 10,
     });
@@ -80,6 +83,12 @@ export function useNusantaraSocket(opts: UseNusantaraSocketOptions) {
       if (!incomingRoom || !activeRoomRef.current) return true;
       return incomingRoom === activeRoomRef.current;
     };
+
+    socket.on('connect', () => {
+      if (pendingJoinRef.current) {
+        socket.emit('joinGame', pendingJoinRef.current);
+      }
+    });
 
     socket.on('connect_error', (err) => {
       const denied = /unauthorized|auth/i.test(String(err?.message || ''));
@@ -92,6 +101,7 @@ export function useNusantaraSocket(opts: UseNusantaraSocketOptions) {
     });
 
     socket.on('joinError', (payload: { message?: string }) => {
+      pendingJoinRef.current = null;
       const msg = payload?.message || 'Gagal masuk ke lobi kelas.';
       optsRef.current.onConnectionState(false, msg);
       optsRef.current.onTriggerToast(msg, 'warn');
@@ -107,6 +117,7 @@ export function useNusantaraSocket(opts: UseNusantaraSocketOptions) {
         lobby?: LobbyInfo;
         profile?: { name?: string; xp?: number; money?: number; restored?: boolean };
       }) => {
+        pendingJoinRef.current = null;
         const cur = optsRef.current;
         cur.selfIdRef.current = data.selfId;
         activeRoomRef.current = data.lobby?.room ?? null;
@@ -126,9 +137,17 @@ export function useNusantaraSocket(opts: UseNusantaraSocketOptions) {
         cur.phaseRef.current = data.phase;
 
         const me = data.players[data.selfId];
+        const cosmetics: CharacterConfig = {
+          role: me?.role ?? 'sma',
+          hairStyle: me?.hairStyle ?? 'short',
+          hairColor: me?.hairColor ?? '#1e293b',
+          skinColor: me?.skinColor ?? '#f6d198',
+        };
+
         cur.onInitSuccess({
           playerName: me?.name ?? data.profile?.name ?? 'Siswa',
-          playerRole: me?.role ?? 'sma',
+          playerRole: cosmetics.role,
+          cosmetics,
           onlineCount: Object.keys(nextMap).length,
           lobbyLabel: data.lobby?.label ?? null,
           hudStats: {
@@ -156,6 +175,36 @@ export function useNusantaraSocket(opts: UseNusantaraSocketOptions) {
       cur.playersRef.current[p.id] = toRenderPlayer(p);
       cur.onOnlineCountChange(Object.keys(cur.playersRef.current).length);
     });
+
+    socket.on(
+      'playerUpdated',
+      (data: {
+        id: string;
+        room?: string;
+        role: PlayerRole;
+        hairStyle: HairStyle;
+        hairColor: string;
+        skinColor: string;
+      }) => {
+        if (!isSameRoomEvent(data.room)) return;
+        const cur = optsRef.current;
+        const target = cur.playersRef.current[data.id];
+        if (target) {
+          target.role = data.role;
+          target.hairStyle = data.hairStyle || 'short';
+          target.hairColor = data.hairColor;
+          target.skinColor = data.skinColor;
+        }
+        if (data.id === cur.selfIdRef.current) {
+          cur.onSelfAppearanceChange?.({
+            role: data.role,
+            hairStyle: data.hairStyle || 'short',
+            hairColor: data.hairColor,
+            skinColor: data.skinColor,
+          });
+        }
+      }
+    );
 
     socket.on(
       'playerMoved',
@@ -290,25 +339,32 @@ export function useNusantaraSocket(opts: UseNusantaraSocketOptions) {
     );
 
     return () => {
+      pendingJoinRef.current = null;
       socket.disconnect();
       socketRef.current = null;
       activeRoomRef.current = null;
     };
   }, []);
 
-  const joinGame = useCallback(
-    (config: {
-      role: PlayerRole;
-      hairStyle: HairStyle;
-      hairColor: string;
-      skinColor: string;
-    }) => {
-      if (!socketRef.current) return;
-      optsRef.current.onConnectionState(true, null);
-      socketRef.current.emit('joinGame', config);
-    },
-    []
-  );
+  const joinGame = useCallback((config: CharacterConfig) => {
+    const socket = socketRef.current;
+    if (!socket) return;
+    pendingJoinRef.current = config;
+    optsRef.current.onConnectionState(true, null);
+    if (socket.connected) {
+      socket.emit('joinGame', config);
+    } else {
+      socket.connect();
+    }
+  }, []);
+
+  const updateAppearance = useCallback((config: CharacterConfig) => {
+    const socket = socketRef.current;
+    if (!socket) return;
+    if (socket.connected) {
+      socket.emit('updateAppearance', config);
+    }
+  }, []);
 
   const emitMove = useCallback(
     (payload: {
@@ -347,6 +403,7 @@ export function useNusantaraSocket(opts: UseNusantaraSocketOptions) {
 
   return {
     joinGame,
+    updateAppearance,
     emitMove,
     sendChat,
     sendEmote,
@@ -354,3 +411,4 @@ export function useNusantaraSocket(opts: UseNusantaraSocketOptions) {
     sendQuizAnswer,
   };
 }
+

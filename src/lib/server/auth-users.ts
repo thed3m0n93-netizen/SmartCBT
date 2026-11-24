@@ -14,6 +14,8 @@ import { createSession, getBearerToken, getSession, revokeSession } from "./auth
 import { ensureColumn } from "./schema.js";
 import { NO_CALLER, callerFromRequest, isAdminCaller, requireAdmin } from "./ownership.js";
 import { recordAuditLog } from "./audit.js";
+import { ensureUserAcademicColumns } from "./adm-guru/schema-init.js";
+import { normalizeAcademicRole } from "./adm-guru/guards.js";
 
 /**
  * Build 143 — penemuan E2E: rute-rute ini dulunya hanya "harus login" tanpa
@@ -33,17 +35,30 @@ addRoute("POST", /^\/api\/login$/, async (req, res, body) => {
   if (!username || !password) {
     return json(res, { error: "Username and password required" }, 400);
   }
+  await ensureUserAcademicColumns().catch(() => undefined);
   const u = await queryOne<{
-    id: string; username: string; full_name: string; role: string; status: string; password_hash: string;
+    id: string;
+    username: string;
+    full_name: string;
+    role: string;
+    academic_role?: string;
+    nip?: string | null;
+    status: string;
+    password_hash: string;
   }>(
-    `SELECT id, username, full_name, role, status, password_hash
+    `SELECT id, username, full_name, role, academic_role, nip, status, password_hash
      FROM users WHERE username = $1 AND status = 'active'`,
     [username]
   );
   if (!u) return json(res, { error: "Invalid credentials" }, 401);
   const ok = await bcrypt.compare(password, u.password_hash);
   if (!ok) return json(res, { error: "Invalid credentials" }, 401);
-  const { password_hash: _removed, ...user } = u;
+  const { password_hash: _removed, ...rest } = u;
+  const user = {
+    ...rest,
+    academic_role: normalizeAcademicRole(rest.academic_role),
+    nip: rest.nip ?? null,
+  };
   const token = createSession(user, true); // true = single session per user (one device at a time)
   json(res, { success: true, user, token });
 });
@@ -54,17 +69,30 @@ addRoute("POST", /^\/api\/auth\/login$/, async (req, res, body) => {
   if (!username || !password) {
     return json(res, { error: "Username and password required" }, 400);
   }
+  await ensureUserAcademicColumns().catch(() => undefined);
   const u = await queryOne<{
-    id: string; username: string; full_name: string; role: string; status: string; password_hash: string;
+    id: string;
+    username: string;
+    full_name: string;
+    role: string;
+    academic_role?: string;
+    nip?: string | null;
+    status: string;
+    password_hash: string;
   }>(
-    `SELECT id, username, full_name, role, status, password_hash
+    `SELECT id, username, full_name, role, academic_role, nip, status, password_hash
      FROM users WHERE username = $1 AND status = 'active'`,
     [username]
   );
   if (!u) return json(res, { error: "Invalid credentials" }, 401);
   const ok = await bcrypt.compare(password, u.password_hash);
   if (!ok) return json(res, { error: "Invalid credentials" }, 401);
-  const { password_hash: _removed, ...user } = u;
+  const { password_hash: _removed, ...rest } = u;
+  const user = {
+    ...rest,
+    academic_role: normalizeAcademicRole(rest.academic_role),
+    nip: rest.nip ?? null,
+  };
   const token = createSession(user, true);
   json(res, { success: true, user, token });
 });
@@ -151,6 +179,7 @@ addRoute("POST", /^\/api\/auth\/change-password$/, async (req, res, body) => {
 // so older bundles keep working unchanged.
 addRoute("GET", /^\/api\/users$/, async (req, res) => {
   if (!requireAdmin(req, res)) return;
+  await ensureUserAcademicColumns().catch(() => undefined);
   const url = new URL(req.url, "http://localhost");
   const roleFilter = cleanStr(url.searchParams.get("role"), 32);
 
@@ -236,8 +265,9 @@ addRoute("GET", /^\/api\/users$/, async (req, res) => {
 
 // GET /api/teachers
 addRoute("GET", /^\/api\/teachers$/, async (_req, res) => {
+  await ensureUserAcademicColumns().catch(() => undefined);
   const rows = await query(
-    `SELECT id, full_name as "fullName" FROM users WHERE role = 'teacher' ORDER BY full_name`
+    `SELECT id, full_name as "fullName", academic_role, nip FROM users WHERE role = 'teacher' ORDER BY full_name`
   );
   json(res, rows);
 });
@@ -827,6 +857,11 @@ addRoute("POST", /^\/api\/users$/, async (req, res, body) => {
   const fullName = cleanStr(body.fullName ?? body.full_name, 128);
   const password = String(body.password ?? "");
   const role = String(body.role ?? "");
+  const academicRole =
+    role === "student"
+      ? "none"
+      : normalizeAcademicRole(body.academicRole ?? body.academic_role ?? (role === "teacher" ? "guru" : "none"));
+  const nip = role === "student" ? null : (cleanStr(body.nip, 32) || null);
   const classId = body.classId != null ? Number(body.classId) : null;
   const studentNumber = cleanStr(body.studentNumber ?? body.student_number, 20);
   // Student contact details (email / WhatsApp / address) — optional.
@@ -864,12 +899,13 @@ addRoute("POST", /^\/api\/users$/, async (req, res, body) => {
   const dup = await queryOne(`SELECT id FROM users WHERE username = $1`, [username]);
   if (dup) return json(res, { error: "Username sudah digunakan" }, 409);
 
+  await ensureUserAcademicColumns().catch(() => undefined);
   const passwordHash = await bcrypt.hash(password, 10);
   const newId = await queryOne(
-    `INSERT INTO users (username, password_hash, full_name, role, status)
-     VALUES ($1, $2, $3, $4, 'active')
+    `INSERT INTO users (username, password_hash, full_name, role, academic_role, nip, status)
+     VALUES ($1, $2, $3, $4, $5, $6, 'active')
      RETURNING id`,
-    [username, passwordHash, fullName, role]
+    [username, passwordHash, fullName, role, academicRole, nip]
   );
 
   if (role === "student" && newId?.id) {
@@ -999,6 +1035,7 @@ addRoute("PUT", /^\/api\/users\/[^/]+$/, async (req, res, body) => {
   const userId = match?.[1];
   if (!userId) return json(res, { error: "User id required" }, 400);
 
+  await ensureUserAcademicColumns().catch(() => undefined);
   const existing = await queryOne(
     `SELECT u.*, sp.class_id, sp.student_number, sp.email, sp.phone, sp.address
      FROM users u
@@ -1011,6 +1048,18 @@ addRoute("PUT", /^\/api\/users\/[^/]+$/, async (req, res, body) => {
   const username = body.username != null ? cleanStr(body.username, 64) : existing.username;
   const fullName = body.fullName != null ? cleanStr(body.fullName, 128) : existing.full_name;
   const role = body.role != null ? String(body.role) : existing.role;
+  const academicRole =
+    role === "student"
+      ? "none"
+      : body.academicRole !== undefined || body.academic_role !== undefined
+        ? normalizeAcademicRole(body.academicRole ?? body.academic_role)
+        : normalizeAcademicRole(existing.academic_role);
+  const nip =
+    role === "student"
+      ? null
+      : body.nip !== undefined
+        ? (cleanStr(body.nip, 32) || null)
+        : (existing.nip ?? null);
   const status = body.status != null ? String(body.status) : existing.status;
   if (status !== "active" && status !== "inactive") {
     return json(res, { error: "Status harus active atau inactive" }, 400);
@@ -1035,15 +1084,15 @@ addRoute("PUT", /^\/api\/users\/[^/]+$/, async (req, res, body) => {
 
   if (passwordHash) {
     await query(
-      `UPDATE users SET username = $1, full_name = $2, role = $3, status = $4, password_hash = $5
-       WHERE id = $6`,
-      [username, fullName, role, status, passwordHash, userId]
+      `UPDATE users SET username = $1, full_name = $2, role = $3, academic_role = $4, nip = $5, status = $6, password_hash = $7
+       WHERE id = $8`,
+      [username, fullName, role, academicRole, nip, status, passwordHash, userId]
     );
   } else {
     await query(
-      `UPDATE users SET username = $1, full_name = $2, role = $3, status = $4
-       WHERE id = $5`,
-      [username, fullName, role, status, userId]
+      `UPDATE users SET username = $1, full_name = $2, role = $3, academic_role = $4, nip = $5, status = $6
+       WHERE id = $7`,
+      [username, fullName, role, academicRole, nip, status, userId]
     );
   }
 

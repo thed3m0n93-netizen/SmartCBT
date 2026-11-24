@@ -330,6 +330,8 @@ export const CONTEXTUAL_KINDS = [
   "assignment-submission",
   // Berita sekolah: gambar sampul + video yang disisipkan ke dalam artikel.
   "news-media",
+  // Administrasi Guru Phase 2: lampiran Modul Ajar / RPP.
+  "adm-lesson-plan",
 ] as const;
 export type ContextualKind = (typeof CONTEXTUAL_KINDS)[number];
 

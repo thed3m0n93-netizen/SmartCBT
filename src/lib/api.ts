@@ -15,6 +15,7 @@
 
 import { withSetupToken } from "./setupAuth";
 import { setCachedFetchedModels } from "./ai-providers";
+import type { AcademicRole } from "./types";
 
 // ── Base URL & transport ──────────────────────────────────────────────
 
@@ -258,6 +259,8 @@ export interface UserRow {
   username: string;
   full_name: string;
   role: "super_admin" | "teacher" | "student";
+  academic_role?: AcademicRole;
+  nip?: string | null;
   status: "active" | "inactive";
   created_at: string;
   updated_at?: string;
@@ -542,6 +545,8 @@ export interface LoginResponse {
     username: string;
     full_name: string;
     role: "super_admin" | "teacher" | "student";
+    academic_role?: AcademicRole;
+    nip?: string | null;
   };
   /** Present when the same account signed in elsewhere (single-device policy). */
   previousSessionRevoked?: boolean;
@@ -737,6 +742,8 @@ export interface CreateUserPayload {
   password: string;
   fullName: string;
   role: "super_admin" | "teacher" | "student";
+  academicRole?: AcademicRole;
+  nip?: string | null;
   status?: "active" | "inactive";
   studentNumber?: string;
   classId?: number | null;
@@ -1994,7 +2001,8 @@ export type ContextualUploadKind =
   | "question-media"
   | "assignment-material"
   | "assignment-submission"
-  | "news-media";
+  | "news-media"
+  | "adm-lesson-plan";
 
 /** Generic contextual upload — prefer the typed helpers below. */
 export async function uploadContextualFile(
@@ -2101,6 +2109,14 @@ export function uploadAssignmentSubmission(
     targetId,
   });
 }
+
+/** Attachment uploaded for a Kurikulum Merdeka Modul Ajar / RPP (kind: adm-lesson-plan). */
+export function uploadAdmLessonPlanAttachment(
+  file: File,
+  ownerId?: string,
+): Promise<UploadRow> {
+  return uploadContextualFile(file, "adm-lesson-plan", { ownerId });
+}
 // ── Settings ─────────────────────────────────────────────────────────
 
 export interface SchoolSettings {
@@ -2112,6 +2128,13 @@ export interface SchoolSettings {
   school_logo: string;
   school_background: string;
   school_favicon: string;
+  school_city: string;
+  active_academic_year: string;
+  active_semester: string;
+  principal_name: string;
+  principal_nip: string;
+  curriculum_vice_name: string;
+  curriculum_vice_nip: string;
   ai_provider: string;
   ai_model: string;
   ai_api_key: string;
@@ -2524,4 +2547,1440 @@ export function fetchAuditLogs(params: {
   const suffix = qs.toString();
   return apiGetPaged<AuditLogRow>(`/api/audit-logs${suffix ? `?${suffix}` : ""}`);
 }
+
+// ── Administrasi Guru (Phase 1: Tahun Ajaran, Kaldik, Minggu Efektif) ──
+
+export type AdmSemester = "ganjil" | "genap";
+
+export type AdmCalendarEventType =
+  | "effective_day"
+  | "holiday_national"
+  | "holiday_semester"
+  | "school_agenda"
+  | "exam_period";
+
+export interface AdmAcademicYear {
+  id: string;
+  year_label: string;
+  semester: AdmSemester | string;
+  start_date: string;
+  end_date: string;
+  working_days_per_week: 5 | 6;
+  is_active: boolean;
+  created_by?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface AdmCalendarEvent {
+  id: string;
+  academic_year_id: string;
+  title: string;
+  event_type: AdmCalendarEventType | string;
+  start_date: string;
+  end_date: string;
+  is_effective: boolean;
+  notes?: string | null;
+  created_by?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface AdmWeekBreakdown {
+  weekNumber: number;
+  monthKey: string;
+  startDate: string;
+  endDate: string;
+  scheduledDays: number;
+  effectiveDays: number;
+  nonEffectiveDays: number;
+  isEffective: boolean;
+  holidays: string[];
+}
+
+export interface AdmMonthBreakdown {
+  monthKey: string;
+  monthLabel: string;
+  totalWeeks: number;
+  nonEffectiveWeeks: number;
+  effectiveWeeks: number;
+  scheduledDays: number;
+  nonEffectiveDays: number;
+  effectiveDays: number;
+  holidays: string[];
+}
+
+export interface AdmEffectiveWeeksCalc {
+  startDate: string;
+  endDate: string;
+  workingDaysPerWeek: 5 | 6;
+  jpPerWeek: number;
+  totalWeeks: number;
+  nonEffectiveWeeks: number;
+  effectiveWeeks: number;
+  totalScheduledDays: number;
+  nonEffectiveDays: number;
+  effectiveDays: number;
+  totalEffectiveJp: number;
+  months: AdmMonthBreakdown[];
+  weeks: AdmWeekBreakdown[];
+}
+
+export interface AdmEffectiveWeeks {
+  id: string;
+  academic_year_id: string;
+  teacher_id: string;
+  teacher_name?: string | null;
+  teacher_nip?: string | null;
+  subject_id: number;
+  subject_name?: string | null;
+  subject_code?: string | null;
+  class_id: number | null;
+  class_name?: string | null;
+  grade_level?: string | null;
+  working_days_per_week: 5 | 6;
+  total_weeks: number;
+  non_effective_weeks: number;
+  effective_weeks: number;
+  effective_days: number;
+  jp_per_week: number;
+  total_effective_jp: number;
+  breakdown_json: AdmEffectiveWeeksCalc | null;
+  notes?: string | null;
+  status: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface AdmSchoolHeaderInfo {
+  name: string;
+  address: string;
+  phone: string;
+  email: string;
+  website: string;
+  logo: string;
+  city: string;
+  principalName: string;
+  principalNip: string;
+  curriculumViceName: string;
+  curriculumViceNip: string;
+}
+
+export interface AdmOverviewResponse {
+  caller: {
+    id: string;
+    name: string;
+    role: string;
+    academicRole: AcademicRole;
+    nip: string | null;
+    isValidator: boolean;
+  };
+  academicYears: AdmAcademicYear[];
+  activeYear: AdmAcademicYear | null;
+  events: AdmCalendarEvent[];
+  effectiveWeeks: AdmEffectiveWeeks[];
+  semesterStats: AdmEffectiveWeeksCalc | null;
+  subjects: Array<{ id: number; subject_code: string; subject_name: string }>;
+  classes: Array<{ id: number; class_name: string; grade_level: string }>;
+  assignedSubjectIds: number[];
+  assignedClassIds: number[];
+  school: AdmSchoolHeaderInfo;
+}
+
+export function fetchAdmOverview(academicYearId?: string): Promise<AdmOverviewResponse> {
+  const qs = academicYearId ? `?academicYearId=${encodeURIComponent(academicYearId)}` : "";
+  return apiFetch<AdmOverviewResponse>(`/api/adm/overview${qs}`);
+}
+
+export function fetchAdmAcademicYears(): Promise<AdmAcademicYear[]> {
+  return apiGetRows<AdmAcademicYear>("/api/adm/academic-years");
+}
+
+export function createAdmAcademicYear(payload: {
+  yearLabel: string;
+  semester: AdmSemester | string;
+  startDate: string;
+  endDate: string;
+  workingDaysPerWeek?: 5 | 6;
+  isActive?: boolean;
+}): Promise<{ success: boolean; id: string; data: AdmAcademicYear | null }> {
+  return apiPost("/api/adm/academic-years", payload);
+}
+
+export function updateAdmAcademicYear(
+  id: string,
+  payload: {
+    yearLabel?: string;
+    semester?: AdmSemester | string;
+    startDate?: string;
+    endDate?: string;
+    workingDaysPerWeek?: 5 | 6;
+  },
+): Promise<{ success: boolean; data: AdmAcademicYear | null }> {
+  return apiPut(`/api/adm/academic-years/${encodeURIComponent(id)}`, payload);
+}
+
+export function activateAdmAcademicYear(id: string): Promise<{ success: boolean; id: string }> {
+  return apiPost(`/api/adm/academic-years/${encodeURIComponent(id)}/activate`, {});
+}
+
+export function deleteAdmAcademicYear(id: string): Promise<{ success: boolean }> {
+  return apiDelete(`/api/adm/academic-years/${encodeURIComponent(id)}`);
+}
+
+export function fetchAdmCalendar(
+  academicYearId?: string,
+  eventType?: string,
+): Promise<AdmCalendarEvent[]> {
+  const params = new URLSearchParams();
+  if (academicYearId) params.set("academicYearId", academicYearId);
+  if (eventType && eventType !== "all") params.set("eventType", eventType);
+  const qs = params.toString();
+  return apiGetRows<AdmCalendarEvent>(`/api/adm/calendar${qs ? `?${qs}` : ""}`);
+}
+
+export function createAdmCalendarEvent(payload: {
+  academicYearId?: string;
+  title: string;
+  eventType: AdmCalendarEventType | string;
+  startDate: string;
+  endDate?: string;
+  isEffective?: boolean;
+  notes?: string | null;
+}): Promise<{ success: boolean; id: string; data: AdmCalendarEvent | null }> {
+  return apiPost("/api/adm/calendar", payload);
+}
+
+export function updateAdmCalendarEvent(
+  id: string,
+  payload: {
+    title?: string;
+    eventType?: AdmCalendarEventType | string;
+    startDate?: string;
+    endDate?: string;
+    isEffective?: boolean;
+    notes?: string | null;
+  },
+): Promise<{ success: boolean; data: AdmCalendarEvent | null }> {
+  return apiPut(`/api/adm/calendar/${encodeURIComponent(id)}`, payload);
+}
+
+export function deleteAdmCalendarEvent(id: string): Promise<{ success: boolean }> {
+  return apiDelete(`/api/adm/calendar/${encodeURIComponent(id)}`);
+}
+
+export function previewAdmEffectiveWeeks(payload: {
+  academicYearId?: string;
+  workingDaysPerWeek?: 5 | 6;
+  jpPerWeek: number;
+}): Promise<{ year: AdmAcademicYear; calculation: AdmEffectiveWeeksCalc }> {
+  return apiPost("/api/adm/effective-weeks/preview", payload);
+}
+
+export function fetchAdmEffectiveWeeks(
+  academicYearId?: string,
+  teacherId?: string,
+): Promise<AdmEffectiveWeeks[]> {
+  const params = new URLSearchParams();
+  if (academicYearId) params.set("academicYearId", academicYearId);
+  if (teacherId) params.set("teacherId", teacherId);
+  const qs = params.toString();
+  return apiGetRows<AdmEffectiveWeeks>(`/api/adm/effective-weeks${qs ? `?${qs}` : ""}`);
+}
+
+export function saveAdmEffectiveWeeks(payload: {
+  academicYearId?: string;
+  subjectId: number;
+  classId?: number | null;
+  workingDaysPerWeek?: 5 | 6;
+  jpPerWeek: number;
+  notes?: string | null;
+}): Promise<{ success: boolean; id: string; data: AdmEffectiveWeeks | null }> {
+  return apiPost("/api/adm/effective-weeks", payload);
+}
+
+export function deleteAdmEffectiveWeeks(id: string): Promise<{ success: boolean }> {
+  return apiDelete(`/api/adm/effective-weeks/${encodeURIComponent(id)}`);
+}
+
+export function exportAdmEffectiveWeeksXlsx(id: string): Promise<FileDownloadResult> {
+  return apiFetch<FileDownloadResult>(
+    `/api/adm/export/effective-weeks/${encodeURIComponent(id)}/xlsx`,
+  );
+}
+
+// ── Administrasi Guru (Phase 2: CP/ATP, KKTP, Prota, Promes, Modul Ajar) ──
+
+export type AdmFase = "A" | "B" | "C" | "D" | "E" | "F";
+export type AdmKktpApproach = "interval" | "description" | "rubric";
+
+export interface AdmCpAtp {
+  id: string;
+  academic_year_id: string;
+  teacher_id: string;
+  teacher_name?: string | null;
+  teacher_nip?: string | null;
+  subject_id: number;
+  subject_name?: string | null;
+  subject_code?: string | null;
+  grade_level: string;
+  fase: AdmFase | string;
+  semester: AdmSemester | string;
+  elemen: string;
+  cp_text: string;
+  tp_code: string;
+  tp_text: string;
+  material_topic: string;
+  atp_order: number;
+  jp_allocation: number;
+  status: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface AdmKktpInterval {
+  min: number;
+  max: number;
+  label: string;
+  passed: boolean;
+  action: string;
+}
+
+export interface AdmKktpCriterion {
+  aspect: string;
+  inadequate: string;
+  adequate: string;
+  competent: string;
+  mastery: string;
+}
+
+export interface AdmKktp {
+  id: string;
+  academic_year_id: string;
+  teacher_id: string;
+  teacher_name?: string | null;
+  teacher_nip?: string | null;
+  subject_id: number;
+  subject_name?: string | null;
+  subject_code?: string | null;
+  class_id: number | null;
+  class_name?: string | null;
+  grade_level?: string | null;
+  cp_atp_id?: string | null;
+  tp_code?: string | null;
+  material_topic?: string | null;
+  title: string;
+  approach: AdmKktpApproach | string;
+  min_score: number;
+  intervals_json: AdmKktpInterval[];
+  criteria_json: AdmKktpCriterion[];
+  notes?: string | null;
+  status: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface AdmProtaItem {
+  cpAtpId?: string | null;
+  tpCode: string;
+  semester: AdmSemester;
+  topic: string;
+  jp: number;
+  notes?: string;
+}
+
+export interface AdmProta {
+  id: string;
+  academic_year_id: string;
+  teacher_id: string;
+  teacher_name?: string | null;
+  teacher_nip?: string | null;
+  subject_id: number;
+  subject_name?: string | null;
+  subject_code?: string | null;
+  grade_level: string;
+  effective_week_id?: string | null;
+  effective_week_jp?: number | null;
+  jp_delta?: number | null;
+  title: string;
+  items_json: AdmProtaItem[];
+  total_jp: number;
+  notes?: string | null;
+  status: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface AdmPromesMatrixRow {
+  cpAtpId?: string | null;
+  tpCode: string;
+  topic: string;
+  jp: number;
+  slots: Record<string, number>;
+  notes?: string;
+}
+
+export interface AdmPromes {
+  id: string;
+  academic_year_id: string;
+  teacher_id: string;
+  teacher_name?: string | null;
+  teacher_nip?: string | null;
+  subject_id: number;
+  subject_name?: string | null;
+  subject_code?: string | null;
+  class_id: number | null;
+  class_name?: string | null;
+  grade_level?: string | null;
+  prota_id?: string | null;
+  prota_title?: string | null;
+  effective_week_id?: string | null;
+  effective_week_jp?: number | null;
+  jp_delta?: number | null;
+  jp_balanced?: boolean;
+  semester: AdmSemester | string;
+  title: string;
+  schedule_matrix_json: AdmPromesMatrixRow[];
+  total_jp: number;
+  notes?: string | null;
+  status: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface AdmLessonPlan {
+  id: string;
+  academic_year_id: string;
+  teacher_id: string;
+  teacher_name?: string | null;
+  teacher_nip?: string | null;
+  subject_id: number;
+  subject_name?: string | null;
+  subject_code?: string | null;
+  class_id: number | null;
+  class_name?: string | null;
+  grade_level?: string | null;
+  cp_atp_id?: string | null;
+  tp_code?: string | null;
+  material_topic?: string | null;
+  learning_module_id?: string | null;
+  learning_module_title?: string | null;
+  title: string;
+  fase: AdmFase | string;
+  duration_jp: number;
+  learning_model?: string | null;
+  p5_dimensions_json: string[];
+  objectives: string;
+  activities_json: { pendahuluan?: string; inti?: string; penutup?: string };
+  assessment_plan?: string | null;
+  reflection?: string | null;
+  attachment_url?: string | null;
+  attachment_name?: string | null;
+  status: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface AdmPlanningBootstrapResponse {
+  caller: AdmOverviewResponse["caller"];
+  academicYears: AdmAcademicYear[];
+  activeYear: AdmAcademicYear | null;
+  subjects: AdmOverviewResponse["subjects"];
+  classes: AdmOverviewResponse["classes"];
+  assignedSubjectIds: number[];
+  assignedClassIds: number[];
+  effectiveWeeks: AdmEffectiveWeeks[];
+  learningModules: Array<{
+    id: string;
+    title: string;
+    subject_id: number | null;
+    class_id: number | null;
+    published: boolean;
+  }>;
+  cpAtp: AdmCpAtp[];
+  kktp: AdmKktp[];
+  prota: AdmProta[];
+  promes: AdmPromes[];
+  lessonPlans: AdmLessonPlan[];
+  school: AdmSchoolHeaderInfo;
+}
+
+export function fetchAdmPlanningBootstrap(
+  academicYearId?: string,
+  subjectId?: number | null,
+): Promise<AdmPlanningBootstrapResponse> {
+  const params = new URLSearchParams();
+  if (academicYearId) params.set("academicYearId", academicYearId);
+  if (subjectId && subjectId > 0) params.set("subjectId", String(subjectId));
+  const qs = params.toString();
+  return apiFetch<AdmPlanningBootstrapResponse>(`/api/adm/planning/bootstrap${qs ? `?${qs}` : ""}`);
+}
+
+export function createAdmCpAtp(payload: {
+  academicYearId?: string;
+  subjectId: number;
+  gradeLevel: string;
+  fase: string;
+  semester: AdmSemester | string;
+  elemen: string;
+  cpText: string;
+  tpCode: string;
+  tpText: string;
+  materialTopic: string;
+  atpOrder?: number;
+  jpAllocation?: number;
+}): Promise<{ success: boolean; id: string; data: AdmCpAtp | null }> {
+  return apiPost("/api/adm/cp-atp", payload);
+}
+
+export function updateAdmCpAtp(
+  id: string,
+  payload: Partial<{
+    subjectId: number;
+    gradeLevel: string;
+    fase: string;
+    semester: AdmSemester | string;
+    elemen: string;
+    cpText: string;
+    tpCode: string;
+    tpText: string;
+    materialTopic: string;
+    atpOrder: number;
+    jpAllocation: number;
+  }>,
+): Promise<{ success: boolean; data: AdmCpAtp | null }> {
+  return apiPut(`/api/adm/cp-atp/${encodeURIComponent(id)}`, payload);
+}
+
+export function deleteAdmCpAtp(id: string): Promise<{ success: boolean }> {
+  return apiDelete(`/api/adm/cp-atp/${encodeURIComponent(id)}`);
+}
+
+export function duplicateAdmCpAtp(payload: {
+  ids: string[];
+  targetAcademicYearId: string;
+  targetSemester: AdmSemester | string;
+  targetGradeLevel?: string;
+}): Promise<{ success: boolean; duplicatedCount: number }> {
+  return apiPost("/api/adm/cp-atp/duplicate", payload);
+}
+
+export function createAdmKktp(payload: {
+  academicYearId?: string;
+  subjectId: number;
+  classId?: number | null;
+  cpAtpId?: string | null;
+  title: string;
+  approach: AdmKktpApproach | string;
+  minScore: number;
+  intervals?: AdmKktpInterval[];
+  criteria?: AdmKktpCriterion[];
+  notes?: string | null;
+}): Promise<{ success: boolean; id: string; data: AdmKktp | null }> {
+  return apiPost("/api/adm/kktp", payload);
+}
+
+export function updateAdmKktp(
+  id: string,
+  payload: Partial<{
+    subjectId: number;
+    classId: number | null;
+    cpAtpId: string | null;
+    title: string;
+    approach: AdmKktpApproach | string;
+    minScore: number;
+    intervals: AdmKktpInterval[];
+    criteria: AdmKktpCriterion[];
+    notes: string | null;
+  }>,
+): Promise<{ success: boolean; data: AdmKktp | null }> {
+  return apiPut(`/api/adm/kktp/${encodeURIComponent(id)}`, payload);
+}
+
+export function deleteAdmKktp(id: string): Promise<{ success: boolean }> {
+  return apiDelete(`/api/adm/kktp/${encodeURIComponent(id)}`);
+}
+
+export function createAdmProta(payload: {
+  academicYearId?: string;
+  subjectId: number;
+  gradeLevel: string;
+  effectiveWeekId?: string | null;
+  title: string;
+  items: AdmProtaItem[];
+  notes?: string | null;
+}): Promise<{ success: boolean; id: string; data: AdmProta | null }> {
+  return apiPost("/api/adm/prota", payload);
+}
+
+export function updateAdmProta(
+  id: string,
+  payload: Partial<{
+    subjectId: number;
+    gradeLevel: string;
+    effectiveWeekId: string | null;
+    title: string;
+    items: AdmProtaItem[];
+    notes: string | null;
+  }>,
+): Promise<{ success: boolean; data: AdmProta | null }> {
+  return apiPut(`/api/adm/prota/${encodeURIComponent(id)}`, payload);
+}
+
+export function deleteAdmProta(id: string): Promise<{ success: boolean }> {
+  return apiDelete(`/api/adm/prota/${encodeURIComponent(id)}`);
+}
+
+export function createAdmPromes(payload: {
+  academicYearId?: string;
+  subjectId: number;
+  classId?: number | null;
+  protaId?: string | null;
+  effectiveWeekId?: string | null;
+  semester: AdmSemester | string;
+  title: string;
+  scheduleMatrix: AdmPromesMatrixRow[];
+  strictBalance?: boolean;
+  notes?: string | null;
+}): Promise<{ success: boolean; id: string; data: AdmPromes | null }> {
+  return apiPost("/api/adm/promes", payload);
+}
+
+export function updateAdmPromes(
+  id: string,
+  payload: Partial<{
+    subjectId: number;
+    classId: number | null;
+    protaId: string | null;
+    effectiveWeekId: string | null;
+    semester: AdmSemester | string;
+    title: string;
+    scheduleMatrix: AdmPromesMatrixRow[];
+    strictBalance: boolean;
+    notes: string | null;
+  }>,
+): Promise<{ success: boolean; data: AdmPromes | null }> {
+  return apiPut(`/api/adm/promes/${encodeURIComponent(id)}`, payload);
+}
+
+export function deleteAdmPromes(id: string): Promise<{ success: boolean }> {
+  return apiDelete(`/api/adm/promes/${encodeURIComponent(id)}`);
+}
+
+export function createAdmLessonPlan(payload: {
+  academicYearId?: string;
+  subjectId: number;
+  classId?: number | null;
+  cpAtpId?: string | null;
+  learningModuleId?: string | null;
+  title: string;
+  fase: string;
+  durationJp: number;
+  learningModel?: string | null;
+  p5Dimensions?: string[];
+  objectives: string;
+  activities?: { pendahuluan?: string; inti?: string; penutup?: string };
+  assessmentPlan?: string | null;
+  reflection?: string | null;
+  attachmentUrl?: string | null;
+  attachmentName?: string | null;
+  syncToLearningModule?: boolean;
+}): Promise<{ success: boolean; id: string; data: AdmLessonPlan | null }> {
+  return apiPost("/api/adm/lesson-plans", payload);
+}
+
+export function updateAdmLessonPlan(
+  id: string,
+  payload: Partial<{
+    subjectId: number;
+    classId: number | null;
+    cpAtpId: string | null;
+    learningModuleId: string | null;
+    title: string;
+    fase: string;
+    durationJp: number;
+    learningModel: string | null;
+    p5Dimensions: string[];
+    objectives: string;
+    activities: { pendahuluan?: string; inti?: string; penutup?: string };
+    assessmentPlan: string | null;
+    reflection: string | null;
+    attachmentUrl: string | null;
+    attachmentName: string | null;
+    syncToLearningModule: boolean;
+  }>,
+): Promise<{ success: boolean; data: AdmLessonPlan | null }> {
+  return apiPut(`/api/adm/lesson-plans/${encodeURIComponent(id)}`, payload);
+}
+
+export function deleteAdmLessonPlan(id: string): Promise<{ success: boolean }> {
+  return apiDelete(`/api/adm/lesson-plans/${encodeURIComponent(id)}`);
+}
+
+export function syncAdmLessonPlanToLms(
+  id: string,
+): Promise<{ success: boolean; learningModuleId: string }> {
+  return apiPost(`/api/adm/lesson-plans/${encodeURIComponent(id)}/sync-lms`, {});
+}
+
+export function exportAdmPlanningXlsx(
+  docType: "cp-atp" | "kktp" | "prota" | "promes" | "lesson-plan",
+  id: string,
+): Promise<FileDownloadResult> {
+  return apiFetch<FileDownloadResult>(
+    `/api/adm/export/${docType}/${encodeURIComponent(id)}/xlsx`,
+  );
+}
+
+// ── Administrasi Guru Phase 3 (Pelaksanaan Pembelajaran) ─────────────
+
+export type AdmAttendanceStatus = "H" | "S" | "I" | "A";
+
+export interface AdmTeachingSchedule {
+  id: string;
+  academic_year_id: string;
+  teacher_id: string;
+  teacher_name?: string | null;
+  teacher_nip?: string | null;
+  class_id: number;
+  class_name?: string | null;
+  grade_level?: string | null;
+  subject_id: number;
+  subject_name?: string | null;
+  subject_code?: string | null;
+  day_of_week: number;
+  day_name: string;
+  period_start: number;
+  period_end: number;
+  jp_count: number;
+  start_time?: string | null;
+  end_time?: string | null;
+  room_name?: string | null;
+  notes?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface AdmTeachingJournal {
+  id: string;
+  academic_year_id: string;
+  teacher_id: string;
+  teacher_name?: string | null;
+  teacher_nip?: string | null;
+  schedule_id?: string | null;
+  class_id: number;
+  class_name?: string | null;
+  grade_level?: string | null;
+  subject_id: number;
+  subject_name?: string | null;
+  subject_code?: string | null;
+  cp_atp_id?: string | null;
+  tp_code?: string | null;
+  material_topic?: string | null;
+  promes_id?: string | null;
+  promes_title?: string | null;
+  teach_date: string;
+  period_range: string;
+  topic_title: string;
+  learning_method?: string | null;
+  activities_summary?: string | null;
+  obstacles?: string | null;
+  teacher_reflection?: string | null;
+  follow_up?: string | null;
+  is_completed: boolean;
+  status: string;
+  h_count: number;
+  s_count: number;
+  i_count: number;
+  a_count: number;
+  recorded_count: number;
+  class_student_count: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface AdmAttendanceStudentRow {
+  student_id: string;
+  full_name: string;
+  username: string;
+  student_number?: string | null;
+  class_id: number;
+  class_name?: string | null;
+  grade_level?: string | null;
+  status: AdmAttendanceStatus;
+  notes: string;
+  is_saved: boolean;
+}
+
+export interface AdmAttendanceDetailResponse {
+  journal: AdmTeachingJournal;
+  hasSavedAttendance: boolean;
+  students: AdmAttendanceStudentRow[];
+}
+
+export interface AdmAttendanceSummaryStudent {
+  student_id: string;
+  full_name: string;
+  username: string;
+  student_number?: string | null;
+  class_id: number;
+  class_name?: string | null;
+  grade_level?: string | null;
+  recorded_meetings: number;
+  h_count: number;
+  s_count: number;
+  i_count: number;
+  a_count: number;
+  attendance_rate: number;
+  needs_attention: boolean;
+}
+
+export interface AdmAttendanceSummaryResponse {
+  totalMeetings: number;
+  students: AdmAttendanceSummaryStudent[];
+  overall: {
+    totalStudents: number;
+    totalMeetings: number;
+    totalH: number;
+    totalS: number;
+    totalI: number;
+    totalA: number;
+    totalRecorded: number;
+    averageAttendanceRate: number;
+    attentionCount: number;
+  };
+}
+
+export interface AdmExecutionBootstrapResponse {
+  caller: AdmOverviewResponse["caller"];
+  academicYears: AdmAcademicYear[];
+  activeYear: AdmAcademicYear | null;
+  subjects: AdmOverviewResponse["subjects"];
+  classes: AdmOverviewResponse["classes"];
+  assignedSubjectIds: number[];
+  assignedClassIds: number[];
+  schedules: AdmTeachingSchedule[];
+  journals: AdmTeachingJournal[];
+  cpAtp: AdmCpAtp[];
+  promes: AdmPromes[];
+  school: AdmSchoolHeaderInfo;
+}
+
+export function fetchAdmExecutionBootstrap(params?: {
+  academicYearId?: string;
+  classId?: number | null;
+  subjectId?: number | null;
+}): Promise<AdmExecutionBootstrapResponse> {
+  const qs = new URLSearchParams();
+  if (params?.academicYearId) qs.set("academicYearId", params.academicYearId);
+  if (params?.classId && params.classId > 0) qs.set("classId", String(params.classId));
+  if (params?.subjectId && params.subjectId > 0) qs.set("subjectId", String(params.subjectId));
+  const queryStr = qs.toString();
+  return apiFetch<AdmExecutionBootstrapResponse>(
+    `/api/adm/execution/bootstrap${queryStr ? `?${queryStr}` : ""}`,
+  );
+}
+
+export function createAdmSchedule(payload: {
+  academicYearId?: string;
+  classId: number;
+  subjectId: number;
+  dayOfWeek: number;
+  periodStart: number;
+  periodEnd: number;
+  startTime?: string | null;
+  endTime?: string | null;
+  roomName?: string | null;
+  notes?: string | null;
+}): Promise<{ success: boolean; id: string; data: AdmTeachingSchedule | null }> {
+  return apiPost("/api/adm/schedules", payload);
+}
+
+export function updateAdmSchedule(
+  id: string,
+  payload: Partial<{
+    classId: number;
+    subjectId: number;
+    dayOfWeek: number;
+    periodStart: number;
+    periodEnd: number;
+    startTime: string | null;
+    endTime: string | null;
+    roomName: string | null;
+    notes: string | null;
+  }>,
+): Promise<{ success: boolean; data: AdmTeachingSchedule | null }> {
+  return apiPut(`/api/adm/schedules/${encodeURIComponent(id)}`, payload);
+}
+
+export function deleteAdmSchedule(id: string): Promise<{ success: boolean }> {
+  return apiDelete(`/api/adm/schedules/${encodeURIComponent(id)}`);
+}
+
+export function createAdmJournal(payload: {
+  academicYearId?: string;
+  scheduleId?: string | null;
+  classId: number;
+  subjectId: number;
+  cpAtpId?: string | null;
+  promesId?: string | null;
+  teachDate: string;
+  periodRange?: string;
+  topicTitle: string;
+  learningMethod?: string | null;
+  activitiesSummary?: string | null;
+  obstacles?: string | null;
+  teacherReflection?: string | null;
+  followUp?: string | null;
+  isCompleted?: boolean;
+  markAllPresent?: boolean;
+  attendances?: Array<{ studentId: string; status: AdmAttendanceStatus; notes?: string | null }>;
+}): Promise<{ success: boolean; id: string; data: AdmTeachingJournal | null }> {
+  return apiPost("/api/adm/journals", payload);
+}
+
+export function updateAdmJournal(
+  id: string,
+  payload: Partial<{
+    scheduleId: string | null;
+    classId: number;
+    subjectId: number;
+    cpAtpId: string | null;
+    promesId: string | null;
+    teachDate: string;
+    periodRange: string;
+    topicTitle: string;
+    learningMethod: string | null;
+    activitiesSummary: string | null;
+    obstacles: string | null;
+    teacherReflection: string | null;
+    followUp: string | null;
+    isCompleted: boolean;
+  }>,
+): Promise<{ success: boolean; data: AdmTeachingJournal | null }> {
+  return apiPut(`/api/adm/journals/${encodeURIComponent(id)}`, payload);
+}
+
+export function deleteAdmJournal(id: string): Promise<{ success: boolean }> {
+  return apiDelete(`/api/adm/journals/${encodeURIComponent(id)}`);
+}
+
+export function fetchAdmJournalAttendance(
+  journalId: string,
+): Promise<AdmAttendanceDetailResponse> {
+  return apiFetch<AdmAttendanceDetailResponse>(
+    `/api/adm/journals/${encodeURIComponent(journalId)}/attendance`,
+  );
+}
+
+export function saveAdmJournalAttendance(
+  journalId: string,
+  entries: Array<{ studentId: string; status: AdmAttendanceStatus; notes?: string | null }>,
+): Promise<{
+  success: boolean;
+  journalId: string;
+  counts: { h_count: number; s_count: number; i_count: number; a_count: number; recorded_count: number };
+}> {
+  return apiPut(`/api/adm/journals/${encodeURIComponent(journalId)}/attendance`, { entries });
+}
+
+export function fetchAdmAttendanceSummary(params?: {
+  academicYearId?: string;
+  classId?: number | null;
+  subjectId?: number | null;
+  startDate?: string | null;
+  endDate?: string | null;
+}): Promise<AdmAttendanceSummaryResponse> {
+  const qs = new URLSearchParams();
+  if (params?.academicYearId) qs.set("academicYearId", params.academicYearId);
+  if (params?.classId && params.classId > 0) qs.set("classId", String(params.classId));
+  if (params?.subjectId && params.subjectId > 0) qs.set("subjectId", String(params.subjectId));
+  if (params?.startDate) qs.set("startDate", params.startDate);
+  if (params?.endDate) qs.set("endDate", params.endDate);
+  const queryStr = qs.toString();
+  return apiFetch<AdmAttendanceSummaryResponse>(
+    `/api/adm/attendance/summary${queryStr ? `?${queryStr}` : ""}`,
+  );
+}
+
+export function exportAdmExecutionXlsx(
+  docType: "schedules" | "journals" | "attendance-summary",
+  academicYearId: string,
+  filters?: { classId?: number | null; subjectId?: number | null; startDate?: string | null; endDate?: string | null },
+): Promise<FileDownloadResult> {
+  const qs = new URLSearchParams();
+  if (filters?.classId && filters.classId > 0) qs.set("classId", String(filters.classId));
+  if (filters?.subjectId && filters.subjectId > 0) qs.set("subjectId", String(filters.subjectId));
+  if (filters?.startDate) qs.set("startDate", filters.startDate);
+  if (filters?.endDate) qs.set("endDate", filters.endDate);
+  const queryStr = qs.toString();
+  return apiFetch<FileDownloadResult>(
+    `/api/adm/export/${docType}/${encodeURIComponent(academicYearId)}/xlsx${queryStr ? `?${queryStr}` : ""}`,
+  );
+}
+
+// ── Administrasi Guru Phase 4 (Penilaian, Buku Nilai & Remedial) ──────
+
+export type AdmBlueprintAssessmentType = "diagnostik" | "formatif" | "sumatif";
+export type AdmCognitiveLevel = "C1" | "C2" | "C3" | "C4" | "C5" | "C6";
+export type AdmGradeCategory = "diagnostik" | "formatif" | "sumatif_lm" | "sumatif_as";
+export type AdmGradeSourceType = "manual" | "exam" | "assignment";
+export type AdmProgramType = "remedial" | "enrichment";
+export type AdmCompletionStatus = "pending" | "in_progress" | "completed";
+
+export interface AdmBlueprintItem {
+  id: string;
+  blueprint_id: string;
+  cp_atp_id?: string | null;
+  tp_code?: string | null;
+  cp_material_topic?: string | null;
+  question_id?: string | null;
+  linked_question_content?: string | null;
+  question_number: number;
+  material_topic: string;
+  indicator: string;
+  cognitive_level: AdmCognitiveLevel;
+  question_type: string;
+  difficulty: "easy" | "medium" | "hard";
+  score_weight: number;
+}
+
+export interface AdmAssessmentBlueprint {
+  id: string;
+  academic_year_id: string;
+  teacher_id: string;
+  teacher_name?: string | null;
+  teacher_nip?: string | null;
+  subject_id: number;
+  subject_name?: string | null;
+  subject_code?: string | null;
+  class_id?: number | null;
+  class_name?: string | null;
+  grade_level?: string | null;
+  question_bank_id?: string | null;
+  question_bank_title?: string | null;
+  title: string;
+  assessment_type: AdmBlueprintAssessmentType;
+  notes?: string | null;
+  status: string;
+  items: AdmBlueprintItem[];
+  item_count: number;
+  total_weight: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface AdmGradeAssessment {
+  id: string;
+  academic_year_id: string;
+  teacher_id: string;
+  teacher_name?: string | null;
+  teacher_nip?: string | null;
+  subject_id: number;
+  subject_name?: string | null;
+  subject_code?: string | null;
+  class_id: number;
+  class_name?: string | null;
+  grade_level?: string | null;
+  kktp_id?: string | null;
+  kktp_title?: string | null;
+  cp_atp_id?: string | null;
+  tp_code?: string | null;
+  material_topic?: string | null;
+  title: string;
+  category: AdmGradeCategory;
+  source_type: AdmGradeSourceType;
+  source_id?: string | null;
+  assessment_date?: string | null;
+  max_score: number;
+  weight: number;
+  kktp_threshold: number;
+  status: string;
+  graded_count: number;
+  passed_count: number;
+  failed_count: number;
+  avg_score: number;
+  pass_rate: number;
+  class_student_count: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface AdmStudentGradeRow {
+  student_id: string;
+  full_name: string;
+  username: string;
+  student_number?: string | null;
+  class_id: number;
+  class_name?: string | null;
+  grade_level?: string | null;
+  score: number | null;
+  is_passed: boolean | null;
+  notes: string;
+  is_saved: boolean;
+}
+
+export interface AdmGradeScoresResponse {
+  assessment: AdmGradeAssessment;
+  hasSavedGrades: boolean;
+  students: AdmStudentGradeRow[];
+}
+
+export interface AdmGradeLedgerResponse {
+  assessments: AdmGradeAssessment[];
+  students: Array<{
+    student_id: string;
+    full_name: string;
+    username: string;
+    student_number?: string | null;
+    class_id: number;
+    class_name?: string | null;
+    grade_level?: string | null;
+    gradesByAssessment: Record<string, { score: number; is_passed: boolean }>;
+    average_score: number | null;
+    assessment_count: number;
+    passed_count: number;
+    failed_count: number;
+    overall_passed: boolean;
+  }>;
+  overall: {
+    totalStudents: number;
+    totalAssessments: number;
+    classAverage: number;
+    passedStudents: number;
+    remedialStudents: number;
+  };
+}
+
+export interface AdmRemedialEnrichmentRow {
+  id: string;
+  academic_year_id: string;
+  teacher_id: string;
+  teacher_name?: string | null;
+  grade_assessment_id: string;
+  assessment_title?: string | null;
+  class_id: number;
+  class_name?: string | null;
+  grade_level?: string | null;
+  subject_id: number;
+  subject_name?: string | null;
+  subject_code?: string | null;
+  student_id: string;
+  student_name: string;
+  student_username?: string | null;
+  student_number?: string | null;
+  program_type: AdmProgramType;
+  initial_score: number;
+  target_kktp: number;
+  max_score: number;
+  activity_plan: string;
+  scheduled_date?: string | null;
+  final_score?: number | null;
+  completion_status: AdmCompletionStatus;
+  notes?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface AdmAssessmentBootstrapResponse {
+  caller: AdmOverviewResponse["caller"];
+  academicYears: AdmAcademicYear[];
+  activeYear: AdmAcademicYear | null;
+  subjects: AdmOverviewResponse["subjects"];
+  classes: AdmOverviewResponse["classes"];
+  assignedSubjectIds: number[];
+  assignedClassIds: number[];
+  questionBanks: Array<{
+    id: string;
+    subject_id: number;
+    subject_name?: string;
+    subject_code?: string;
+    teacher_id: string;
+    teacher_name?: string;
+    title: string;
+    total_questions: number;
+  }>;
+  exams: Array<{
+    id: string;
+    title: string;
+    bank_id: string;
+    created_by: string;
+    status: string;
+    subject_id?: number | null;
+    subject_name?: string;
+  }>;
+  assignments: Array<{
+    id: string;
+    title: string;
+    teacher_id: string;
+    class_id?: number | null;
+    subject_id?: number | null;
+    subject_name?: string;
+    max_score: number;
+  }>;
+  cpAtp: AdmCpAtp[];
+  kktp: AdmKktp[];
+  blueprints: AdmAssessmentBlueprint[];
+  gradeAssessments: AdmGradeAssessment[];
+  remedialPrograms: AdmRemedialEnrichmentRow[];
+  school: AdmSchoolHeaderInfo;
+}
+
+export function fetchAdmAssessmentBootstrap(params?: {
+  academicYearId?: string;
+  classId?: number | null;
+  subjectId?: number | null;
+}): Promise<AdmAssessmentBootstrapResponse> {
+  const qs = new URLSearchParams();
+  if (params?.academicYearId) qs.set("academicYearId", params.academicYearId);
+  if (params?.classId && params.classId > 0) qs.set("classId", String(params.classId));
+  if (params?.subjectId && params.subjectId > 0) qs.set("subjectId", String(params.subjectId));
+  const queryStr = qs.toString();
+  return apiFetch<AdmAssessmentBootstrapResponse>(
+    `/api/adm/assessment/bootstrap${queryStr ? `?${queryStr}` : ""}`,
+  );
+}
+
+export function createAdmBlueprint(payload: {
+  academicYearId?: string;
+  subjectId: number;
+  classId?: number | null;
+  questionBankId?: string | null;
+  title: string;
+  assessmentType: AdmBlueprintAssessmentType;
+  notes?: string | null;
+}): Promise<{ success: boolean; id: string; data: AdmAssessmentBlueprint | null }> {
+  return apiPost("/api/adm/blueprints", payload);
+}
+
+export function updateAdmBlueprint(
+  id: string,
+  payload: Partial<{
+    subjectId: number;
+    classId: number | null;
+    questionBankId: string | null;
+    title: string;
+    assessmentType: AdmBlueprintAssessmentType;
+    notes: string | null;
+  }>,
+): Promise<{ success: boolean; data: AdmAssessmentBlueprint | null }> {
+  return apiPut(`/api/adm/blueprints/${encodeURIComponent(id)}`, payload);
+}
+
+export function deleteAdmBlueprint(id: string): Promise<{ success: boolean }> {
+  return apiDelete(`/api/adm/blueprints/${encodeURIComponent(id)}`);
+}
+
+export function addAdmBlueprintItem(
+  blueprintId: string,
+  payload: {
+    cpAtpId?: string | null;
+    questionId?: string | null;
+    questionNumber?: number;
+    materialTopic?: string;
+    indicator: string;
+    cognitiveLevel: AdmCognitiveLevel;
+    questionType?: string;
+    difficulty: "easy" | "medium" | "hard";
+    scoreWeight?: number;
+  },
+): Promise<{ success: boolean; itemId: string; data: AdmAssessmentBlueprint | null }> {
+  return apiPost(`/api/adm/blueprints/${encodeURIComponent(blueprintId)}/items`, payload);
+}
+
+export function updateAdmBlueprintItem(
+  blueprintId: string,
+  itemId: string,
+  payload: Partial<{
+    cpAtpId: string | null;
+    questionId: string | null;
+    questionNumber: number;
+    materialTopic: string;
+    indicator: string;
+    cognitiveLevel: AdmCognitiveLevel;
+    questionType: string;
+    difficulty: "easy" | "medium" | "hard";
+    scoreWeight: number;
+  }>,
+): Promise<{ success: boolean; data: AdmAssessmentBlueprint | null }> {
+  return apiPut(
+    `/api/adm/blueprints/${encodeURIComponent(blueprintId)}/items/${encodeURIComponent(itemId)}`,
+    payload,
+  );
+}
+
+export function deleteAdmBlueprintItem(
+  blueprintId: string,
+  itemId: string,
+): Promise<{ success: boolean; data: AdmAssessmentBlueprint | null }> {
+  return apiDelete(
+    `/api/adm/blueprints/${encodeURIComponent(blueprintId)}/items/${encodeURIComponent(itemId)}`,
+  );
+}
+
+export function importAdmBlueprintFromBank(
+  blueprintId: string,
+  payload?: { questionBankId?: string; cpAtpId?: string | null; defaultCognitiveLevel?: AdmCognitiveLevel },
+): Promise<{ success: boolean; importedCount: number; data: AdmAssessmentBlueprint | null }> {
+  return apiPost(
+    `/api/adm/blueprints/${encodeURIComponent(blueprintId)}/import-from-bank`,
+    payload ?? {},
+  );
+}
+
+export function createAdmGradeAssessment(payload: {
+  academicYearId?: string;
+  subjectId: number;
+  classId: number;
+  kktpId?: string | null;
+  cpAtpId?: string | null;
+  title: string;
+  category: AdmGradeCategory;
+  assessmentDate?: string | null;
+  maxScore?: number;
+  weight?: number;
+  kktpThreshold?: number;
+}): Promise<{ success: boolean; id: string; data: AdmGradeAssessment | null }> {
+  return apiPost("/api/adm/grades/assessments", payload);
+}
+
+export function updateAdmGradeAssessment(
+  id: string,
+  payload: Partial<{
+    subjectId: number;
+    classId: number;
+    kktpId: string | null;
+    cpAtpId: string | null;
+    title: string;
+    category: AdmGradeCategory;
+    assessmentDate: string | null;
+    maxScore: number;
+    weight: number;
+    kktpThreshold: number;
+  }>,
+): Promise<{ success: boolean; data: AdmGradeAssessment | null }> {
+  return apiPut(`/api/adm/grades/assessments/${encodeURIComponent(id)}`, payload);
+}
+
+export function deleteAdmGradeAssessment(id: string): Promise<{ success: boolean }> {
+  return apiDelete(`/api/adm/grades/assessments/${encodeURIComponent(id)}`);
+}
+
+export function fetchAdmGradeScores(
+  assessmentId: string,
+): Promise<AdmGradeScoresResponse> {
+  return apiFetch<AdmGradeScoresResponse>(
+    `/api/adm/grades/assessments/${encodeURIComponent(assessmentId)}/scores`,
+  );
+}
+
+export function saveAdmGradeScores(
+  assessmentId: string,
+  entries: Array<{ studentId: string; score: number; notes?: string | null }>,
+): Promise<{
+  success: boolean;
+  gradeAssessmentId: string;
+  savedCount: number;
+  passedCount: number;
+  failedCount: number;
+  assessment: AdmGradeAssessment | null;
+}> {
+  return apiPut(
+    `/api/adm/grades/assessments/${encodeURIComponent(assessmentId)}/scores`,
+    { entries },
+  );
+}
+
+export function syncAdmGradesFromCbt(payload: {
+  gradeAssessmentId?: string;
+  academicYearId?: string;
+  sourceType: "exam" | "assignment";
+  sourceId: string;
+  classId?: number;
+  subjectId?: number;
+  kktpId?: string | null;
+  kktpThreshold?: number;
+  category?: AdmGradeCategory;
+  title?: string;
+}): Promise<{
+  success: boolean;
+  gradeAssessmentId: string;
+  syncedCount: number;
+  skippedCount: number;
+  passedCount: number;
+  remedialCandidateCount: number;
+  assessment: AdmGradeAssessment | null;
+}> {
+  return apiPost("/api/adm/grades/sync-cbt", payload);
+}
+
+export function fetchAdmGradeLedger(params?: {
+  academicYearId?: string;
+  classId?: number | null;
+  subjectId?: number | null;
+}): Promise<AdmGradeLedgerResponse> {
+  const qs = new URLSearchParams();
+  if (params?.academicYearId) qs.set("academicYearId", params.academicYearId);
+  if (params?.classId && params.classId > 0) qs.set("classId", String(params.classId));
+  if (params?.subjectId && params.subjectId > 0) qs.set("subjectId", String(params.subjectId));
+  const queryStr = qs.toString();
+  return apiFetch<AdmGradeLedgerResponse>(
+    `/api/adm/grades/ledger${queryStr ? `?${queryStr}` : ""}`,
+  );
+}
+
+export function autoGenerateAdmRemedial(payload: {
+  gradeAssessmentId: string;
+  remedialActivityPlan?: string;
+  enrichmentActivityPlan?: string;
+  scheduledDate?: string | null;
+  includeEnrichment?: boolean;
+  overwriteExisting?: boolean;
+}): Promise<{
+  success: boolean;
+  created: number;
+  updated: number;
+  remedialCount: number;
+  enrichmentCount: number;
+  rows: AdmRemedialEnrichmentRow[];
+}> {
+  return apiPost("/api/adm/remedial-enrichment/auto-generate", payload);
+}
+
+export function updateAdmRemedialProgram(
+  id: string,
+  payload: Partial<{
+    programType: AdmProgramType;
+    activityPlan: string;
+    scheduledDate: string | null;
+    finalScore: number | null;
+    completionStatus: AdmCompletionStatus;
+    notes: string | null;
+  }>,
+): Promise<{ success: boolean; data: AdmRemedialEnrichmentRow | null }> {
+  return apiPut(`/api/adm/remedial-enrichment/${encodeURIComponent(id)}`, payload);
+}
+
+export function deleteAdmRemedialProgram(id: string): Promise<{ success: boolean }> {
+  return apiDelete(`/api/adm/remedial-enrichment/${encodeURIComponent(id)}`);
+}
+
+export function exportAdmAssessmentXlsx(
+  docType: "blueprint" | "grade-assessment" | "grade-ledger" | "remedial-summary",
+  idOrYearId: string,
+  filters?: { classId?: number | null; subjectId?: number | null; gradeAssessmentId?: string | null; programType?: string | null },
+): Promise<FileDownloadResult> {
+  const qs = new URLSearchParams();
+  if (filters?.classId && filters.classId > 0) qs.set("classId", String(filters.classId));
+  if (filters?.subjectId && filters.subjectId > 0) qs.set("subjectId", String(filters.subjectId));
+  if (filters?.gradeAssessmentId) qs.set("gradeAssessmentId", filters.gradeAssessmentId);
+  if (filters?.programType) qs.set("programType", filters.programType);
+  const queryStr = qs.toString();
+  return apiFetch<FileDownloadResult>(
+    `/api/adm/export/${docType}/${encodeURIComponent(idOrYearId)}/xlsx${queryStr ? `?${queryStr}` : ""}`,
+  );
+}
+
+
+
 

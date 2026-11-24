@@ -20,8 +20,26 @@ import { getDbType, isMySqlLike, probeActiveDatabase } from "../db.js";
 import { getUploadDir } from "./storage.js";
 import { CORE_TABLES, PG_DDL, MYSQL_DDL, COLUMN_MIGRATIONS, UPDATE_TABLES, SETTINGS_SEED_KEYS, SCHEMA_GROUPS, TABLE_GROUP, SEED_SUMMARY, type DdlStatement } from "./schema.js";
 
+import { seedAdmPhase1Defaults } from "./adm-guru/schema-init.js";
+
 /** Drop order must respect foreign keys (children before parents). */
 const DROP_ORDER: string[] = [
+  "adm_remedial_enrichment",
+  "adm_student_grades",
+  "adm_grade_assessments",
+  "adm_blueprint_items",
+  "adm_assessment_blueprints",
+  "adm_student_attendances",
+  "adm_teaching_journals",
+  "adm_teaching_schedules",
+  "adm_lesson_plans",
+  "adm_promes",
+  "adm_prota",
+  "adm_kktp",
+  "adm_cp_atp",
+  "adm_effective_weeks",
+  "adm_calendar_events",
+  "adm_academic_years",
   "exam_results",
   "student_answers",
   "student_sessions",
@@ -216,6 +234,35 @@ CREATE TRIGGER trg_student_answers_updated_at
       await query(`INSERT INTO settings (key, value) VALUES ($1, $2)`, [s.key, s.value]);
       log(`  · settings "${s.key}": disemai (nilai default).`);
     }
+  }
+
+  // 5. Administrasi Guru Phase 1 & 2 indexes (PG) + default Tahun Ajaran/Kaldik.
+  if (!mysqlLike && (await checkTable("adm_academic_years"))) {
+    await query(`CREATE INDEX IF NOT EXISTS idx_adm_ay_active ON adm_academic_years (is_active)`).catch(() => undefined);
+    await query(`CREATE INDEX IF NOT EXISTS idx_adm_ce_year_date ON adm_calendar_events (academic_year_id, start_date)`).catch(() => undefined);
+    await query(`CREATE INDEX IF NOT EXISTS idx_adm_ew_teacher ON adm_effective_weeks (teacher_id, academic_year_id)`).catch(() => undefined);
+    await query(`CREATE INDEX IF NOT EXISTS idx_adm_cpatp_teacher ON adm_cp_atp (teacher_id, academic_year_id, subject_id)`).catch(() => undefined);
+    await query(`CREATE INDEX IF NOT EXISTS idx_adm_kktp_teacher ON adm_kktp (teacher_id, academic_year_id)`).catch(() => undefined);
+    await query(`CREATE INDEX IF NOT EXISTS idx_adm_prota_teacher ON adm_prota (teacher_id, academic_year_id)`).catch(() => undefined);
+    await query(`CREATE INDEX IF NOT EXISTS idx_adm_promes_teacher ON adm_promes (teacher_id, academic_year_id)`).catch(() => undefined);
+    await query(`CREATE INDEX IF NOT EXISTS idx_adm_lp_teacher ON adm_lesson_plans (teacher_id, academic_year_id)`).catch(() => undefined);
+    await query(`CREATE INDEX IF NOT EXISTS idx_adm_sched_teacher ON adm_teaching_schedules (teacher_id, academic_year_id, day_of_week)`).catch(() => undefined);
+    await query(`CREATE INDEX IF NOT EXISTS idx_adm_sched_class ON adm_teaching_schedules (academic_year_id, class_id, day_of_week)`).catch(() => undefined);
+    await query(`CREATE INDEX IF NOT EXISTS idx_adm_jrn_teacher ON adm_teaching_journals (teacher_id, academic_year_id, teach_date)`).catch(() => undefined);
+    await query(`CREATE INDEX IF NOT EXISTS idx_adm_jrn_class ON adm_teaching_journals (class_id, teach_date)`).catch(() => undefined);
+    await query(`CREATE INDEX IF NOT EXISTS idx_adm_att_journal ON adm_student_attendances (journal_id)`).catch(() => undefined);
+    await query(`CREATE INDEX IF NOT EXISTS idx_adm_att_student ON adm_student_attendances (student_id)`).catch(() => undefined);
+    await query(`CREATE INDEX IF NOT EXISTS idx_adm_bp_teacher ON adm_assessment_blueprints (teacher_id, academic_year_id, subject_id)`).catch(() => undefined);
+    await query(`CREATE INDEX IF NOT EXISTS idx_adm_bpi_bp ON adm_blueprint_items (blueprint_id, question_number)`).catch(() => undefined);
+    await query(`CREATE INDEX IF NOT EXISTS idx_adm_ga_teacher ON adm_grade_assessments (teacher_id, academic_year_id, class_id, subject_id)`).catch(() => undefined);
+    await query(`CREATE INDEX IF NOT EXISTS idx_adm_sg_ga ON adm_student_grades (grade_assessment_id)`).catch(() => undefined);
+    await query(`CREATE INDEX IF NOT EXISTS idx_adm_sg_student ON adm_student_grades (student_id)`).catch(() => undefined);
+    await query(`CREATE INDEX IF NOT EXISTS idx_adm_re_ga ON adm_remedial_enrichment (grade_assessment_id)`).catch(() => undefined);
+    await query(`CREATE INDEX IF NOT EXISTS idx_adm_re_teacher ON adm_remedial_enrichment (teacher_id, academic_year_id, program_type)`).catch(() => undefined);
+    log("  · Index Administrasi Guru (Phase 1, 2, 3 & 4): dipastikan ada.");
+  }
+  if (await checkTable("adm_academic_years")) {
+    await seedAdmPhase1Defaults(log);
   }
 }
 
@@ -524,6 +571,9 @@ async function runSeeds(log: LogFn): Promise<void> {
     );
     log("  · Sequence classes_id_seq & subjects_id_seq disinkronkan.");
   }
+
+  // ── 7.12 Administrasi Guru Phase 1 default Tahun Ajaran & Kaldik ────
+  await seedAdmPhase1Defaults(log);
 }
 // GET /api/setup/status - report whether the schema is installed
 addRoute("GET", /^\/api\/setup\/status$/, async (_req, res) => {

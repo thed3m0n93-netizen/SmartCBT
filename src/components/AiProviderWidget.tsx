@@ -22,7 +22,7 @@ import {
   getEffectiveProviderModels,
   getInstantAiProviders,
   getPlaceholderAiProviders,
-  isNvidiaProvider,
+  supportsLiveModelFetch,
   subscribeAiModelsFetched,
   type AiProviderInfo,
 } from "../lib/ai-providers";
@@ -47,6 +47,8 @@ function shortProviderTitle(info: AiProviderInfo): string {
       return "NVIDIA · gpt-oss-20b";
     case "nvidia-gemma":
       return "NVIDIA · Gemma";
+    case "freellmapi":
+      return "freeLLMAPI";
     case "ollama":
       return "Ollama";
     case "openai":
@@ -446,11 +448,15 @@ export function AiProviderHeaderSwitcher() {
   const [open, setOpen] = useState(false);
   const [editingPlaceholder, setEditingPlaceholder] = useState<AiProviderInfo | null>(null);
   const [modelFilter, setModelFilter] = useState("");
+  const [inlineApiKey, setInlineApiKey] = useState("");
+  const [showKeyForm, setShowKeyForm] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const instantProviders = getInstantAiProviders();
   const placeholderProviders = getPlaceholderAiProviders();
-  const isNvidia = isNvidiaProvider(descriptor.id);
+  const canFetchModels = supportsLiveModelFetch(descriptor.id);
+  const canEditInstantKey =
+    descriptor.category === "instant" && descriptor.id !== "gemini" && descriptor.requiresApiKey;
   const filteredModels = useMemo(() => {
     const q = modelFilter.trim().toLowerCase();
     if (!q) return availableModels;
@@ -489,8 +495,10 @@ export function AiProviderHeaderSwitcher() {
   const handleSelectInstant = async (p: AiProviderInfo) => {
     setEditingPlaceholder(null);
     setModelFilter("");
+    setInlineApiKey("");
+    setShowKeyForm(false);
     const ok = await switchProvider({ provider: p.id, model: p.defaultModel });
-    if (ok && p.models.length <= 1 && !isNvidiaProvider(p.id)) {
+    if (ok && p.models.length <= 1 && !supportsLiveModelFetch(p.id)) {
       setOpen(false);
     }
   };
@@ -635,37 +643,102 @@ export function AiProviderHeaderSwitcher() {
                 </div>
               )}
 
-              {/* Active model selector (always shown for NVIDIA NIM so Fetch Model is always 1-click away) */}
-              {(availableModels.length > 1 || isNvidia) && (
+              {/* Active model selector (always shown for live-fetch providers like NVIDIA NIM & freeLLMAPI) */}
+              {(availableModels.length > 1 || canFetchModels) && (
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between gap-2">
                     <label className="block text-[11px] font-semibold" style={{ color: C.base.textMuted }}>
                       {t("Model Aktif")}
                       {availableModels.length > 1 ? ` (${availableModels.length})` : ""}
                     </label>
-                    {isNvidia && (
-                      <button
-                        type="button"
-                        disabled={fetchingModels || saving}
-                        onClick={() => void fetchModels()}
-                        className="px-2 py-1 rounded-lg text-[11px] font-semibold inline-flex items-center gap-1 cbt-row-hover disabled:opacity-60"
-                        style={{
-                          background: C.base.surfaceMuted,
-                          border: `1px solid ${C.base.border}`,
-                          color: C.brand.dark,
-                        }}
-                      >
-                        <RefreshCw className={`w-3 h-3 ${fetchingModels ? "animate-spin" : ""}`} />
-                        <span>{fetchingModels ? t("Mengambil…") : t("Fetch Model")}</span>
-                      </button>
-                    )}
+                    <div className="flex items-center gap-1.5">
+                      {canEditInstantKey && (
+                        <button
+                          type="button"
+                          onClick={() => setShowKeyForm((v) => !v)}
+                          className="px-2 py-1 rounded-lg text-[11px] font-semibold inline-flex items-center gap-1 cbt-row-hover"
+                          style={{
+                            background: C.base.surfaceMuted,
+                            border: `1px solid ${C.base.border}`,
+                            color: config.isReady ? C.base.textBody : C.warn.dark,
+                          }}
+                        >
+                          <KeyRound className="w-3 h-3" />
+                          <span>{config.isReady ? t("Ubah Key") : t("Isi Key")}</span>
+                        </button>
+                      )}
+                      {canFetchModels && (
+                        <button
+                          type="button"
+                          disabled={fetchingModels || saving}
+                          onClick={() => void fetchModels()}
+                          className="px-2 py-1 rounded-lg text-[11px] font-semibold inline-flex items-center gap-1 cbt-row-hover disabled:opacity-60"
+                          style={{
+                            background: C.base.surfaceMuted,
+                            border: `1px solid ${C.base.border}`,
+                            color: C.brand.dark,
+                          }}
+                        >
+                          <RefreshCw className={`w-3 h-3 ${fetchingModels ? "animate-spin" : ""}`} />
+                          <span>{fetchingModels ? t("Mengambil…") : t("Fetch Model")}</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
+                  {(showKeyForm || (canEditInstantKey && !config.isReady)) && (
+                    <div
+                      className="p-2.5 rounded-xl space-y-1.5"
+                      style={{
+                        background: C.base.surfaceSoft,
+                        border: `1px solid ${C.base.borderLight}`,
+                      }}
+                    >
+                      <div className="text-[11px]" style={{ color: C.base.textMuted }}>
+                        {descriptor.apiKeyEnv
+                          ? `Set ${descriptor.apiKeyEnv} di env / Compose atau simpan API key untuk ${shortProviderTitle(descriptor)}:`
+                          : `Simpan API key untuk ${shortProviderTitle(descriptor)}:`}
+                      </div>
+                      <div className="flex gap-1.5">
+                        <input
+                          type="password"
+                          value={inlineApiKey}
+                          onChange={(e) => setInlineApiKey(e.target.value)}
+                          placeholder={config.hasCustomApiKey ? t("Isi key baru untuk mengganti...") : t("Masukkan API key...")}
+                          className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg text-base sm:text-xs outline-none"
+                          style={{
+                            background: C.base.surface,
+                            border: `1px solid ${C.base.border}`,
+                            color: C.base.text,
+                          }}
+                        />
+                        <button
+                          type="button"
+                          disabled={saving || !inlineApiKey.trim()}
+                          onClick={async () => {
+                            const ok = await switchProvider({
+                              provider: descriptor.id,
+                              model: config.model,
+                              apiKey: inlineApiKey.trim(),
+                            });
+                            if (ok) {
+                              setInlineApiKey("");
+                              setShowKeyForm(false);
+                            }
+                          }}
+                          className="px-3 py-1.5 rounded-lg text-xs font-semibold shrink-0 disabled:opacity-50"
+                          style={{ background: C.brand.main, color: "#FFFFFF" }}
+                        >
+                          {t("Simpan Key")}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                   {availableModels.length > 12 && (
                     <input
                       type="text"
                       value={modelFilter}
                       onChange={(e) => setModelFilter(e.target.value)}
-                      placeholder={t("Cari model NVIDIA NIM...")}
+                      placeholder={t("Cari model...")}
                       className="w-full px-2.5 py-1.5 rounded-lg text-base sm:text-xs outline-none"
                       style={{
                         background: C.base.surface,

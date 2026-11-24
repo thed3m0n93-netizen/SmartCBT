@@ -1,3 +1,129 @@
+# Changelog
+
+Format pencatatan mengikuti standar [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) untuk pengembangan bertahap modul **Administrasi Guru (Kurikulum Merdeka)**, diikuti oleh arsip riwayat rilis SmartCBT sebelumnya.
+
+## [Unreleased] — Modul Administrasi Guru (Kurikulum Merdeka)
+
+### [0.4.0 - Phase 4: Penilaian & Evaluasi (Kisi-Kisi, Buku Nilai & Remedial/Pengayaan)] — 2026-11-24
+#### Added
+- **Skema Database Phase 4 & Dukungan Update Database (`/setup`):**
+  - `src/lib/server/schema.ts`: Penambahan 5 tabel baru (`adm_assessment_blueprints`, `adm_blueprint_items`, `adm_grade_assessments`, `adm_student_grades`, `adm_remedial_enrichment`) lengkap dengan constraint & 7 indeks pada `CORE_TABLES`, `SCHEMA_GROUPS` (`adm_guru`), `UPDATE_TABLES`, `PG_DDL`, dan `MYSQL_DDL` agar siap diperbarui melalui tombol **Update Database** di `/setup`.
+  - `src/lib/server/adm-guru/schema-init.ts`: Helper `ensureAdmPhase4Schema()` (*self-heal* idempoten untuk PostgreSQL & MySQL yang memanggil `ensureAdmPhase3Schema()`).
+- **Backend API Penilaian & Evaluasi (`src/lib/server/adm-guru/assessment.ts`):**
+  - `GET /api/adm/assessment/bootstrap`: Muat terpadu Tahun Ajaran, kelas, mapel, bank soal, daftar ujian CBT, tugas, CP/ATP, KKTP, `blueprints`, `gradeAssessments`, dan `remedialPrograms`.
+  - CRUD `GET/POST/PUT/DELETE /api/adm/blueprints` + butir kisi-kisi (`/items`, `/items/:itemId`) serta `POST /api/adm/blueprints/:id/import-from-bank` untuk menarik butir soal langsung dari `question_banks` & `questions` (pembersihan HTML, pemetaan kesulitan ke level kognitif `C2`/`C3`/`C4`, serta bobot soal).
+  - CRUD `GET/POST/PUT/DELETE /api/adm/grades/assessments` (otomatis memperbarui status `is_passed` siswa bila ambang `kktp_threshold` diubah) & `GET/PUT /api/adm/grades/assessments/:id/scores` (muat roster siswa aktif kelas & simpan nilai massal).
+  - `POST /api/adm/grades/sync-cbt`: Sinkronisasi otomatis nilai siswa dari Ujian CBT (`exam_results` via `student_sessions` yang diskalakan terhadap total bobot `questions.score_weight`) maupun Tugas (`assignment_submissions` terhadap `assignments.max_score`), lalu menghitung ketuntasan terhadap KKTP.
+  - `GET /api/adm/grades/ledger`: Leger Nilai Multi-Asesmen per kelas/mapel lengkap dengan rata-rata berbobot, persentase ketuntasan, dan ringkasan siswa remedial.
+  - CRUD `GET/POST/PUT/DELETE /api/adm/remedial-enrichment` & `POST /api/adm/remedial-enrichment/auto-generate` (otomatis mengelompokkan siswa `< KKTP` ke program **Remedial** dan `>= KKTP` ke **Pengayaan**).
+  - `GET /api/adm/export/(blueprint|grade-assessment|grade-ledger|remedial-summary)/:id/xlsx`: Ekspor workbook `.xlsx` untuk Kisi-Kisi, Daftar Nilai per Asesmen, Leger Nilai Kelas, dan Rekap Remedial/Pengayaan.
+- **Frontend UI & Navigasi (`/teacher/adm/assessment`):**
+  - `src/pages/teacher/adm/AdmAssessmentPage.tsx`: Halaman terpadu **Penilaian, Buku Nilai & Remedial** dengan filter Tahun Ajaran/Kelas/Mapel, 4 KPI `StatCard`, tab **Kisi-Kisi & Bank Soal** (kelola butir indikator `C1`–`C6` + impor satu klik dari Bank Soal), tab **Buku Nilai & Sinkron CBT** (sub-tampilan *Komponen Penilaian* + *Leger Nilai Kelas*, modal input nilai per siswa dengan impor Excel/CSV, modal sinkronisasi Ujian/Tugas CBT), tab **Analisis Remedial & Pengayaan** (*Auto-Generate* dari asesmen & pembaruan nilai akhir pasca-remedial), ekspor `.xlsx`, serta pratinjau cetak PDF A4 (`AdmPrintPreviewModal`).
+
+#### Changed
+- `src/lib/server/index.ts`: Registrasi modul rute `./adm-guru/assessment.js`.
+- `src/lib/server/setup.ts` & `src/lib/server/backup.ts`: Penambahan 5 tabel Phase 4 pada `DROP_ORDER`, `DELETE_ORDER` (child-first), serta indeks PostgreSQL di `runUpdateMigrations()`.
+- `src/lib/mock-db.ts`: Dukungan lengkap mock in-memory untuk 5 tabel Phase 4, kueri sinkronisasi CBT (`exams`, `exam_results`, `assignments`, `assignment_submissions`), alias `student_id` pada roster siswa aktif kelas, `adm_kktp` & `adm_cp_atp` lookup, serta cascade delete tahun ajaran.
+- `src/lib/api.ts`, `src/components/Sidebar.tsx`, `src/app/routes.tsx`: Kontrak tipe & klien API Phase 4 serta navigasi sidebar `"Penilaian (Kisi-Kisi & Nilai)"` dan rute `/teacher/adm/assessment` untuk `admin` dan `teacher`.
+
+#### Verified
+- Pengujian integrasi menyeluruh endpoint Phase 4 (`MOCK_DB=true`): proteksi autentikasi `401`/`403`, isolasi kepemilikan lintas guru `403 NOT_OWNER`, pembacaan validator Waka Kurikulum, CRUD Kisi-Kisi + butir soal + impor dari Bank Soal, CRUD Buku Nilai + simpan skor batch + pembaruan ambang KKTP otomatis, sinkronisasi otomatis nilai Ujian CBT (`6.0/8.0` -> `75` tuntas) dan Tugas (`60/100` -> kandidat remedial), kalkulasi Leger Nilai berbobot, *auto-generate* Remedial (`< KKTP`) & Pengayaan (`>= KKTP`) + pembaruan skor akhir, validasi workbook `.xlsx` untuk ke-4 endpoint ekspor, serta kesiapan ke-5 tabel di `/api/setup/status` (`PHASE4_INTEGRATION_TESTS_OK`).
+- `npx tsc --noEmit`, `npm run build`, dan `npm run build:server` seluruhnya lulus tanpa error.
+
+### [0.3.0 - Phase 3: Pelaksanaan Pembelajaran Harian (Jadwal, Jurnal Mengajar & Presensi Siswa)] — 2026-11-24
+#### Added
+- **Skema Database Phase 3 & Dukungan Update Database (`/setup`):**
+  - `src/lib/server/schema.ts`: Penambahan 3 tabel baru (`adm_teaching_schedules`, `adm_teaching_journals`, `adm_student_attendances`) lengkap dengan constraint & 6 indeks pada `CORE_TABLES`, `SCHEMA_GROUPS` (`adm_guru`), `UPDATE_TABLES`, `PG_DDL`, dan `MYSQL_DDL` agar siap diperbarui melalui tombol **Update Database** di `/setup`.
+  - `src/lib/server/adm-guru/schema-init.ts`: Helper `ensureAdmPhase3Schema()` (*self-heal* idempoten untuk PostgreSQL & MySQL yang memanggil `ensureAdmPhase2Schema()`).
+- **Backend API Pelaksanaan Pembelajaran (`src/lib/server/adm-guru/execution.ts`):**
+  - `GET /api/adm/execution/bootstrap`: Muat terpadu Tahun Ajaran, kelas, mapel, `schedules`, `journals` (lengkap dengan hitung H/S/I/A & jumlah siswa aktif kelas), serta rujukan `cpAtp` & `promes`.
+  - CRUD `GET/POST/PUT/DELETE /api/adm/schedules`: Manajemen Jadwal Mengajar (Senin–Sabtu, jam ke-1..16) dengan deteksi otomatis bentrok jadwal guru (`409 SCHEDULE_CONFLICT_TEACHER`) maupun bentrok jadwal kelas (`409 SCHEDULE_CONFLICT_CLASS`).
+  - CRUD `GET/POST/PUT/DELETE /api/adm/journals`: Pencatatan Jurnal Mengajar Harian yang terintegrasi jadwal mengajar, topik dari Promes/CP-ATP, metode, kendala, refleksi, dan opsi auto-presensi `markAllPresent`.
+  - `GET/PUT /api/adm/journals/:id/attendance`: Muat otomatis roster siswa aktif kelas (`users` + `student_profiles`) dan simpan presensi massal `H/S/I/A` beserta catatan per siswa lintas dialek (tanpa `ON CONFLICT` khusus PG).
+  - `GET /api/adm/attendance/summary`: Agregasi rekap kehadiran per siswa/kelas/mapel/rentang tanggal lengkap dengan persentase hadir dan penanda `needs_attention` (`< 75%`).
+  - `GET /api/adm/export/(schedules|journals|attendance-summary)/:academicYearId/xlsx`: Ekspor `.xlsx` untuk Jadwal Mengajar, Jurnal Mengajar, dan Rekap Kehadiran Siswa.
+- **Frontend UI & Navigasi (`/teacher/adm/execution`):**
+  - `src/pages/teacher/adm/AdmExecutionPage.tsx`: Halaman terpadu **Pelaksanaan Pembelajaran Harian** dengan filter Tahun Ajaran/Kelas/Mapel, 4 KPI `StatCard`, tab **Jadwal Mengajar** (grid mingguan Senin–Sabtu + aksi cepat **"Isi Jurnal"**), tab **Jurnal & Presensi Siswa** (pemilih topik Promes/CP-ATP + Modal Presensi Satu Layar dengan tombol cepat **"Hadir Semua (H)"**, hitung H/S/I/A live, pencarian siswa), tab **Rekap Kehadiran Siswa** (filter rentang tanggal & sorotan `<75%`), ekspor `.xlsx`, serta pratinjau cetak PDF A4 (`AdmPrintPreviewModal`).
+
+#### Changed
+- `src/lib/server/index.ts`: Registrasi modul rute `./adm-guru/execution.js`.
+- `src/lib/server/setup.ts` & `src/lib/server/backup.ts`: Penambahan 3 tabel Phase 3 pada `DROP_ORDER`, `DELETE_ORDER` (child-first), serta indeks PostgreSQL di `runUpdateMigrations()`.
+- `src/lib/mock-db.ts`: Dukungan penuh mock in-memory untuk `adm_teaching_schedules`, `adm_teaching_journals`, `adm_student_attendances`, kueri roster siswa aktif kelas (`sp.class_id = $1`), cek duplikat kelas (`where class_name = $1 and grade_level = $2`), serta cascade delete tahun ajaran & jurnal.
+- `src/lib/api.ts`, `src/components/Sidebar.tsx`, `src/app/routes.tsx`: Kontrak tipe & klien API Phase 3 serta navigasi sidebar `"Pelaksanaan (Jurnal & Presensi)"` dan rute `/teacher/adm/execution` untuk `admin` dan `teacher`.
+
+#### Verified
+- Pengujian integrasi menyeluruh endpoint Phase 3 (`MOCK_DB=true`): proteksi autentikasi `401`/`403 STAFF_ONLY`, isolasi kepemilikan lintas guru `403 NOT_OWNER`, deteksi bentrok jadwal guru & kelas (`409 SCHEDULE_CONFLICT_TEACHER` & `SCHEDULE_CONFLICT_CLASS`), CRUD Jurnal dengan auto-presensi `markAllPresent`, muat roster & simpan presensi `H/S/I/A` + validasi status & siswa kelas (`400`), kalkulasi persentase rekap kehadiran & flag `<75%`, validasi workbook `.xlsx` untuk 3 dokumen Phase 3, serta kesiapan tabel di `/api/setup/status` (`PHASE3_INTEGRATION_TESTS_OK`).
+- `npx tsc --noEmit`, `npm run build`, dan `npm run build:server` (`server/dist/server.mjs`) seluruhnya lulus tanpa error.
+
+### [0.2.0 - Phase 2: Perencanaan Pembelajaran Inti (CP/ATP, KKTP, Prota, Promes & Modul Ajar/RPP)] — 2026-11-24
+#### Added
+- **Skema Database Phase 2 & Dukungan Update Database (`/setup`):**
+  - `src/lib/server/schema.ts`: Penambahan 5 tabel baru (`adm_cp_atp`, `adm_kktp`, `adm_prota`, `adm_promes`, `adm_lesson_plans`) lengkap dengan constraint & indeks ke `CORE_TABLES`, `SCHEMA_GROUPS` (`adm_guru`), `UPDATE_TABLES`, `PG_DDL`, dan `MYSQL_DDL` agar dapat diperbarui langsung melalui tombol **Update Database** di `/setup`.
+  - `src/lib/server/adm-guru/schema-init.ts`: Helper `ensureAdmPhase2Schema()` (*self-heal* idempoten untuk PostgreSQL & MySQL yang memanggil `ensureAdmPhase1Schema()`).
+- **Backend API Perencanaan Kurikulum (`src/lib/server/adm-guru/planning.ts`):**
+  - `GET /api/adm/planning/bootstrap`: Muat terpadu Tahun Ajaran, mapel, kelas, `adm_effective_weeks`, `learning_modules`, profil sekolah, serta seluruh dokumen Phase 2 (terfilter kepemilikan guru atau lintas guru untuk validator/admin).
+  - CRUD `GET/POST/PUT/DELETE /api/adm/cp-atp` + `POST /api/adm/cp-atp/duplicate` untuk menyalin CP/TP/ATP antar semester/tahun ajaran/tingkat kelas.
+  - CRUD `GET/POST/PUT/DELETE /api/adm/kktp` mendukung 3 pendekatan Kurikulum Merdeka (`interval`, `description`, `rubric`).
+  - CRUD `GET/POST/PUT/DELETE /api/adm/prota` & `GET/POST/PUT/DELETE /api/adm/promes` dengan tautan `adm_effective_weeks` dan validasi opsional `strictBalance` (`400 JP_EXCEEDS_EFFECTIVE`) agar total JP Promes tidak melebihi anggaran JP Efektif.
+  - CRUD `GET/POST/PUT/DELETE /api/adm/lesson-plans` + `POST /api/adm/lesson-plans/:id/sync-lms` untuk menyusun Modul Ajar/RPP terstruktur, melampirkan berkas via `/api/storage/upload-contextual` (`kind: 'adm-lesson-plan'`), dan mempublikasikan/menyinkronkan HTML tersanitasi (`sanitizeModuleHtml`) ke `learning_modules` & `learning_module_classes`.
+  - `GET /api/adm/export/(cp-atp|kktp|prota|promes|lesson-plan)/:id/xlsx`: Ekspor `.xlsx` siap cetak untuk seluruh 5 jenis dokumen Phase 2.
+- **Frontend UI & Navigasi (`/teacher/adm/planning`):**
+  - `src/pages/teacher/adm/AdmPlanningPage.tsx`: Halaman **Perencanaan (CP/ATP, KKTP, Prota, Promes & Modul Ajar)** dengan filter Tahun Ajaran & Mata Pelajaran, 4 kartu KPI `StatCard`, tab CP/TP/ATP (+ duplikasi massal), tab KKTP (+ preset interval/rubrik 4 tahap), tab Prota ("Tarik dari CP/ATP"), tab Promes (matriks minggu efektif per bulan dengan penanda minggu non-efektif), tab Modul Ajar/RPP (dimensi P5, langkah Pendahuluan/Inti/Penutup, unggah lampiran, tombol Sinkron/Update LMS), serta ekspor `.xlsx` dan pratinjau cetak PDF A4 (`AdmPrintPreviewModal`).
+
+#### Changed
+- `src/lib/server/index.ts`: Registrasi modul rute `./adm-guru/planning.js`.
+- `src/lib/server/setup.ts` & `src/lib/server/backup.ts`: Penambahan 5 tabel Phase 2 pada `DROP_ORDER`, `DELETE_ORDER` (child-first), serta migrasi indeks PostgreSQL pada `runUpdateMigrations()`.
+- `src/lib/server/storage.ts`: Penambahan kind `"adm-lesson-plan"` pada `CONTEXTUAL_KINDS`.
+- `src/lib/mock-db.ts`: Dukungan lengkap mock in-memory untuk `adm_cp_atp`, `adm_kktp`, `adm_prota`, `adm_promes`, `adm_lesson_plans`, `learning_modules`/`learning_module_classes`, `uploads` (upload kontekstual & hapus), serta kueri terproyeksi `adm_effective_weeks`.
+- `src/lib/api.ts`, `src/components/Sidebar.tsx`, `src/app/routes.tsx`: Kontrak klien API & tipe Phase 2 (`uploadAdmLessonPlanAttachment`, CRUD + export + LMS sync) serta menu & rute `/teacher/adm/planning` untuk `admin` dan `teacher`.
+
+#### Fixed
+- `src/pages/teacher/adm/AdmPlanningPage.tsx`: Penyesuaian referensi token desain (`C.brand`, `C.ok`, `C.info`, `C.warn`, `C.danger`, `S.control`) dan properti komponen `StatCard` (`color`/`icon`) serta `Notice` (`type="ok"`).
+- `src/lib/server/adm-guru/planning.ts`: Pengetikan eksplisit `Set<string>` pada ekspor matriks Promes dan pemakaian 12 parameter terikat pada kueri `INSERT INTO learning_modules` agar selaras antara PostgreSQL, MySQL, dan `mock-db.ts`.
+
+#### Verified
+- Pengujian integrasi menyeluruh endpoint Phase 2 (`MOCK_DB=true`): proteksi autentikasi `401`/`403 STAFF_ONLY`, isolasi kepemilikan lintas guru `403 NOT_OWNER`, CRUD CP/ATP + duplikasi, KKTP (interval & rubrik), Prota, validasi anggaran JP Promes `strictBalance` (`400 JP_EXCEEDS_EFFECTIVE` pada `POST` dan `PUT`), unggah lampiran kontekstual + sinkronisasi Modul Ajar ke `learning_modules`, validasi workbook `.xlsx` untuk seluruh 5 jenis dokumen, serta kesiapan tabel pada `/api/setup/status` (`PHASE2_INTEGRATION_TESTS_OK`).
+- Pengujian pengamanan aplikasi: kueri SQL terparameterisasi di seluruh `planning.ts`, sanitasi HTML (`sanitizeModuleHtml` + `escapeHtml`) pada konten LMS hasil sinkronisasi Modul Ajar, serta kontrol akses staf & pemilik dokumen.
+- `npx tsc --noEmit`, `npm run build`, dan `npm run build:server` (`server/dist/server.mjs`) seluruhnya lulus tanpa error.
+
+### [0.1.0 - Phase 1: Fondasi Skema, Tahun Ajaran, Kaldik & Minggu Efektif] — 2026-11-23
+#### Added
+- **Skema Database Dual-Dialek & Update Database (`/setup`):**
+  - `src/lib/server/schema.ts`: Penambahan kolom `users.academic_role` (`'none' | 'guru' | 'waka_kurikulum' | 'kepala_sekolah'`) dan `users.nip` pada `PG_DDL`, `MYSQL_DDL`, dan `COLUMN_MIGRATIONS`; penambahan 3 tabel baru (`adm_academic_years`, `adm_calendar_events`, `adm_effective_weeks`) ke `CORE_TABLES`, `SCHEMA_GROUPS` (`adm_guru`), `UPDATE_TABLES`, `PG_DDL`, `MYSQL_DDL`, dan `SEED_SUMMARY`; serta 7 kunci `settings` baru (`school_city`, `active_academic_year`, `active_semester`, `principal_name`, `principal_nip`, `curriculum_vice_name`, `curriculum_vice_nip`).
+  - `src/lib/server/adm-guru/schema-init.ts`: Helper *self-heal* DDL + kolom + indeks + seed Tahun Ajaran & event Kalender Pendidikan default secara idempoten (PostgreSQL & MySQL).
+- **Backend API & Engine Perhitungan Administrasi Guru:**
+  - `src/lib/server/adm-guru/guards.ts`: Guard otorisasi staf/guru, validator (`admin`/`super_admin`/`waka_kurikulum`/`kepala_sekolah`), dan kepemilikan dokumen (`NOT_OWNER`).
+  - `src/lib/server/adm-guru/effective-weeks-calc.ts`: Kalkulator Minggu Efektif & JP Efektif otomatis berbasis kalender (mendukung 5 atau 6 hari kerja per minggu, pemotongan hari tidak efektif dari Kaldik, rincian per minggu, dan rekap per bulan).
+  - `src/lib/server/adm-guru/calendar.ts` & `src/lib/server/index.ts`: Endpoint `/api/adm/overview`, CRUD + aktivasi `/api/adm/academic-years`, CRUD `/api/adm/calendar`, pratinjau/simpan/hapus `/api/adm/effective-weeks`, serta ekspor `.xlsx` 2-sheet (`/api/adm/export/effective-weeks/:id/xlsx`).
+- **Frontend UI & Komponen Cetak:**
+  - `src/pages/teacher/adm/AdmOverviewPage.tsx`: Halaman **Overview & Kaldik** (`/teacher/adm/overview`) dengan pemilih & pengelola Tahun Ajaran/Semester, 4 kartu KPI, tab **Kalender Pendidikan** (filter, pencarian, CRUD Kaldik validator, ekspor PDF), dan tab **Kalkulator Minggu Efektif & JP** (simulasi langsung, rincian mingguan & bulanan, daftar perhitungan tersimpan, ekspor `.xlsx`/PDF, modal konfirmasi hapus in-app).
+  - `src/components/adm/AdmPrintPreviewModal.tsx`: Komponen pratinjau cetak PDF A4 (`#smartcbt-print-report` + `window.print()`) dengan kop surat sekolah otomatis dari `settings`, blok tanda tangan guru + Kepala Sekolah, dan dukungan slot QR pengesahan.
+
+#### Changed
+- `src/lib/server/setup.ts`, `src/lib/server/backup.ts`, `src/lib/server/settings.ts`, `src/lib/server/auth-session.ts`, `src/lib/server/auth-users.ts`: Integrasi tabel/kolom Phase 1 ke mekanisme inisialisasi, tombol **Update Database** di `/setup`, backup/restore (`DELETE_ORDER`), default `settings`, dan persistensi login/CRUD `academic_role` serta `nip`.
+- `src/lib/mock-db.ts`: Paritas penuh in-memory mock untuk kolom `academic_role`/`nip`, tabel `adm_*`, 7 kunci `settings` baru, dan kueri `subjects` terproyeksi (`SELECT ... WHERE id = $1`).
+- `src/lib/types.ts`, `src/app/AuthContext.tsx`, `src/lib/api.ts`: Tipe `AcademicRole`/`ACADEMIC_ROLES`, sinkronisasi atribut `academicRole`/`nip` dan `FALLBACK_SETTINGS`, serta kontrak klien API Administrasi Guru Phase 1.
+- `src/pages/admin/UsersPage.tsx`: Input & tampilan inline `Jabatan Akademik` (`guru`, `waka_kurikulum`, `kepala_sekolah`, `none`) serta `NIP / NUPTK` pada manajemen pengguna.
+- `src/pages/admin/SettingsPage.tsx`: Kartu **"Kurikulum & Pengesahan Dokumen"** untuk Tahun Ajaran/Semester aktif, Kota/Kabupaten surat, serta Nama & NIP Kepala Sekolah dan Waka Kurikulum.
+- `src/pages/DatabaseSetupPage.tsx`: Pembaruan deskripsi ringkasan kunci `settings` terkait modul akademik & pengesahan.
+- `src/components/Sidebar.tsx` & `src/app/routes.tsx`: Penambahan grup navigasi **Administrasi Guru** (`Ringkasan & Kaldik`) dan rute `/teacher/adm/overview` untuk peran `admin` dan `teacher`.
+
+#### Fixed
+- Pengetikan tipe `MonthBreakdown` pada `src/lib/server/adm-guru/calendar.ts` serta dukungan kueri `subjects` ber-proyeksi dan filter `WHERE id = $1` di `src/lib/mock-db.ts` (yang sebelumnya hanya mencocokkan `SELECT * FROM subjects`).
+
+#### Verified
+- Tes unit `calculateEffectiveWeeks` (5 & 6 hari kerja, minggu tidak efektif, validasi rentang tanggal) dan tes integrasi endpoint `/api/adm/*` + `/api/users` + `/api/setup/status` via `mock-db` (`UNIT_TESTS_OK`, `INTEGRATION_TESTS_OK`).
+- `npx tsc --noEmit`, `npm run build`, dan `npm run build:server` (`server/dist/server.mjs`) seluruhnya lulus tanpa error.
+
+### [0.0.0 - Phase 0: Perencanaan & Blueprint] — 2026-11-23
+#### Added
+- `FEATURES.md` (§17): Blueprint arsitektur lengkap Modul Administrasi Guru (Kurikulum Merdeka), meliputi integrasi peran & data eksisting (`users.academic_role`, `classes`, `subjects`, `teacher_assignments`, `student_profiles`, `question_banks`, `exams`, `assignments`, `learning_modules`, `settings`), ERD konseptual, spesifikasi 16 model/tabel dual-dialek (PostgreSQL & MySQL + `mock-db.ts`), kontrak API `/api/adm/*`, rancangan UI/UX + cetak PDF/Excel + QR pengesahan, serta checklist Phase 1–6.
+- `CHANGELOG.md`: Kerangka pencatatan standar *Keep a Changelog* untuk melacak setiap fase implementasi Administrasi Guru.
+
+---
+
+## Arsip Riwayat Build Sebelumnya
+
 > **Perubahan terbaru (build 148) — 2026-11-19:**
 > - 🔐 **KEPEMILIKAN ANTAR-STAFF & ACTOR-ID DARI SESI (`403 NOT_OWNER`)** — menutup sisa residu audit otorisasi di `FEATURES.md` §2:
 >   - `src/lib/server/exams.ts`: `POST /api/exams` kini **mengambil `created_by` dari sesi** (`req.authUser!.id`), tidak lagi memercayai `body.createdBy`; `PUT /api/exams/:id` & `DELETE /api/exams/:id` menolak guru lain dengan **403 `NOT_OWNER`** (hanya pembuat ujian atau `admin`/`super_admin`).

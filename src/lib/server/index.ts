@@ -39,6 +39,10 @@ import "./health.js";
 import "./audit.js";
 import "./students.js";
 import "./nusantara-game.js";
+import "./adm-guru/calendar.js";
+import "./adm-guru/planning.js";
+import "./adm-guru/execution.js";
+import "./adm-guru/assessment.js";
 // Registers /api/setup/auth/{status,verify,password}. Imported for the side
 // effect only — the named exports are consumed by the gate above.
 import "./setup-auth.js";

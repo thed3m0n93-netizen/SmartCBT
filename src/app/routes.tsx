@@ -1,4 +1,4 @@
-﻿import { createBrowserRouter, Navigate } from "react-router";
+import { createBrowserRouter, Navigate } from "react-router";
 import { useAuth } from "./AuthContext";
 import AppLayout from "../layouts/AppLayout";
 import LoginPage from "../pages/LoginPage";
@@ -18,6 +18,10 @@ import SEBConfigPage from "../pages/teacher/SEBConfigPage";
 import TeacherLearningModulesPage from "../pages/teacher/LearningModulesPage";
 import TeacherAssignmentsPage from "../pages/teacher/AssignmentsPage";
 import StudentDataPage from "../pages/teacher/StudentDataPage";
+import AdmOverviewPage from "../pages/teacher/adm/AdmOverviewPage";
+import AdmPlanningPage from "../pages/teacher/adm/AdmPlanningPage";
+import AdmExecutionPage from "../pages/teacher/adm/AdmExecutionPage";
+import AdmAssessmentPage from "../pages/teacher/adm/AdmAssessmentPage";
 import StudentDashboard from "../pages/student/StudentDashboard";
 import StudentSummaryPage from "../pages/student/SummaryPage";
 import NewsDetailPage from "../pages/student/NewsDetailPage";
@@ -61,6 +65,10 @@ export const router = createBrowserRouter([
       { path: "teacher/modules", element: <TeacherLearningModulesPage /> },
       { path: "teacher/assignments", element: <TeacherAssignmentsPage /> },
       { path: "teacher/students", element: <StudentDataPage /> },
+      { path: "teacher/adm/overview", element: <AdmOverviewPage /> },
+      { path: "teacher/adm/planning", element: <AdmPlanningPage /> },
+      { path: "teacher/adm/execution", element: <AdmExecutionPage /> },
+      { path: "teacher/adm/assessment", element: <AdmAssessmentPage /> },
       { path: "student/dashboard", element: <StudentDashboard /> },
       { path: "student/summary", element: <StudentSummaryPage /> },
       // Detail berita dibuka dari slider headline di dashboard siswa. Path-nya
