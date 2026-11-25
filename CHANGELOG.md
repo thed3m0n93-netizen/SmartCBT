@@ -4,6 +4,22 @@ Format pencatatan mengikuti standar [Keep a Changelog](https://keepachangelog.co
 
 ## [Unreleased] — Modul Administrasi Guru (Kurikulum Merdeka)
 
+### [0.6.2 - Manajemen Sesi Super Admin, Tombol Kembali/Logout & Perapihan UI Setup Database] — 2026-11-25
+#### Fixed
+- **Kontinuitas Sesi Super Admin di `/setup` (`src/lib/setupApi.ts`, `src/lib/dbConfigApi.ts`, `src/lib/setupAuth.ts`, `src/lib/server/setup-auth.ts`, `src/pages/DatabaseSetupPage.tsx`):**
+  - Mengubah helper API `/setup` dan `/db-config` agar selalu mengirim header `Authorization: Bearer` bersama `X-Setup-Token`, serta mengintegrasikan `useAuth()` di `DatabaseSetupPage`. Kini saat Super Admin masuk ke `/setup`, kembali ke dashboard, lalu kembali lagi ke `/setup`, sesi `super_admin` tetap dikenali beserta seluruh hak aksesnya tanpa terjebak pada token anonim `sessionStorage`.
+  - Memperbaiki callback simpan konfigurasi database agar tetap berada di `/setup` dan menyegarkan status koneksi secara langsung, serta mengganti konfirmasi `window.confirm` pada **Reset & Reinstall** dengan modal konfirmasi in-app.
+
+#### Added
+- **Tombol Kembali, Logout Penuh & Manajemen Sesi/PIN Setup (`src/lib/server/setup-auth.ts`, `src/app/AuthContext.tsx`, `src/pages/DatabaseSetupPage.tsx`, `src/components/Sidebar.tsx`):**
+  - Endpoint `POST /api/setup/auth/logout` untuk mencabut `X-Setup-Token` dan mengakhiri sesi `super_admin` (`revokeAdminSession: true`) saat pengguna mengklik **Logout** di `/setup`.
+  - Top bar baru dengan tombol **Kembali ke Dashboard** (membersihkan token PIN sementara sambil menjaga navigasi bersih), tombol **Sesi & PIN** (modal status akses aktif, penghapusan token PIN, pembaruan PIN Setup, dan logout penuh), serta tombol **Logout** yang langsung mengakhiri sesi Super Admin dan mengunci kembali `/setup`.
+  - Tautan **Setup Database** ditambahkan di sidebar grup **Settings** untuk admin/superadmin, beserta padanan i18n Inggris (`src/i18n/dictionaries.ts`).
+
+#### Improved
+- **Tata Letak Responsif `/setup` (`src/pages/DatabaseSetupPage.tsx`):**
+  - Menata ulang halaman `/setup` menjadi container `max-w-6xl` dengan header sesi tunggal, strip ringkasan 4 kartu kesiapan (*Koneksi Database*, *Skema & Tabel*, *Administrasi Guru*, *Ringkasan Data*), dan grid 2 kolom (konfigurasi koneksi & AI Agent di kiri, *Update Database* serta *Install & Seed* di kanan).
+
 ### [0.6.1 - Sinkronisasi Rute API Backend VPS, Docker & Hardening Update Database] — 2026-11-25
 #### Fixed
 - **Sinkronisasi Bundle Backend Docker/VPS (`Dockerfile.backend`, `deploy/backend-entrypoint.sh`, `deploy/aapanel-setup.sh`):**

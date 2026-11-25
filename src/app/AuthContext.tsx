@@ -9,6 +9,7 @@ import {
   type LoginResponse,
   type SchoolSettings,
 } from "../lib/api";
+import { logoutSetupSession, setSetupToken } from "../lib/setupAuth";
 import { mapRole, type AcademicRole, type DBRole } from "../lib/types";
 
 export type Role = "admin" | "teacher" | "student";
@@ -210,6 +211,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       /* the token is cleared locally regardless */
     }
+    try {
+      await logoutSetupSession({ revokeAdminSession: false });
+    } catch {
+      /* ignore setup token revoke error */
+    }
+    setSetupToken(null);
     setUser(null);
     setToken(null);
     localStorage.removeItem(STORAGE_KEY);

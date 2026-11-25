@@ -1807,6 +1807,82 @@ const id: Dictionary = {
   "total rute": "total routes",
   "Trigger & index: student_answers.updated_at (PostgreSQL) + idx_student_answers_flagged + index adm_*":
     "Triggers & indexes: student_answers.updated_at (PostgreSQL) + idx_student_answers_flagged + adm_* indexes",
+
+  // ── Setup Database Session Management & UI Cleanup ───────────────────────
+  "Setup Database": "Database Setup",
+  "Setup Database & Sistem": "Database & System Setup",
+  "Kembali ke Dashboard": "Back to Dashboard",
+  "Kembali ke Login": "Back to Login",
+  "Kembali ke Aplikasi": "Back to App",
+  "Sesi & PIN": "Session & PIN",
+  "Logout": "Log Out",
+  "Keluar…": "Logging out…",
+  "Memeriksa sesi…": "Checking session…",
+  "Sesi Super Admin & akses Setup telah diakhiri.":
+    "Super Admin session & Setup access have been terminated.",
+  "Token PIN Setup telah dihapus dan halaman dikunci kembali.":
+    "Setup PIN token cleared and page locked again.",
+  "Sesi Super Admin": "Super Admin Session",
+  "Sesi PIN Setup": "Setup PIN Session",
+  "Token PIN Setup": "Setup PIN Token",
+  "Mode Terbuka": "Open Mode",
+  "Manajemen Sesi & PIN Setup": "Session & Setup PIN Management",
+  "Kontrol akses Super Admin, token PIN setup, dan penguncian halaman.":
+    "Manage Super Admin access, setup PIN tokens, and page locking.",
+  "Mode Akses Aktif": "Active Access Mode",
+  "Akun Terautentikasi": "Authenticated Account",
+  "Status Token PIN Setup": "Setup PIN Token Status",
+  "Aktif": "Active",
+  "Tidak ada token PIN": "No PIN token",
+  "Hapus Token PIN Saja": "Clear PIN Token Only",
+  "Logout & Akhiri Sesi Super Admin": "Log Out & End Super Admin Session",
+  "Ubah Password / PIN Setup": "Change Setup Password / PIN",
+  "Simpan PIN Setup Baru": "Save New Setup PIN",
+  "Password / PIN Setup berhasil diperbarui.":
+    "Setup Password / PIN updated successfully.",
+  "Password baru": "New password",
+  "Ulangi password": "Confirm password",
+  "Password setup": "Setup password",
+  "Atur Password Setup": "Set Setup Password",
+  "Halaman Setup Terkunci": "Setup Page Locked",
+  "Halaman /setup mengatur database. Buat password untuk mengunci halaman ini dari akses anonim.":
+    "The /setup page manages the database. Create a password to lock it against anonymous access.",
+  "Masuk sebagai Super Admin atau masukkan password setup untuk melanjutkan.":
+    "Sign in as Super Admin or enter the setup password to continue.",
+  "Masukkan PIN / Password Setup": "Enter Setup PIN / Password",
+  "Simpan Password": "Save Password",
+  "Buka Halaman Setup": "Unlock Setup Page",
+  "Konfirmasi password tidak cocok.": "Password confirmation does not match.",
+  "Masuk sebagai": "Signed in as",
+  "Akses penuh membutuhkan akun Super Admin atau PIN Setup.":
+    "Full access requires a Super Admin account or Setup PIN.",
+  "Terlalu banyak percobaan gagal. Coba lagi dalam {s} detik.":
+    "Too many failed attempts. Try again in {s} seconds.",
+  "Koneksi Database": "Database Connection",
+  "Terhubung": "Connected",
+  "Terputus": "Disconnected",
+  "Periksa konfigurasi koneksi": "Check connection configuration",
+  "Skema & Tabel": "Schema & Tables",
+  "{a}/{b} migrasi kolom aktif": "{a}/{b} column migrations active",
+  "Menunggu status skema": "Waiting for schema status",
+  "Rute API belum terdeteksi": "API routes not detected",
+  "Ringkasan Data": "Data Summary",
+  "pengguna": "users",
+  "ujian": "exams",
+  "Belum di-install / seed": "Not installed / seeded yet",
+  "Konfigurasi provider AI untuk generator soal dan Administrasi Guru.":
+    "Configure the AI provider for question generation and Teacher Administration.",
+  "Update Database (tanpa hapus data)": "Update Database (non-destructive)",
+  "Konfirmasi Reset & Reinstall Database": "Confirm Database Reset & Reinstall",
+  "Tindakan ini akan MENGHAPUS SELURUH tabel dan data aktif (pengguna, soal, ujian, nilai, serta perangkat Administrasi Guru), lalu membuat ulang struktur skema dan data contoh.":
+    "This action will DELETE ALL tables and active data (users, questions, exams, scores, and Teacher Administration documents), then recreate the schema and sample data.",
+  "Ya, Reset Semua Data": "Yes, Reset All Data",
+  "Instalasi berhasil": "Installation succeeded",
+  "Instalasi gagal": "Installation failed",
+  "Update database berhasil": "Database update succeeded",
+  "Update gagal": "Update failed",
+  "Database tidak terjangkau. Simpan konfigurasi koneksi terlebih dahulu di panel konfigurasi.":
+    "Database is unreachable. Save the connection configuration in the config panel first.",
 }
 
 export const dictionaries: Record<Lang, Dictionary> = { id, en }

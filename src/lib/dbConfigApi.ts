@@ -5,8 +5,7 @@
  * endpoints served by the Vite dev-server middleware.
  */
 
-import { ApiErrorImpl } from "./api";
-import { withSetupToken } from "./setupAuth";
+import { apiFetch } from "./api";
 
 /** Supported database vendors (mirrors the server-side `DatabaseType`). */
 export type DatabaseType = "postgres" | "supabase" | "mysql" | "mariadb";
@@ -109,20 +108,7 @@ export interface ApplyResult {
 }
 
 async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const headers = new Headers({ "Content-Type": "application/json", ...options.headers });
-  // /api/db-config is gated by the setup password; carry the unlock token.
-  // These helpers bypass `apiFetch`, so the header has to be added here too.
-  withSetupToken(headers, `/api${path}`);
-  const res = await fetch(`/api${path}`, {
-    ...options,
-    headers,
-  });
-  const data = await res.json().catch(() => null);
-  if (!res.ok) {
-    const msg = (data as { error?: string })?.error || res.statusText;
-    throw new ApiErrorImpl(msg, res.status);
-  }
-  return data as T;
+  return apiFetch<T>(`/api${path}`, options);
 }
 
 /** Fetch the current active database configuration (plus its live probe). */

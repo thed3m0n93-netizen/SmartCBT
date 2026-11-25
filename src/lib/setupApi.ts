@@ -4,9 +4,8 @@
  * These functions run in the browser and call the /api/setup* endpoints
  * served by the Vite dev-server middleware (see src/lib/server/setup.ts).
  */
-import { ApiErrorImpl, type AiModelsFetchResult, type AiTestResult } from "./api";
+import { apiFetch, type AiModelsFetchResult, type AiTestResult } from "./api";
 import { setCachedFetchedModels } from "./ai-providers";
-import { withSetupToken } from "./setupAuth";
 
 export interface DbProbeInfo {
   serverVersion?: string;
@@ -78,20 +77,7 @@ export interface SetupResult {
 }
 
 async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const headers = new Headers({ "Content-Type": "application/json", ...options.headers });
-  // /setup/* is gated by the setup password; carry the unlock token. These
-  // helpers bypass `apiFetch`, so the header has to be added here too.
-  withSetupToken(headers, `/api${path}`);
-  const res = await fetch(`/api${path}`, {
-    ...options,
-    headers,
-  });
-  const data = await res.json().catch(() => null);
-  if (!res.ok) {
-    const msg = (data as { error?: string })?.error || res.statusText;
-    throw new ApiErrorImpl(msg, res.status);
-  }
-  return data as T;
+  return apiFetch<T>(`/api${path}`, options);
 }
 
 /** Report whether the connected database has every required table. */

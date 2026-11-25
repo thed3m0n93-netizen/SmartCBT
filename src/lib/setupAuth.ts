@@ -8,11 +8,12 @@
  *
  * The server is the authority here: this module only decides when to *show* the
  * unlock form. Even with the token missing, `/api/setup/*` and `/api/db-config`
- * answer 401 with `code: "SETUP_LOCKED"`, so clearing the token can never
- * re-open the page.
+ * answer 401 with `code: "SETUP_LOCKED"`, unless the caller also holds a valid
+ * `super_admin` / `admin` Bearer session token.
  */
 
 const TOKEN_KEY = "smartcbt:setup-token";
+const AUTH_STORAGE_KEY = "smartcbt_token";
 
 /** Paths the server gates once a setup password is configured. */
 function isGatedPath(path: string): boolean {
@@ -55,6 +56,8 @@ export function withSetupToken(headers: Headers, path: string): Headers {
   return headers;
 }
 
+export type SetupAccessMode = "superadmin" | "setup_token" | "open" | "locked";
+
 export interface SetupAuthStatus {
   /** True once a setup password exists, i.e. the gate is armed. */
   configured: boolean;
@@ -68,13 +71,55 @@ export interface SetupAuthStatus {
   locked: boolean;
   retryAfterSec: number;
   minLength: number;
+  /** Live authorization decision evaluated by the server. */
+  authorized?: boolean;
+  accessMode?: SetupAccessMode;
+  hasSetupToken?: boolean;
+  setupTokenExpiresAt?: number | null;
+  setupTokenExpiresInSec?: number | null;
+  user?: {
+    id: string;
+    username: string;
+    fullName: string;
+    role: string;
+  } | null;
 }
 
-/** Raw fetch for the gate endpoints (they sit outside the auth token flow). */
+function resolveGateUrl(path: string): string {
+  const rawBase: string =
+    (import.meta as any)?.env?.VITE_API_BASE_URL?.replace(/\/$/, "") ?? "";
+  const base =
+    rawBase && path.startsWith("/api") && /\/api$/.test(rawBase)
+      ? rawBase.replace(/\/api$/, "")
+      : rawBase;
+  return `${base}${path}`;
+}
+
+function getStoredBearerToken(): string | null {
+  try {
+    return localStorage.getItem(AUTH_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/** Raw fetch for the gate endpoints (carries both Bearer & X-Setup-Token when available). */
 async function gateFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const res = await fetch(path, {
+  const headers = new Headers({
+    "Content-Type": "application/json",
+    ...(init.headers ?? {}),
+  });
+  const bearer = getStoredBearerToken();
+  if (bearer && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${bearer}`);
+  }
+  const setupTok = getSetupToken();
+  if (setupTok && !headers.has("X-Setup-Token")) {
+    headers.set("X-Setup-Token", setupTok);
+  }
+  const res = await fetch(resolveGateUrl(path), {
     ...init,
-    headers: { "Content-Type": "application/json", ...(init.headers ?? {}) },
+    headers,
   });
   const text = await res.text();
   let payload: any = null;
@@ -120,4 +165,29 @@ export async function saveSetupPassword(password: string): Promise<void> {
     { method: "POST", body: JSON.stringify({ password }) },
   );
   setSetupToken(res.token);
+}
+
+/**
+ * Revoke the active `/setup` unlock token on the server & clear local storage.
+ * When `revokeAdminSession` is true, also terminates the active admin/superadmin session.
+ */
+export async function logoutSetupSession(options?: {
+  revokeAdminSession?: boolean;
+}): Promise<void> {
+  const setupToken = getSetupToken();
+  const authToken = getStoredBearerToken();
+  try {
+    await gateFetch("/api/setup/auth/logout", {
+      method: "POST",
+      body: JSON.stringify({
+        setupToken,
+        authToken,
+        revokeAdminSession: !!options?.revokeAdminSession,
+      }),
+    });
+  } catch {
+    /* always drop local setup token even if server is unreachable */
+  } finally {
+    setSetupToken(null);
+  }
 }

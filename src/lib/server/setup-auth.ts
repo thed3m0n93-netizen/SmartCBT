@@ -30,7 +30,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import bcrypt from "bcryptjs";
 import { addRoute, json } from "./utils.js";
-import { getBearerToken, getSession } from "./auth-session.js";
+import { getBearerToken, getSession, revokeSession } from "./auth-session.js";
 
 /** Bcrypt cost. Matches the login flow so hashing time is familiar. */
 const BCRYPT_ROUNDS = 10;
@@ -165,15 +165,19 @@ function issueToken(): string {
   return token;
 }
 
-function tokenIsValid(token: string | null | undefined): boolean {
-  if (!token) return false;
+function tokenInfo(token: string | null | undefined): { valid: boolean; expiresAt: number | null } {
+  if (!token) return { valid: false, expiresAt: null };
   const expires = tokens.get(token);
-  if (!expires) return false;
+  if (!expires) return { valid: false, expiresAt: null };
   if (Date.now() > expires) {
     tokens.delete(token);
-    return false;
+    return { valid: false, expiresAt: null };
   }
-  return true;
+  return { valid: true, expiresAt: expires };
+}
+
+function tokenIsValid(token: string | null | undefined): boolean {
+  return tokenInfo(token).valid;
 }
 
 /** Drop expired tokens so the map cannot grow unbounded on a long-lived process. */
@@ -261,25 +265,65 @@ export function isSetupProtectedUrl(url: string): boolean {
  *   - the caller already holds an admin/super_admin session, so a logged-in
  *     administrator is never locked out of /setup.
  */
+export type SetupAccessMode = "superadmin" | "setup_token" | "open" | "locked";
+
+export function getSetupAccessContext(req: any): {
+  authorized: boolean;
+  accessMode: SetupAccessMode;
+  hasSetupToken: boolean;
+  setupTokenExpiresAt: number | null;
+  setupTokenExpiresInSec: number | null;
+  user: { id: string; username: string; fullName: string; role: string } | null;
+} {
+  const bearerUser = getSession(getBearerToken(req?.headers?.authorization)) as any;
+  const isSuperAdmin =
+    bearerUser?.role === "admin" || bearerUser?.role === "super_admin";
+  const setupTok = presentedToken(req);
+  const tInfo = tokenInfo(setupTok);
+  const writable = isCredentialWritable();
+
+  let accessMode: SetupAccessMode = "locked";
+  if (isSuperAdmin) accessMode = "superadmin";
+  else if (tInfo.valid) accessMode = "setup_token";
+  else if (!writable) accessMode = "open";
+
+  return {
+    authorized: accessMode !== "locked",
+    accessMode,
+    hasSetupToken: tInfo.valid,
+    setupTokenExpiresAt: tInfo.expiresAt,
+    setupTokenExpiresInSec:
+      tInfo.valid && tInfo.expiresAt
+        ? Math.max(0, Math.ceil((tInfo.expiresAt - Date.now()) / 1000))
+        : null,
+    user: isSuperAdmin
+      ? {
+          id: String(bearerUser.id),
+          username: String(bearerUser.username),
+          fullName: String(bearerUser.full_name || bearerUser.username),
+          role: String(bearerUser.role),
+        }
+      : null,
+  };
+}
+
 export function hasSetupAccess(req: any): boolean {
-  if (!isCredentialWritable()) return true;
-  if (tokenIsValid(presentedToken(req))) return true;
-  const user = getSession(getBearerToken(req?.headers?.authorization)) as any;
-  return user?.role === "admin" || user?.role === "super_admin";
+  return getSetupAccessContext(req).authorized;
 }
 
 /* ── Routes ─────────────────────────────────────────────────────────────── */
 
 /**
- * GET /api/setup/auth/status - is the gate armed?
+ * GET /api/setup/auth/status - is the gate armed & how is the caller authenticated?
  *
  * Public on purpose: the unlock form must know whether a PIN exists. Only
- * booleans are returned — the hash, plaintext copy and file path never leave
- * the server.
+ * booleans and current caller session status are returned — the hash,
+ * plaintext copy and file path never leave the server.
  */
 addRoute("GET", /^\/api\/setup\/auth\/status$/, async (req, res) => {
   sweepTokens();
   const lockedMs = lockRemainingMs(clientKey(req));
+  const ctx = getSetupAccessContext(req);
   json(res, {
     configured: isSetupAuthConfigured(),
     // When false the server cannot store a PIN, so the UI explains why the page
@@ -288,6 +332,42 @@ addRoute("GET", /^\/api\/setup\/auth\/status$/, async (req, res) => {
     locked: lockedMs > 0,
     retryAfterSec: lockedMs > 0 ? Math.ceil(lockedMs / 1000) : 0,
     minLength: MIN_PIN_LENGTH,
+    authorized: ctx.authorized,
+    accessMode: ctx.accessMode,
+    hasSetupToken: ctx.hasSetupToken,
+    setupTokenExpiresAt: ctx.setupTokenExpiresAt,
+    setupTokenExpiresInSec: ctx.setupTokenExpiresInSec,
+    user: ctx.user,
+  });
+});
+
+/**
+ * POST /api/setup/auth/logout - revoke the `/setup` unlock token and
+ * optionally terminate the active admin/super_admin session accessing `/setup`.
+ */
+addRoute("POST", /^\/api\/setup\/auth\/logout$/, async (req, res, body) => {
+  const setupTok = presentedToken(req, body);
+  let revokedSetupToken = false;
+  if (setupTok && tokens.has(setupTok)) {
+    tokens.delete(setupTok);
+    revokedSetupToken = true;
+  }
+
+  let revokedAdminSession = false;
+  if (body?.revokeAdminSession) {
+    const bearer =
+      getBearerToken(req?.headers?.authorization) ||
+      (typeof body?.authToken === "string" && body.authToken ? body.authToken : undefined);
+    if (bearer && getSession(bearer)) {
+      revokeSession(bearer);
+      revokedAdminSession = true;
+    }
+  }
+
+  json(res, {
+    ok: true,
+    revokedSetupToken,
+    revokedAdminSession,
   });
 });
 
