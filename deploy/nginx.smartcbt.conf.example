@@ -1,4 +1,4 @@
-﻿# aaPanel Nginx configuration for SmartCBT
+# aaPanel Nginx configuration for SmartCBT
 # Replace the root path and upstream port with the values used by the server.
 server {
     listen 80;
@@ -15,8 +15,11 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        # Required for the SSE monitoring stream (/api/sse/monitoring).
-        proxy_read_timeout 300s;
+        client_max_body_size 32m;
+        # Required for SSE monitoring stream (/api/sse/monitoring) and uploads.
+        proxy_connect_timeout 60s;
+        proxy_read_timeout 600s;
+        proxy_send_timeout 600s;
         proxy_buffering off;
     }
 

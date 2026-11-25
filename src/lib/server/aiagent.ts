@@ -1159,6 +1159,194 @@ addRoute("GET", /^\/api\/ai\/materials$/, async (req: AuthenticatedRequest, res)
   );
 });
 
+interface QuestionGenJob {
+  id: string;
+  ownerId: string;
+  status: "running" | "done" | "failed";
+  stage: string;
+  startedAt: number;
+  finishedAt?: number;
+  provider: string;
+  model: string;
+  result?: Record<string, unknown>;
+  errorPayload?: Record<string, unknown>;
+}
+
+const QUESTION_GEN_JOB_TTL_MS = 30 * 60 * 1000;
+const questionGenJobs = new Map<string, QuestionGenJob>();
+
+function pruneExpiredQuestionGenJobs() {
+  const now = Date.now();
+  for (const [id, job] of questionGenJobs.entries()) {
+    if (job.finishedAt && now - job.finishedAt > QUESTION_GEN_JOB_TTL_MS) {
+      questionGenJobs.delete(id);
+    }
+  }
+  while (questionGenJobs.size > 200) {
+    const oldestKey = questionGenJobs.keys().next().value;
+    if (!oldestKey) break;
+    questionGenJobs.delete(oldestKey);
+  }
+}
+
+async function runQuestionGenerationTask(params: {
+  bankId: string;
+  bankTitle: string;
+  prompt: string;
+  count: number;
+  mappedTypes: string[];
+  random: boolean;
+  config: { provider: string; model: string; apiKey: string; baseUrl: string };
+  materialBlock: string;
+  materialMode: MaterialMode;
+  materialSummary: {
+    mode: MaterialMode;
+    budgetChars: number;
+    sources: unknown[];
+    skipped: unknown[];
+  } | null;
+  caller: NonNullable<AuthenticatedRequest["authUser"]>;
+  auditReqHeaders: Record<string, any>;
+  onStage?: (stage: string) => void;
+}): Promise<{ ok: true; payload: Record<string, unknown> } | { ok: false; payload: Record<string, unknown> }> {
+  const {
+    bankId,
+    bankTitle,
+    prompt,
+    count,
+    mappedTypes,
+    random,
+    config,
+    materialBlock,
+    materialMode,
+    materialSummary,
+    caller,
+    auditReqHeaders,
+    onStage,
+  } = params;
+  const startedAt = Date.now();
+
+  try {
+    onStage?.(`Menghubungi AI (${config.model})…`);
+    const allowedTypes = mappedTypes.join(", ");
+    const materialPrefix = materialBlock
+      ? `${materialBlock}\n\n${MATERIAL_TAGGING_RULES}\n\n`
+      : "";
+    const materialFieldNote = materialBlock
+      ? ' Also include "source" ("materi" or "campuran") and "source_ref" (array of used M-ids like ["M1"]).'
+      : "";
+    const aiPrompt = `${materialPrefix}${prompt}\n\nCreate exactly ${count} questions. Keep the output as valid JSON. Use only these requested question types: ${allowedTypes}. ${random ? "Randomize the distribution of the requested question types, but still honor the final requested question count and the selected question type list." : "Generate a result that strictly follows the requested type list and never invent a type outside it."} For each single or multiple choice question, produce exactly five option objects with keys A, B, C, D, E and values in that order; for each question include: type, content, difficulty, points, options, answer, explanation, topic, and formula_latex.${materialFieldNote}`;
+
+    const raw = await callProvider(aiPrompt, config.provider, config.model, config.apiKey, config.baseUrl);
+
+    onStage?.("Memproses hasil JSON soal…");
+    const { questions: generated, parseError } = parseGeneratedPayload(raw);
+    const parsed = generated.slice(0, Math.max(1, Math.min(50, count || 10))).map(normalizeGeneratedQuestion);
+
+    onStage?.("Menyimpan soal ke bank…");
+    const { inserted, errors } = await insertGeneratedQuestions(bankId, parsed);
+
+    if (parseError) errors.unshift(parseError);
+
+    if (inserted.length === 0) {
+      const note = parseError
+        ? config.provider === "ollama"
+          ? "Periksa bahwa model sudah di-pull di server Ollama dan coba dengan jumlah soal lebih sedikit."
+          : "Model tidak mengembalikan format JSON soal yang valid. Coba kurangi jumlah soal atau ganti model lain."
+        : "Semua soal dari model ditolak validator — lihat detail alasan di bawah.";
+      return {
+        ok: false,
+        payload: {
+          success: false,
+          imported: 0,
+          totalParsed: parsed.length,
+          error: errors[0] || note,
+          errors,
+          note,
+        },
+      };
+    }
+
+    await recordAuditLog({
+      actor: caller,
+      req: { headers: auditReqHeaders, authUser: caller as any },
+      action: "ai.questions_generate",
+      entityType: "question_bank",
+      entityId: bankId,
+      summary: `Generate AI ${inserted.length} soal ke "${bankTitle}"`,
+      metadata: { count: inserted.length, provider: config.provider, model: config.model, materialMode },
+    });
+
+    return {
+      ok: true,
+      payload: {
+        success: true,
+        imported: inserted.length,
+        totalParsed: parsed.length,
+        errors,
+        questions: inserted,
+        durationMs: Date.now() - startedAt,
+        provider: config.provider,
+        model: config.model,
+        // Build 140 — ringkasan grounding + tag per soal yang tersimpan.
+        material: materialSummary,
+        sourceTags: inserted.map((row: any) => row.aiSource ?? null),
+      },
+    };
+  } catch (err: any) {
+    const msg = extractReadableAiError(err, "AI question generation failed");
+    const timedOut = err?.name === "TimeoutError" || /timeout|abort/i.test(msg);
+    return {
+      ok: false,
+      payload: {
+        success: false,
+        imported: 0,
+        error: timedOut
+          ? "Model AI tidak merespons dalam batas waktu 8 menit. Coba jumlah soal lebih sedikit atau gunakan model yang lebih cepat."
+          : msg,
+      },
+    };
+  }
+}
+
+addRoute("GET", /^\/api\/ai\/questions\/generate\/jobs\/([^/]+)$/, async (req: AuthenticatedRequest, res) => {
+  if (!requireStaff(req, res)) return;
+  const caller = req.authUser!;
+  const jobId = decodeURIComponent(req.url.split("?")[0].match(/^\/api\/ai\/questions\/generate\/jobs\/([^/]+)$/)?.[1] || "");
+  const job = questionGenJobs.get(jobId);
+  if (!job) {
+    return json(res, { error: "Job generate soal tidak ditemukan atau sudah kedaluwarsa." }, 404);
+  }
+  if (!isAdminCaller(caller) && String(job.ownerId) !== String(caller.id)) {
+    return json(res, NOT_OWNER.payload, NOT_OWNER.status);
+  }
+
+  if (job.status === "running") {
+    return json(res, {
+      jobId: job.id,
+      status: "running",
+      stage: job.stage,
+      elapsedMs: Date.now() - job.startedAt,
+      provider: job.provider,
+      model: job.model,
+    });
+  }
+
+  if (job.status === "done") {
+    return json(res, {
+      jobId: job.id,
+      status: "done",
+      ...(job.result || {}),
+    });
+  }
+
+  return json(res, {
+    jobId: job.id,
+    status: "failed",
+    ...(job.errorPayload || { error: "AI question generation failed" }),
+  });
+});
+
 addRoute("POST", /^\/api\/ai\/questions\/generate$/, async (req: AuthenticatedRequest, res, body) => {
   // Build 145: generate soal adalah aksi authoring — khusus staff (sebelumnya
   // cukup "login apa pun"; siswa bisa menyuntik soal ke bank guru). requireStaff
@@ -1191,6 +1379,7 @@ addRoute("POST", /^\/api\/ai\/questions\/generate$/, async (req: AuthenticatedRe
     })
     .filter(Boolean);
   const random = Boolean(body.random ?? body.randomize ?? false);
+  const runAsync = Boolean(body?.async);
 
   if (!bankId) return json(res, { error: "bankId is required" }, 400);
   if (!prompt) return json(res, { error: "prompt is required" }, 400);
@@ -1267,71 +1456,95 @@ addRoute("POST", /^\/api\/ai\/questions\/generate$/, async (req: AuthenticatedRe
     };
   }
 
-  const startedAt = Date.now();
-  try {
-    const allowedTypes = mappedTypes.join(", ");
-    const materialPrefix = materialBlock
-      ? `${materialBlock}\n\n${MATERIAL_TAGGING_RULES}\n\n`
-      : "";
-    const materialFieldNote = materialBlock
-      ? ' Also include "source" ("materi" or "campuran") and "source_ref" (array of used M-ids like ["M1"]).'
-      : "";
-    const aiPrompt = `${materialPrefix}${prompt}\n\nCreate exactly ${count} questions. Keep the output as valid JSON. Use only these requested question types: ${allowedTypes}. ${random ? "Randomize the distribution of the requested question types, but still honor the final requested question count and the selected question type list." : "Generate a result that strictly follows the requested type list and never invent a type outside it."} For each single or multiple choice question, produce exactly five option objects with keys A, B, C, D, E and values in that order; for each question include: type, content, difficulty, points, options, answer, explanation, topic, and formula_latex.${materialFieldNote}`;
-    const raw = await callProvider(aiPrompt, config.provider, config.model, config.apiKey, config.baseUrl);
-    const { questions: generated, parseError } = parseGeneratedPayload(raw);
-    const parsed = generated.slice(0, Math.max(1, Math.min(50, count || 10))).map(normalizeGeneratedQuestion);
-    const { inserted, errors } = await insertGeneratedQuestions(bankId, parsed);
+  const auditReqHeaders = { ...req.headers };
 
-    if (parseError) errors.unshift(parseError);
-
-    if (inserted.length === 0) {
-      const note = parseError
-        ? config.provider === "ollama"
-          ? "Periksa bahwa model sudah di-pull di server Ollama dan coba dengan jumlah soal lebih sedikit."
-          : "Model tidak mengembalikan format JSON soal yang valid. Coba kurangi jumlah soal atau ganti model lain."
-        : "Semua soal dari model ditolak validator — lihat detail alasan di bawah.";
-      return json(res, {
-        success: false,
-        imported: 0,
-        totalParsed: parsed.length,
-        error: errors[0] || note,
-        errors,
-        note,
-      }, 400);
-    }
-
-    await recordAuditLog({
-      req,
-      action: "ai.questions_generate",
-      entityType: "question_bank",
-      entityId: bankId,
-      summary: `Generate AI ${inserted.length} soal ke "${bank.title}"`,
-      metadata: { count: inserted.length, provider: config.provider, model: config.model, materialMode },
-    });
-
-    json(res, {
-      success: true,
-      imported: inserted.length,
-      totalParsed: parsed.length,
-      errors,
-      questions: inserted,
-      durationMs: Date.now() - startedAt,
+  // Async mode: return 202 immediately so reverse proxies / Cloudflare never time out
+  // waiting on slow LLM reasoning/generation responses, while client polls job status.
+  if (runAsync) {
+    pruneExpiredQuestionGenJobs();
+    const jobId = randomUUID();
+    const job: QuestionGenJob = {
+      id: jobId,
+      ownerId: String(caller.id),
+      status: "running",
+      stage: `Menghubungi AI (${config.model})…`,
+      startedAt: Date.now(),
       provider: config.provider,
       model: config.model,
-      // Build 140 — ringkasan grounding + tag per soal yang tersimpan.
-      material: materialSummary,
-      sourceTags: inserted.map((row: any) => row.aiSource ?? null),
-    });
-  } catch (err: any) {
-    // Timeout vs other failure get distinct, actionable messages.
-    const msg = extractReadableAiError(err, "AI question generation failed");
-    const timedOut = err?.name === "TimeoutError" || /timeout|abort/i.test(msg);
-    return json(res, {
-      error: timedOut
-        ? "Model AI tidak merespons dalam batas waktu 8 menit. Coba jumlah soal lebih sedikit atau gunakan model yang lebih cepat."
-        : msg,
-    }, 400);
+    };
+    questionGenJobs.set(jobId, job);
+
+    void runQuestionGenerationTask({
+      bankId,
+      bankTitle: bank.title,
+      prompt,
+      count,
+      mappedTypes,
+      random,
+      config,
+      materialBlock,
+      materialMode,
+      materialSummary,
+      caller,
+      auditReqHeaders,
+      onStage: (stage) => {
+        job.stage = stage;
+      },
+    })
+      .then((outcome) => {
+        job.finishedAt = Date.now();
+        if (outcome.ok) {
+          job.status = "done";
+          job.stage = "Selesai";
+          job.result = outcome.payload;
+        } else {
+          job.status = "failed";
+          job.stage = "Gagal";
+          job.errorPayload = outcome.payload;
+        }
+      })
+      .catch((err: any) => {
+        job.finishedAt = Date.now();
+        job.status = "failed";
+        job.stage = "Gagal";
+        job.errorPayload = {
+          success: false,
+          imported: 0,
+          error: extractReadableAiError(err, "AI question generation failed"),
+        };
+      });
+
+    return json(
+      res,
+      {
+        accepted: true,
+        async: true,
+        jobId,
+        status: "running",
+        stage: job.stage,
+        provider: config.provider,
+        model: config.model,
+      },
+      202
+    );
   }
+
+  const outcome = await runQuestionGenerationTask({
+    bankId,
+    bankTitle: bank.title,
+    prompt,
+    count,
+    mappedTypes,
+    random,
+    config,
+    materialBlock,
+    materialMode,
+    materialSummary,
+    caller,
+    auditReqHeaders,
+  });
+
+  return json(res, outcome.payload, outcome.ok ? 200 : 400);
 });
 
 async function upsertSettingKey(key: string, value: string): Promise<void> {

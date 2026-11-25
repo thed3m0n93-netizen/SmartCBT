@@ -59,13 +59,44 @@ export interface AiMaterialSummary {
   skipped: Array<{ file: string; reason: string }>;
 }
 
+function buildAiErrorMessage(data: any, statusCode: number): string {
+  const skipped = Array.isArray(data?.skipped)
+    ? data.skipped
+        .map((s: any) => `${s.file}: ${s.reason}`)
+        .slice(0, 4)
+        .join("; ")
+    : "";
+  const serverErrors = Array.isArray(data?.errors)
+    ? data.errors
+        .map((e: unknown) => String(e ?? "").trim())
+        .filter(Boolean)
+        .slice(0, 3)
+    : [];
+  const note = typeof data?.note === "string" ? data.note.trim() : "";
+  const explicitError = typeof data?.error === "string" ? data.error.trim() : "";
+  const base =
+    explicitError ||
+    (serverErrors.length > 0 ? serverErrors.join(" | ") : "") ||
+    note ||
+    `AI import failed (HTTP ${statusCode})`;
+  const suffixParts: string[] = [];
+  if (skipped) {
+    suffixParts.push(`${skipped}${data.skipped.length > 4 ? "…" : ""}`);
+  }
+  if (note && base !== note && !base.includes(note)) {
+    suffixParts.push(note);
+  }
+  return suffixParts.length > 0 ? `${base} (${suffixParts.join(" — ")})` : base;
+}
+
 export async function importQuestionsFromPrompt(
   prompt: string,
   bankId: string,
   count = 5,
   questionTypes: string[] | string = "single",
   random = false,
-  material?: AiMaterialOptions
+  material?: AiMaterialOptions,
+  onProgress?: (stage: string) => void
 ): Promise<{
   success: boolean;
   imported: number;
@@ -84,62 +115,97 @@ export async function importQuestionsFromPrompt(
     questionTypes: normalizedTypes,
     questionType: normalizedTypes[0] ?? "single",
     random,
+    async: true,
     ...(material && material.mode !== "off" ? { material } : {}),
   };
 
-  // Use the shared token accessor — this previously read a hardcoded key
-  // ("smartcbt:session-token") that `api.ts` never wrote to, so the request
-  // went out with no Authorization header and the server rejected it with 401.
   const token = getAuthToken();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+
   const res = await fetch("/api/ai/questions/generate", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
+    headers,
     body: JSON.stringify(payload),
   });
 
   const data = await res.json().catch(() => null);
   if (!res.ok) {
-    // Sertakan alasan per-berkas (payload.skipped) dan detail error per-soal
-    // supaya guru tahu persis penyebab kegagalan dari model/validator.
-    const skipped = Array.isArray((data as any)?.skipped)
-      ? (data as any).skipped
-          .map((s: any) => `${s.file}: ${s.reason}`)
-          .slice(0, 4)
-          .join("; ")
-      : "";
-    const serverErrors = Array.isArray((data as any)?.errors)
-      ? (data as any).errors
-          .map((e: unknown) => String(e ?? "").trim())
-          .filter(Boolean)
-          .slice(0, 3)
-      : [];
-    const note = typeof (data as any)?.note === "string" ? (data as any).note.trim() : "";
-    const explicitError = typeof (data as any)?.error === "string" ? (data as any).error.trim() : "";
-    const base =
-      explicitError ||
-      (serverErrors.length > 0 ? serverErrors.join(" | ") : "") ||
-      note ||
-      `AI import failed (HTTP ${res.status})`;
-    const suffixParts: string[] = [];
-    if (skipped) {
-      suffixParts.push(`${skipped}${(data as any).skipped.length > 4 ? "…" : ""}`);
+    throw new Error(buildAiErrorMessage(data, res.status));
+  }
+
+  let finalData: any = data;
+
+  // Background job mode: poll lightweight status endpoint until complete so reverse
+  // proxies / Cloudflare never hit their HTTP origin timeout during long AI runs.
+  if (data?.async && data?.jobId) {
+    const jobId = String(data.jobId);
+    if (typeof data.stage === "string" && data.stage) {
+      onProgress?.(data.stage);
     }
-    if (note && base !== note && !base.includes(note)) {
-      suffixParts.push(note);
+
+    const deadline = Date.now() + 9 * 60 * 1000;
+    let consecutivePollErrors = 0;
+
+    while (true) {
+      if (Date.now() > deadline) {
+        throw new Error("Model AI tidak merespons dalam batas waktu 9 menit. Coba kurangi jumlah soal.");
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+
+      let pollRes: Response;
+      let pollData: any = null;
+      try {
+        pollRes = await fetch(`/api/ai/questions/generate/jobs/${encodeURIComponent(jobId)}`, {
+          method: "GET",
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          cache: "no-store",
+        });
+        pollData = await pollRes.json().catch(() => null);
+      } catch {
+        consecutivePollErrors++;
+        if (consecutivePollErrors >= 6) {
+          throw new Error("Koneksi ke server terputus saat memantau proses generate soal.");
+        }
+        continue;
+      }
+
+      if (!pollRes.ok) {
+        // Retry briefly on transient 5xx proxy errors; fail immediately on 4xx (401/403/404)
+        if (pollRes.status >= 500 && consecutivePollErrors < 5) {
+          consecutivePollErrors++;
+          continue;
+        }
+        throw new Error(buildAiErrorMessage(pollData, pollRes.status));
+      }
+
+      consecutivePollErrors = 0;
+
+      if (pollData?.status === "running") {
+        if (typeof pollData.stage === "string" && pollData.stage) {
+          onProgress?.(pollData.stage);
+        }
+        continue;
+      }
+
+      if (pollData?.status === "failed") {
+        throw new Error(buildAiErrorMessage(pollData, 400));
+      }
+
+      finalData = pollData;
+      break;
     }
-    throw new Error(suffixParts.length > 0 ? `${base} (${suffixParts.join(" — ")})` : base);
   }
 
   return {
-    success: Boolean(data?.success),
-    imported: Number(data?.imported ?? 0),
-    totalParsed: Number(data?.totalParsed ?? data?.imported ?? 0),
-    errors: Array.isArray(data?.errors) ? data.errors : [],
-    material: (data?.material as AiMaterialSummary) ?? null,
-    sourceTags: Array.isArray(data?.sourceTags) ? data.sourceTags : [],
+    success: Boolean(finalData?.success),
+    imported: Number(finalData?.imported ?? 0),
+    totalParsed: Number(finalData?.totalParsed ?? finalData?.imported ?? 0),
+    errors: Array.isArray(finalData?.errors) ? finalData.errors : [],
+    material: (finalData?.material as AiMaterialSummary) ?? null,
+    sourceTags: Array.isArray(finalData?.sourceTags) ? finalData.sourceTags : [],
   };
 }
 

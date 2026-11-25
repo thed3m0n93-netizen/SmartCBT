@@ -11,9 +11,12 @@ import { query, queryOne } from "../db.js";
 export { query, queryOne };
 
 export function json(res: ServerResponse, data: unknown, status = 200) {
+  if (res.writableEnded || res.destroyed) return;
   const body = JSON.stringify(data);
   res.writeHead(status, {
-    "Content-Type": "application/json",
+    "Content-Type": "application/json; charset=utf-8",
+    "Content-Length": String(Buffer.byteLength(body)),
+    "Cache-Control": "no-store, no-cache, must-revalidate",
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type,Authorization",

@@ -308,6 +308,7 @@ const HOST = process.env.HOST || "0.0.0.0";
 const server = createServer((req, res) => {
   handle(req, res).catch((err) => {
     console.error("[smartcbt-api] request error:", err);
+    if (res.writableEnded || res.destroyed) return;
     if (!res.headersSent) {
       sendJson(res, { error: "Internal server error" }, 500);
     } else {
@@ -319,6 +320,7 @@ const server = createServer((req, res) => {
 // Keep proxies/long-lived SSE connections healthy (nginx default idle is 60s).
 server.keepAliveTimeout = 75_000;
 server.headersTimeout = 76_000;
+server.requestTimeout = 600_000;
 
 // Build 141 — Nusantara High multiplayer rides on THIS process: Socket.IO
 // (path /game-socket.io) attaches listeners to the same http.Server.

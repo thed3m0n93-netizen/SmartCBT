@@ -443,6 +443,8 @@ export default function QuestionBankPage() {
   // the requested question count. The asymptote (`1 - e^(-t/k)`) approaches
   // but never reaches 97% — the final 3% is only granted when the server
   // actually responds, so the bar can never "finish" ahead of the result.
+  const aiLiveStageRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (!importing) return;
     const startedAt = Date.now();
@@ -456,7 +458,11 @@ export default function QuestionBankPage() {
         const next = Math.min(97, eased * 97);
         return next > prev ? next : prev;
       });
-      // Stage timeline: prompt → dispatch → generating → persisting.
+      if (aiLiveStageRef.current) {
+        setAiStage(aiLiveStageRef.current);
+        return;
+      }
+      // Fallback stage timeline when polling hasn't emitted a server stage yet.
       const ratio = 1 - Math.exp(-seconds / k);
       if (seconds < 0.8) setAiStage("Preparing prompt…");
       else if (seconds < 2.5) setAiStage("Sending request to AI…");
@@ -847,6 +853,7 @@ export default function QuestionBankPage() {
     setAiMaterialSummary(null);
     // Arm the progress overlay before the long request goes out.
     setAiActiveCount(aiQuestionCount);
+    aiLiveStageRef.current = null;
     setAiProgress(0);
     setAiElapsed(0);
     setAiStage(t("Preparing prompt…"));
@@ -860,7 +867,18 @@ export default function QuestionBankPage() {
               mode: aiMaterialMode,
               ...(aiMaterialMode === "manual" ? { uploadIds: Array.from(aiMaterialIds) } : {}),
             };
-      const result = await importQuestionsFromPrompt(importPrompt, importBankId, aiQuestionCount, selectedTypes, aiRandom, material);
+      const result = await importQuestionsFromPrompt(
+        importPrompt,
+        importBankId,
+        aiQuestionCount,
+        selectedTypes,
+        aiRandom,
+        material,
+        (stage) => {
+          aiLiveStageRef.current = stage;
+          setAiStage(stage);
+        }
+      );
       setAiMaterialSummary(result.material);
       setAiProgress(100);
       setAiStage(t("{n} questions generated. Saving to bank…", { n: result.imported }));
