@@ -24,12 +24,14 @@ import {
   deleteAdmSchedule,
   downloadFromBase64,
   exportAdmExecutionXlsx,
+  fetchAdmApprovalLookup,
   fetchAdmAttendanceSummary,
   fetchAdmExecutionBootstrap,
   fetchAdmJournalAttendance,
   saveAdmJournalAttendance,
   updateAdmJournal,
   updateAdmSchedule,
+  type AdmApprovalLookupItem,
   type AdmAttendanceDetailResponse,
   type AdmAttendanceStatus,
   type AdmAttendanceSummaryResponse,
@@ -156,7 +158,8 @@ export default function AdmExecutionPage() {
     label: string;
   } | null>(null);
 
-  // Print preview modal
+  // Print preview modal & approval lookup
+  const [approvalMap, setApprovalMap] = useState<Record<string, AdmApprovalLookupItem>>({});
   const [printMode, setPrintMode] = useState<ExecutionTab | null>(null);
 
   const loadAll = useCallback(async () => {
@@ -174,6 +177,9 @@ export default function AdmExecutionPage() {
         setSelectedYearId(boot.activeYear.id);
       }
       if (effectiveYearId) {
+        fetchAdmApprovalLookup(effectiveYearId)
+          .then((lk) => setApprovalMap(lk.byKey || {}))
+          .catch(() => undefined);
         const sum = await fetchAdmAttendanceSummary({
           academicYearId: effectiveYearId,
           classId: filterClassId,
@@ -1882,7 +1888,14 @@ export default function AdmExecutionPage() {
       )}
 
       {/* MODAL: PRATINJAU CETAK PDF A4 */}
-      {data && printMode && (
+      {data && printMode && (() => {
+        const activePrintApproval: AdmApprovalLookupItem | null =
+          printMode === "schedules"
+            ? schedules.map((sc) => approvalMap[`teaching_schedules:${sc.id}`]).find((ap) => ap?.status === "approved") ?? null
+            : printMode === "journals"
+              ? filteredJournals.map((j) => approvalMap[`teaching_journals:${j.id}`]).find((ap) => ap?.status === "approved") ?? null
+              : null;
+        return (
         <AdmPrintPreviewModal
           open={Boolean(printMode)}
           onClose={() => setPrintMode(null)}
@@ -1901,6 +1914,11 @@ export default function AdmExecutionPage() {
           school={data.school}
           teacherName={data.caller.name}
           teacherNip={data.caller.nip}
+          qrDataUrl={activePrintApproval?.status === "approved" ? activePrintApproval.qrDataUrl ?? null : null}
+          qrVerifyCode={activePrintApproval?.status === "approved" ? activePrintApproval.verify_code ?? null : null}
+          qrSignerName={activePrintApproval?.status === "approved" ? activePrintApproval.signer_name ?? null : null}
+          qrSignerRole={activePrintApproval?.status === "approved" ? activePrintApproval.signer_role ?? null : null}
+          qrReviewedAt={activePrintApproval?.status === "approved" ? activePrintApproval.reviewed_at ?? null : null}
           meta={[
             { label: "Nama Guru", value: data.caller.name },
             {
@@ -2029,7 +2047,8 @@ export default function AdmExecutionPage() {
             </table>
           )}
         </AdmPrintPreviewModal>
-      )}
+        );
+      })()}
     </div>
   );
 }

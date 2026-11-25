@@ -20,6 +20,7 @@ import {
   Radio,
   School,
   Settings,
+  ShieldCheck,
   Users,
   X,
 } from "lucide-react";
@@ -82,6 +83,7 @@ const navByRole: Partial<Record<Role, NavGroup[]>> = {
         { path: "/teacher/adm/planning", label: "Perencanaan (ATP & Modul)", icon: <BookOpen className={ICON_CLS} /> },
         { path: "/teacher/adm/execution", label: "Pelaksanaan (Jurnal & Presensi)", icon: <ClipboardList className={ICON_CLS} /> },
         { path: "/teacher/adm/assessment", label: "Penilaian (Kisi-Kisi & Nilai)", icon: <Award className={ICON_CLS} /> },
+        { path: "/teacher/adm/approvals", label: "Validasi & Pengesahan", icon: <ShieldCheck className={ICON_CLS} /> },
       ],
     },
     {
@@ -142,6 +144,7 @@ const navByRole: Partial<Record<Role, NavGroup[]>> = {
         { path: "/teacher/adm/planning", label: "Perencanaan (ATP & Modul)", icon: <BookOpen className={ICON_CLS} /> },
         { path: "/teacher/adm/execution", label: "Pelaksanaan (Jurnal & Presensi)", icon: <ClipboardList className={ICON_CLS} /> },
         { path: "/teacher/adm/assessment", label: "Penilaian (Kisi-Kisi & Nilai)", icon: <Award className={ICON_CLS} /> },
+        { path: "/teacher/adm/approvals", label: "Validasi & Pengesahan", icon: <ShieldCheck className={ICON_CLS} /> },
       ],
     },
     {

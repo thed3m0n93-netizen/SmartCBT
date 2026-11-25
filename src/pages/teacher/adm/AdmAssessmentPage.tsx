@@ -28,6 +28,7 @@ import {
   deleteAdmRemedialProgram,
   downloadFromBase64,
   exportAdmAssessmentXlsx,
+  fetchAdmApprovalLookup,
   fetchAdmAssessmentBootstrap,
   fetchAdmGradeLedger,
   fetchAdmGradeScores,
@@ -38,6 +39,7 @@ import {
   updateAdmBlueprintItem,
   updateAdmGradeAssessment,
   updateAdmRemedialProgram,
+  type AdmApprovalLookupItem,
   type AdmAssessmentBlueprint,
   type AdmAssessmentBootstrapResponse,
   type AdmBlueprintAssessmentType,
@@ -233,7 +235,8 @@ export default function AdmAssessmentPage() {
     label: string;
   } | null>(null);
 
-  // Print preview mode
+  // Print preview mode & approval lookup
+  const [approvalMap, setApprovalMap] = useState<Record<string, AdmApprovalLookupItem>>({});
   const [printMode, setPrintMode] = useState<AssessmentTab | null>(null);
 
   const loadAll = useCallback(async () => {
@@ -251,6 +254,9 @@ export default function AdmAssessmentPage() {
         setSelectedYearId(boot.activeYear.id);
       }
       if (effectiveYearId) {
+        fetchAdmApprovalLookup(effectiveYearId)
+          .then((lk) => setApprovalMap(lk.byKey || {}))
+          .catch(() => undefined);
         const ledgerRes = await fetchAdmGradeLedger({
           academicYearId: effectiveYearId,
           classId: filterClassId,
@@ -2769,6 +2775,16 @@ export default function AdmAssessmentPage() {
       )}
 
       {/* PDF A4 Print Preview */}
+      {(() => {
+        const activePrintApproval: AdmApprovalLookupItem | null =
+          printMode === "blueprints" && activeBlueprint
+            ? approvalMap[`assessment_blueprints:${activeBlueprint.id}`] ?? null
+            : printMode === "gradebook"
+              ? gradeAssessments
+                  .map((ga) => approvalMap[`grade_assessments:${ga.id}`])
+                  .find((ap) => ap?.status === "approved") ?? null
+              : null;
+        return (
       <AdmPrintPreviewModal
         open={printMode !== null}
         onClose={() => setPrintMode(null)}
@@ -2791,6 +2807,11 @@ export default function AdmAssessmentPage() {
         ]}
         teacherName={data?.caller?.name}
         teacherNip={data?.caller?.nip}
+        qrDataUrl={activePrintApproval?.status === "approved" ? activePrintApproval.qrDataUrl ?? null : null}
+        qrVerifyCode={activePrintApproval?.status === "approved" ? activePrintApproval.verify_code ?? null : null}
+        qrSignerName={activePrintApproval?.status === "approved" ? activePrintApproval.signer_name ?? null : null}
+        qrSignerRole={activePrintApproval?.status === "approved" ? activePrintApproval.signer_role ?? null : null}
+        qrReviewedAt={activePrintApproval?.status === "approved" ? activePrintApproval.reviewed_at ?? null : null}
       >
         {printMode === "blueprints" && activeBlueprint && (
           <table className="w-full text-[11px] border-collapse" border={1}>
@@ -2881,6 +2902,8 @@ export default function AdmAssessmentPage() {
           </table>
         )}
       </AdmPrintPreviewModal>
+        );
+      })()}
     </div>
   );
 }

@@ -43,6 +43,8 @@ import "./adm-guru/calendar.js";
 import "./adm-guru/planning.js";
 import "./adm-guru/execution.js";
 import "./adm-guru/assessment.js";
+import "./adm-guru/approval.js";
+import "./adm-guru/export.js";
 // Registers /api/setup/auth/{status,verify,password}. Imported for the side
 // effect only — the named exports are consumed by the gate above.
 import "./setup-auth.js";
@@ -118,6 +120,9 @@ export async function handleRequest(
     // anonymous GET here used to 401, silently breaking self-registration.
     // Read-only master data (nama kelas); every write stays admin-gated.
     (method === "GET" && url === "/api/classes") ||
+    // Public read-only QR document verification for Administrasi Guru approvals.
+    // Exposes document title, teacher/signer identity, and SHA-256 signature only; zero student PII.
+    (method === "GET" && /^\/api\/adm\/verify\/[^/]+$/.test(url)) ||
     url === "/api/db-config" ||
     url === "/api/db-config/test" ||
     url.startsWith("/api/setup/") ||

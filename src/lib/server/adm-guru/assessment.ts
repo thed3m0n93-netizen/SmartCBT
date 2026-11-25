@@ -855,6 +855,14 @@ addRoute("PUT", /^\/api\/adm\/blueprints\/([^/]+)$/, async (req: AuthenticatedRe
     [subjectId, classId, questionBankId, title, assessmentType, notes, id],
   );
 
+  await recordAuditLog({
+    req,
+    action: "adm.blueprint.update",
+    entityType: "adm_assessment_blueprints",
+    entityId: id,
+    summary: `Memperbarui kisi-kisi "${title}" (${assessmentType})`,
+  });
+
   const updated = await fetchEnrichedBlueprintOne(id);
   json(res, { success: true, data: updated });
 });
@@ -2106,6 +2114,15 @@ addRoute("POST", /^\/api\/adm\/remedial-enrichment$/, async (req: AuthenticatedR
     );
   }
 
+  await recordAuditLog({
+    req,
+    action: "adm.remedial.upsert",
+    entityType: "adm_remedial_enrichment",
+    entityId: recordId,
+    summary: `Menyimpan program ${programType} pada asesmen "${assessment.title}"`,
+    metadata: { gradeAssessmentId, studentId, programType, completionStatus },
+  });
+
   const all = await fetchEnrichedRemedialList(assessment.academic_year_id, caller, { gradeAssessmentId });
   const row = all.find((r) => String(r.id) === String(recordId)) ?? null;
   json(res, { success: true, id: recordId, data: row }, 201);
@@ -2152,6 +2169,14 @@ addRoute("PUT", /^\/api\/adm\/remedial-enrichment\/([^/]+)$/, async (req: Authen
     [programType, activityPlan, scheduledDate, finalScore, completionStatus, notes, id],
   );
 
+  await recordAuditLog({
+    req,
+    action: "adm.remedial.update",
+    entityType: "adm_remedial_enrichment",
+    entityId: id,
+    summary: `Memperbarui progres ${programType} (${completionStatus}${finalScore != null ? `, nilai akhir ${finalScore}` : ""})`,
+  });
+
   const all = await fetchEnrichedRemedialList(existing.academic_year_id, caller, {
     gradeAssessmentId: existing.grade_assessment_id,
   });
@@ -2175,6 +2200,13 @@ addRoute("DELETE", /^\/api\/adm\/remedial-enrichment\/([^/]+)$/, async (req: Aut
   }
 
   await query(`DELETE FROM adm_remedial_enrichment WHERE id = $1`, [id]);
+  await recordAuditLog({
+    req,
+    action: "adm.remedial.delete",
+    entityType: "adm_remedial_enrichment",
+    entityId: id,
+    summary: `Menghapus entri program ${existing.program_type}`,
+  });
   json(res, { success: true });
 });
 

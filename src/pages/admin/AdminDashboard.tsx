@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
-import { AlertTriangle, CheckCircle2, ClipboardList, Download, Flag, Info, RefreshCw, Search, ShieldCheck, Users } from "lucide-react";
+import { Link } from "react-router";
+import { AlertTriangle, ArrowRight, BookOpen, CheckCircle2, ClipboardList, Download, Flag, Info, RefreshCw, Search, ShieldCheck, Users } from "lucide-react";
 import { useI18n } from "../../i18n";
 import { useAuth } from "../../app/AuthContext";
 import {
@@ -13,6 +14,7 @@ import {
   fetchSystemHealth,
   revokeUserSessions,
   fetchAuditLogs,
+  fetchAdmDashboardSummary,
   type DashboardStats,
   type ActiveExamRow,
   type ActivityItem,
@@ -20,6 +22,7 @@ import {
   type ActiveSessionsResponse,
   type SystemHealthData,
   type AuditLogRow,
+  type AdmDashboardSummaryResponse,
 } from "../../lib/api";
 import { C, R, S } from "../../styles/tokens";
 import { getAiProvider } from "../../lib/ai-providers";
@@ -118,6 +121,24 @@ export default function AdminDashboard() {
   const [auditPageSize, setAuditPageSize] = useState(15);
   const [auditLoading, setAuditLoading] = useState(true);
   const [auditError, setAuditError] = useState<string | null>(null);
+
+  // Administrasi Guru Summary state
+  const [admSummary, setAdmSummary] = useState<AdmDashboardSummaryResponse | null>(null);
+  const [admLoading, setAdmLoading] = useState(true);
+  const [admError, setAdmError] = useState<string | null>(null);
+
+  const loadAdmSummary = useCallback(async () => {
+    setAdmLoading(true);
+    setAdmError(null);
+    try {
+      const res = await fetchAdmDashboardSummary();
+      setAdmSummary(res);
+    } catch (err: any) {
+      setAdmError(err?.message || t("Gagal memuat ringkasan Administrasi Guru."));
+    } finally {
+      setAdmLoading(false);
+    }
+  }, [t]);
 
   const loadAuditLogs = useCallback(async () => {
     setAuditLoading(true);
@@ -249,6 +270,7 @@ export default function AdminDashboard() {
   useEffect(() => {
     loadHealth();
     loadSessions();
+    void loadAdmSummary();
     const healthTimer = window.setInterval(() => loadHealth({ silent: true }), 30000);
     const sessionsTimer = window.setInterval(() => loadSessions({ silent: true }), 15000);
 
@@ -908,6 +930,267 @@ export default function AdminDashboard() {
         </Modal>
       )}
 
+      {/* Administrasi Guru Progress & Validasi Widget */}
+      <SectionCard
+        title={
+          <span className="inline-flex items-center gap-2">
+            <BookOpen className="w-4 h-4" style={{ color: C.brand.main }} />
+            {t("Progres Administrasi Guru (Kurikulum Merdeka)")}
+          </span>
+        }
+        subtitle={
+          admSummary?.activeYear
+            ? `${t("Tahun Ajaran")} ${admSummary.activeYear.year_label} · ${t("Semester")} ${
+                admSummary.activeYear.semester === "ganjil" ? t("Ganjil") : t("Genap")
+              }`
+            : t("Pantauan kelengkapan perangkat ajar, jurnal mengajar, asesmen, dan antrean validasi Kepala Sekolah")
+        }
+        right={
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              to="/teacher/adm/approvals"
+              className="text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-colors inline-flex items-center gap-1 min-h-[34px]"
+              style={{
+                background: C.brand.bg,
+                color: C.brand.dark,
+                border: `1px solid ${C.base.border}`,
+              }}
+            >
+              <span>{t("Antrean Validasi")}</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
+            <Link
+              to="/teacher/adm/overview"
+              className="text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-colors inline-flex items-center gap-1 min-h-[34px]"
+              style={{
+                background: C.base.surfaceSoft,
+                color: C.base.textBody,
+                border: `1px solid ${C.base.border}`,
+              }}
+            >
+              <span>{t("Buka Modul")}</span>
+            </Link>
+            <button
+              type="button"
+              onClick={() => void loadAdmSummary()}
+              disabled={admLoading}
+              className="text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-colors inline-flex items-center gap-1.5 min-h-[34px]"
+              style={{
+                background: C.base.surfaceSoft,
+                color: C.base.textBody,
+                border: `1px solid ${C.base.border}`,
+                opacity: admLoading ? 0.6 : 1,
+              }}
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${admLoading ? "animate-spin" : ""}`} />
+              {t("Refresh")}
+            </button>
+          </div>
+        }
+        bodyStyle={{ padding: 0 }}
+      >
+        {admError ? (
+          <div className="p-4 sm:p-5">
+            <Notice type="error">{admError}</Notice>
+          </div>
+        ) : admLoading && !admSummary ? (
+          <div className="px-5 py-8 text-center text-sm" style={{ color: C.base.textMuted }}>
+            {t("Memuat progres Administrasi Guru…")}
+          </div>
+        ) : !admSummary || !admSummary.activeYear ? (
+          <div className="px-5 py-8 text-center text-sm space-y-2" style={{ color: C.base.textMuted }}>
+            <p>{t("Belum ada tahun ajaran aktif pada modul Administrasi Guru.")}</p>
+            <Link
+              to="/teacher/adm/overview"
+              className="inline-flex items-center gap-1 text-xs font-semibold underline"
+              style={{ color: C.brand.main }}
+            >
+              {t("Konfigurasi Kalender & Tahun Ajaran")}
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
+          </div>
+        ) : (
+          <div>
+            {/* Summary Strip */}
+            <div
+              className="grid grid-cols-2 lg:grid-cols-4 border-b"
+              style={{ borderColor: C.base.borderLight }}
+            >
+              <div className="px-4 sm:px-5 py-3.5 border-b lg:border-b-0 sm:border-r" style={{ borderColor: C.base.borderLight }}>
+                <div className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: C.base.textMuted }}>
+                  {t("Total Perangkat")}
+                </div>
+                <div className="text-xl font-bold tabular-nums mt-0.5" style={{ color: C.base.text }}>
+                  {admSummary.totals.totalDocuments}
+                </div>
+                <div className="text-xs mt-0.5 tabular-nums" style={{ color: C.base.textFaint }}>
+                  {t("{n} guru aktif", { n: admSummary.totals.totalTeachers })} · {admSummary.totals.draft} {t("Draft")}
+                </div>
+              </div>
+              <div className="px-4 sm:px-5 py-3.5 border-b lg:border-b-0 lg:border-r" style={{ borderColor: C.base.borderLight }}>
+                <div className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: C.base.textMuted }}>
+                  {t("Menunggu Telaah")}
+                </div>
+                <div className="text-xl font-bold tabular-nums mt-0.5" style={{ color: C.warn.dark }}>
+                  {admSummary.totals.submitted}
+                </div>
+                <div className="text-xs mt-0.5" style={{ color: C.base.textFaint }}>
+                  {t("Siap divalidasi kepala sekolah")}
+                </div>
+              </div>
+              <div className="px-4 sm:px-5 py-3.5 sm:border-r" style={{ borderColor: C.base.borderLight }}>
+                <div className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: C.base.textMuted }}>
+                  {t("Perlu Revisi")}
+                </div>
+                <div
+                  className="text-xl font-bold tabular-nums mt-0.5"
+                  style={{ color: admSummary.totals.revision > 0 ? C.danger.text : C.base.text }}
+                >
+                  {admSummary.totals.revision}
+                </div>
+                <div className="text-xs mt-0.5 tabular-nums" style={{ color: C.base.textFaint }}>
+                  {admSummary.totals.remedialPendingCount} {t("Remedial Pending")}
+                </div>
+              </div>
+              <div className="px-4 sm:px-5 py-3.5">
+                <div className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: C.base.textMuted }}>
+                  {t("Disetujui QR")}
+                </div>
+                <div className="text-xl font-bold tabular-nums mt-0.5" style={{ color: C.ok.dark }}>
+                  {admSummary.totals.approved}{" "}
+                  <span className="text-xs font-semibold">({admSummary.totals.approvalRatePercent}%)</span>
+                </div>
+                <div className="text-xs mt-0.5 tabular-nums" style={{ color: C.base.textFaint }}>
+                  {admSummary.totals.journalsCount} {t("Jurnal")} · {admSummary.totals.assessmentsCount} {t("Asesmen")}
+                </div>
+              </div>
+            </div>
+
+            {/* Split Content: Per-Teacher Progress & Pending Queue */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 divide-y lg:divide-y-0 lg:divide-x" style={{ borderColor: C.base.borderLight }}>
+              <div className="lg:col-span-7 overflow-x-auto">
+                <div
+                  className="px-4 sm:px-5 py-2.5 text-xs font-semibold border-b flex items-center justify-between"
+                  style={{ borderColor: C.base.borderLight, background: C.base.surfaceMuted, color: C.base.textBody }}
+                >
+                  <span>{t("Kesiapan Perangkat Per Guru")}</span>
+                  <span className="tabular-nums font-normal" style={{ color: C.base.textMuted }}>
+                    {admSummary.teacherProgress.length} {t("guru")}
+                  </span>
+                </div>
+                {admSummary.teacherProgress.length === 0 ? (
+                  <div className="px-5 py-6 text-xs text-center" style={{ color: C.base.textMuted }}>
+                    {t("Belum ada data guru terdaftar.")}
+                  </div>
+                ) : (
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b text-[11px] uppercase tracking-wide" style={{ borderColor: C.base.borderLight, color: C.base.textFaint }}>
+                        <th className="py-2 px-4 sm:px-5 font-semibold">{t("Guru")}</th>
+                        <th className="py-2 px-2 font-semibold text-right tabular-nums">{t("Perangkat")}</th>
+                        <th className="py-2 px-2 font-semibold text-right tabular-nums">{t("Jurnal")}</th>
+                        <th className="py-2 px-2 font-semibold text-right tabular-nums">{t("Disetujui")}</th>
+                        <th className="py-2 px-4 sm:px-5 font-semibold text-right tabular-nums">{t("Kesiapan")}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y text-xs" style={{ borderColor: C.base.borderLight }}>
+                      {admSummary.teacherProgress.slice(0, 8).map((row) => (
+                        <tr key={row.teacherId} className="cbt-row-hover">
+                          <td className="py-2.5 px-4 sm:px-5">
+                            <div className="font-semibold truncate max-w-[180px]" style={{ color: C.base.text }}>
+                              {row.teacherName}
+                            </div>
+                            <div className="text-[11px] truncate" style={{ color: C.base.textFaint }}>
+                              {row.nip ? `NIP ${row.nip}` : row.academicRole}
+                            </div>
+                          </td>
+                          <td className="py-2.5 px-2 text-right tabular-nums" style={{ color: C.base.textBody }}>
+                            {row.totalDocs}
+                            {(row.submitted > 0 || row.revision > 0) && (
+                              <span className="block text-[10px]" style={{ color: row.revision > 0 ? C.danger.text : C.warn.dark }}>
+                                {row.submitted > 0 ? `${row.submitted} ${t("Diajukan")}` : ""}
+                                {row.submitted > 0 && row.revision > 0 ? " · " : ""}
+                                {row.revision > 0 ? `${row.revision} ${t("Revisi")}` : ""}
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-2.5 px-2 text-right tabular-nums" style={{ color: C.base.textBody }}>
+                            {row.journalsCount}
+                          </td>
+                          <td className="py-2.5 px-2 text-right tabular-nums font-semibold" style={{ color: C.ok.dark }}>
+                            {row.approved}
+                          </td>
+                          <td className="py-2.5 px-4 sm:px-5 text-right tabular-nums">
+                            <span
+                              className="font-semibold"
+                              style={{
+                                color:
+                                  row.readinessPercent >= 75
+                                    ? C.ok.dark
+                                    : row.readinessPercent >= 35
+                                      ? C.brand.dark
+                                      : C.base.textMuted,
+                              }}
+                            >
+                              {row.readinessPercent}%
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+
+              <div className="lg:col-span-5">
+                <div
+                  className="px-4 sm:px-5 py-2.5 text-xs font-semibold border-b flex items-center justify-between"
+                  style={{ borderColor: C.base.borderLight, background: C.base.surfaceMuted, color: C.base.textBody }}
+                >
+                  <span>{t("Antrean Validasi Terbaru")}</span>
+                  <Link to="/teacher/adm/approvals" className="text-[11px] font-semibold hover:underline" style={{ color: C.brand.main }}>
+                    {t("Kelola Semua")}
+                  </Link>
+                </div>
+                {admSummary.pendingQueue.length === 0 ? (
+                  <div className="px-5 py-6 text-xs text-center" style={{ color: C.base.textMuted }}>
+                    {t("Tidak ada dokumen perangkat ajar yang menunggu validasi.")}
+                  </div>
+                ) : (
+                  <div className="divide-y" style={{ borderColor: C.base.borderLight }}>
+                    {admSummary.pendingQueue.slice(0, 6).map((item) => (
+                      <Link
+                        key={item.id}
+                        to="/teacher/adm/approvals"
+                        className="px-4 sm:px-5 py-2.5 flex items-center justify-between gap-2 cbt-row-hover block"
+                      >
+                        <div className="min-w-0">
+                          <div className="text-xs font-semibold truncate" style={{ color: C.base.text }}>
+                            {item.docTitle}
+                          </div>
+                          <div className="text-[11px] truncate" style={{ color: C.base.textMuted }}>
+                            {item.entityLabel} · {item.teacherName}
+                          </div>
+                        </div>
+                        <span
+                          className="text-[10px] font-semibold px-2 py-0.5 rounded shrink-0"
+                          style={{
+                            background: item.status === "revision" ? C.danger.bg : C.warn.bg,
+                            color: item.status === "revision" ? C.danger.text : C.warn.dark,
+                          }}
+                        >
+                          {item.status === "revision" ? t("Revisi") : t("Diajukan")}
+                        </span>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </SectionCard>
+
       {/* System Audit Log Panel */}
       <SectionCard
         title={
@@ -961,6 +1244,7 @@ export default function AdminDashboard() {
             <option value="question">{t("Bank & Soal (question)")}</option>
             <option value="ai">{t("AI Agent (ai)")}</option>
             <option value="settings">{t("Pengaturan & Branding")}</option>
+            <option value="adm">{t("Administrasi Guru (adm)")}</option>
             <option value="backup">{t("Backup & Restore")}</option>
             <option value="session">{t("Sesi Login")}</option>
           </select>

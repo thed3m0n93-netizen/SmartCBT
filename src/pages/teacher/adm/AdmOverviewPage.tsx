@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router";
 import {
+  ArrowRight,
   Calendar,
   CalendarRange,
   Calculator,
   CheckCircle2,
   Download,
   Edit3,
+  FileCheck2,
   Layers,
   Plus,
   Printer,
@@ -20,14 +23,18 @@ import {
   deleteAdmEffectiveWeeks,
   downloadFromBase64,
   exportAdmEffectiveWeeksXlsx,
+  fetchAdmApprovalLookup,
+  fetchAdmDashboardSummary,
   fetchAdmOverview,
   previewAdmEffectiveWeeks,
   saveAdmEffectiveWeeks,
   updateAdmAcademicYear,
   updateAdmCalendarEvent,
   type AdmAcademicYear,
+  type AdmApprovalLookupItem,
   type AdmCalendarEvent,
   type AdmCalendarEventType,
+  type AdmDashboardSummaryResponse,
   type AdmEffectiveWeeks,
   type AdmEffectiveWeeksCalc,
   type AdmOverviewResponse,
@@ -35,6 +42,7 @@ import {
 import { C, S, alpha } from "../../../styles/tokens";
 import { Btn, Field, Modal, Notice, PageHeader, StatCard, controlStyle } from "../../../components/ui";
 import AdmPrintPreviewModal from "../../../components/adm/AdmPrintPreviewModal";
+import AdmApprovalBadge from "../../../components/adm/AdmApprovalBadge";
 import { useI18n } from "../../../i18n";
 
 type TabId = "kaldik" | "effective_weeks";
@@ -136,12 +144,15 @@ export default function AdmOverviewPage() {
   } | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
 
-  // PDF print preview
+  // PDF print preview & approval lookup
+  const [approvalMap, setApprovalMap] = useState<Record<string, AdmApprovalLookupItem>>({});
+  const [docSummary, setDocSummary] = useState<AdmDashboardSummaryResponse | null>(null);
   const [printMode, setPrintMode] = useState<
     | null
     | { kind: "kaldik" }
     | {
         kind: "effective_weeks";
+        entityId?: string;
         calc: AdmEffectiveWeeksCalc;
         subjectLabel: string;
         classLabel: string;
@@ -156,6 +167,16 @@ export default function AdmOverviewPage() {
     try {
       const res = await fetchAdmOverview(yearId || undefined);
       setData(res);
+      if (res.activeYear?.id) {
+        fetchAdmApprovalLookup(res.activeYear.id)
+          .then((lk) => setApprovalMap(lk.byKey || {}))
+          .catch(() => undefined);
+        fetchAdmDashboardSummary(res.activeYear.id)
+          .then((sm) => setDocSummary(sm))
+          .catch(() => setDocSummary(null));
+      } else {
+        setDocSummary(null);
+      }
       if (res.activeYear) {
         setSelectedYearId(res.activeYear.id);
         setCalcWorkingDays(res.activeYear.working_days_per_week === 6 ? 6 : 5);
@@ -607,6 +628,64 @@ export default function AdmOverviewPage() {
           icon={<Layers className="w-5 h-5" />}
         />
       </div>
+
+      {/* Teacher / Validator Document Status Summary Bar */}
+      {docSummary && (
+        <div
+          className="rounded-xl px-4 py-3 flex flex-wrap items-center justify-between gap-3"
+          style={{
+            background: C.base.surface,
+            border: `1px solid ${C.base.borderLight}`,
+            boxShadow: S.card,
+          }}
+        >
+          <div className="flex flex-wrap items-center gap-3 min-w-0">
+            <span
+              className="w-8 h-8 rounded-lg inline-flex items-center justify-center shrink-0"
+              style={{ background: C.brand.bg, color: C.brand.main }}
+            >
+              <FileCheck2 className="w-4 h-4" />
+            </span>
+            <div className="min-w-0">
+              <div className="text-xs font-bold" style={{ color: C.base.text }}>
+                {isValidator ? t("Status Validasi Perangkat Sekolah") : t("Ringkasan Status Perangkat Ajar Anda")}
+              </div>
+              <div className="text-xs flex flex-wrap items-center gap-x-3 gap-y-0.5 tabular-nums mt-0.5" style={{ color: C.base.textMuted }}>
+                <span>
+                  <strong style={{ color: C.base.text }}>{docSummary.totals.totalDocuments}</strong> {t("Total")}
+                </span>
+                <span>
+                  <strong style={{ color: C.base.textBody }}>{docSummary.totals.draft}</strong> {t("Draft")}
+                </span>
+                <span>
+                  <strong style={{ color: C.warn.dark }}>{docSummary.totals.submitted}</strong> {t("Diajukan")}
+                </span>
+                {docSummary.totals.revision > 0 && (
+                  <span>
+                    <strong style={{ color: C.danger.text }}>{docSummary.totals.revision}</strong> {t("Perlu Revisi")}
+                  </span>
+                )}
+                <span>
+                  <strong style={{ color: C.ok.dark }}>{docSummary.totals.approved}</strong> {t("Disetujui QR")} ({docSummary.totals.approvalRatePercent}%)
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <Link
+            to="/teacher/adm/approvals"
+            className="text-xs font-semibold px-3 py-1.5 rounded-lg inline-flex items-center gap-1.5 shrink-0 transition-colors"
+            style={{
+              background: docSummary.totals.revision > 0 ? C.danger.bg : C.base.surfaceSoft,
+              color: docSummary.totals.revision > 0 ? C.danger.text : C.brand.dark,
+              border: `1px solid ${C.base.border}`,
+            }}
+          >
+            <span>{isValidator ? t("Buka Panel Persetujuan") : t("Ajukan & Unduh Bundle")}</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
+        </div>
+      )}
 
       {/* Segmented Navigation Tabs */}
       <div
@@ -1224,9 +1303,17 @@ export default function AdmOverviewPage() {
                               ({row.subject_code || "-"})
                             </span>
                           </div>
-                          <div className="text-xs mt-0.5" style={{ color: C.base.textMuted }}>
-                            {clsLabel} · {row.working_days_per_week} hari kerja
-                            {row.notes ? ` · ${row.notes}` : ""}
+                          <div className="text-xs mt-0.5 flex flex-wrap items-center gap-2" style={{ color: C.base.textMuted }}>
+                            <span>
+                              {clsLabel} · {row.working_days_per_week} hari kerja
+                              {row.notes ? ` · ${row.notes}` : ""}
+                            </span>
+                            <AdmApprovalBadge
+                              compact
+                              status={approvalMap[`effective_weeks:${row.id}`]?.status ?? row.status}
+                              verifyCode={approvalMap[`effective_weeks:${row.id}`]?.verify_code}
+                              revisionNote={approvalMap[`effective_weeks:${row.id}`]?.revision_note}
+                            />
                           </div>
                         </td>
                         {isValidator && (
@@ -1269,6 +1356,7 @@ export default function AdmOverviewPage() {
                                 onClick={() =>
                                   setPrintMode({
                                     kind: "effective_weeks",
+                                    entityId: row.id,
                                     calc: row.breakdown_json!,
                                     subjectLabel: `${row.subject_name || "-"} (${row.subject_code || "-"})`,
                                     classLabel: clsLabel,
@@ -1639,6 +1727,31 @@ export default function AdmOverviewPage() {
           }
           rightSignatoryRole={
             printMode.kind === "kaldik" ? "Waka Kurikulum" : "Guru Mata Pelajaran"
+          }
+          qrDataUrl={
+            printMode.kind === "effective_weeks" && printMode.entityId
+              ? approvalMap[`effective_weeks:${printMode.entityId}`]?.qrDataUrl ?? null
+              : null
+          }
+          qrVerifyCode={
+            printMode.kind === "effective_weeks" && printMode.entityId
+              ? approvalMap[`effective_weeks:${printMode.entityId}`]?.verify_code ?? null
+              : null
+          }
+          qrSignerName={
+            printMode.kind === "effective_weeks" && printMode.entityId
+              ? approvalMap[`effective_weeks:${printMode.entityId}`]?.signer_name ?? null
+              : null
+          }
+          qrSignerRole={
+            printMode.kind === "effective_weeks" && printMode.entityId
+              ? approvalMap[`effective_weeks:${printMode.entityId}`]?.signer_role ?? null
+              : null
+          }
+          qrReviewedAt={
+            printMode.kind === "effective_weeks" && printMode.entityId
+              ? approvalMap[`effective_weeks:${printMode.entityId}`]?.reviewed_at ?? null
+              : null
           }
         >
           {printMode.kind === "kaldik" ? (

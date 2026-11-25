@@ -39,6 +39,7 @@ interface MockStore {
   assignments: any[];
   assignment_classes: any[];
   assignment_submissions: any[];
+  assignment_submission_files: any[];
   uploads: any[];
   audit_logs: any[];
   game_nusantara_state: any[];
@@ -58,6 +59,8 @@ interface MockStore {
   adm_grade_assessments: any[];
   adm_student_grades: any[];
   adm_remedial_enrichment: any[];
+  adm_document_approvals: any[];
+  adm_approval_logs: any[];
 }
 
 function createInitialStore(): MockStore {
@@ -283,6 +286,7 @@ function createInitialStore(): MockStore {
     assignments: [],
     assignment_classes: [],
     assignment_submissions: [],
+    assignment_submission_files: [],
     uploads: [],
     audit_logs: [],
     game_nusantara_state: [],
@@ -302,6 +306,8 @@ function createInitialStore(): MockStore {
     adm_grade_assessments: [],
     adm_student_grades: [],
     adm_remedial_enrichment: [],
+    adm_document_approvals: [],
+    adm_approval_logs: [],
   };
 }
 
@@ -340,6 +346,53 @@ export async function executeMockQuery(sqlText: string, params: any[] = []): Pro
   }
   if (/^(create table|alter table|create index|drop table|drop trigger|create trigger|drop function|set foreign_key_checks|select setval)/i.test(sql)) {
     return [];
+  }
+
+  // Backup & Restore generic handlers across all MockStore tables
+  if (sql.startsWith("/* restore */")) {
+    const cleanInsert = sql.replace(/^\/\*\s*restore\s*\*\/\s*/i, "");
+    const m = cleanInsert.match(/^insert into ([a-z_]+) \(([^)]+)\) values/i);
+    if (m) {
+      const tbl = m[1] as keyof MockStore;
+      const cols = m[2].split(",").map((c) => c.trim());
+      if (Array.isArray((store as any)[tbl])) {
+        const row: Record<string, any> = {};
+        cols.forEach((col, i) => {
+          let val = params[i] ?? null;
+          if (
+            typeof val === "string" &&
+            /(json|options|correct_answer|metadata|student_response)$/i.test(col)
+          ) {
+            try {
+              val = JSON.parse(val);
+            } catch {
+              /* keep string */
+            }
+          }
+          row[col] = val;
+        });
+        (store as any)[tbl].push(row);
+        return [{ ...row }];
+      }
+    }
+    return [];
+  }
+  {
+    const dumpMatch = sql.match(/^select \* from ([a-z_]+)$/i);
+    if (dumpMatch) {
+      const tbl = dumpMatch[1] as keyof MockStore;
+      if (Array.isArray((store as any)[tbl])) {
+        return (store as any)[tbl].map((r: any) => ({ ...r }));
+      }
+    }
+    const clearMatch = sql.match(/^delete from ([a-z_]+)$/i);
+    if (clearMatch) {
+      const tbl = clearMatch[1] as keyof MockStore;
+      if (Array.isArray((store as any)[tbl])) {
+        (store as any)[tbl] = [];
+        return [];
+      }
+    }
   }
 
   // Settings
@@ -609,6 +662,20 @@ export async function executeMockQuery(sqlText: string, params: any[] = []): Pro
           grade_level: cls?.grade_level ?? null,
         };
       });
+  }
+
+  if (lower.includes("from users") && lower.includes("role in ('teacher', 'super_admin')")) {
+    return store.users
+      .filter((u) => (u.role === "teacher" || u.role === "super_admin") && u.status === "active")
+      .sort((a, b) => String(a.full_name).localeCompare(String(b.full_name)))
+      .map((u) => ({
+        id: u.id,
+        username: u.username,
+        full_name: u.full_name,
+        role: u.role,
+        academic_role: u.academic_role ?? "none",
+        nip: u.nip ?? null,
+      }));
   }
 
   // User list
@@ -1060,6 +1127,11 @@ export async function executeMockQuery(sqlText: string, params: any[] = []): Pro
     store.adm_grade_assessments = store.adm_grade_assessments.filter((g) => String(g.academic_year_id) !== ayId);
     store.adm_student_grades = store.adm_student_grades.filter((g) => !removedGaIds.has(String(g.grade_assessment_id)));
     store.adm_remedial_enrichment = store.adm_remedial_enrichment.filter((r) => String(r.academic_year_id) !== ayId);
+    const removedDaIds = new Set(
+      store.adm_document_approvals.filter((d) => String(d.academic_year_id) === ayId).map((d) => String(d.id)),
+    );
+    store.adm_document_approvals = store.adm_document_approvals.filter((d) => String(d.academic_year_id) !== ayId);
+    store.adm_approval_logs = store.adm_approval_logs.filter((l) => !removedDaIds.has(String(l.approval_id)));
     return [];
   }
 
@@ -2343,6 +2415,164 @@ export async function executeMockQuery(sqlText: string, params: any[] = []): Pro
   }
   if (/^delete from adm_remedial_enrichment where id = \$1/i.test(sql)) {
     store.adm_remedial_enrichment = store.adm_remedial_enrichment.filter((r) => String(r.id) !== String(params[0]));
+    return [];
+  }
+
+  // adm_document_approvals & adm_approval_logs (Phase 5)
+  if (/^select \* from adm_document_approvals where entity_type = \$1 and entity_id = \$2/i.test(sql)) {
+    const row = store.adm_document_approvals.find(
+      (d) => String(d.entity_type) === String(params[0]) && String(d.entity_id) === String(params[1]),
+    );
+    return row ? [{ ...row }] : [];
+  }
+  if (/^select \* from adm_document_approvals where id = \$1/i.test(sql)) {
+    const row = store.adm_document_approvals.find((d) => String(d.id) === String(params[0]));
+    return row ? [{ ...row }] : [];
+  }
+  if (lower.includes("from adm_document_approvals da") && lower.includes("where da.verify_code = $1")) {
+    const row = store.adm_document_approvals.find(
+      (d) => String(d.verify_code || "").toUpperCase() === String(params[0] || "").toUpperCase(),
+    );
+    if (!row) return [];
+    const u = store.users.find((x) => String(x.id) === String(row.teacher_id));
+    const ay = store.adm_academic_years.find((x) => String(x.id) === String(row.academic_year_id));
+    return [
+      {
+        ...row,
+        teacher_name: u?.full_name ?? "",
+        teacher_nip: u?.nip ?? null,
+        year_label: ay?.year_label ?? "",
+        semester: ay?.semester ?? "",
+      },
+    ];
+  }
+  if (lower.includes("from adm_document_approvals da")) {
+    const enrich = (r: any) => {
+      const u = store.users.find((x) => String(x.id) === String(r.teacher_id));
+      const rv = r.reviewed_by ? store.users.find((x) => String(x.id) === String(r.reviewed_by)) : null;
+      const ay = store.adm_academic_years.find((x) => String(x.id) === String(r.academic_year_id));
+      return {
+        ...r,
+        teacher_name: u?.full_name ?? "",
+        teacher_nip: u?.nip ?? null,
+        reviewer_name: rv?.full_name ?? null,
+        reviewer_nip: rv?.nip ?? null,
+        year_label: ay?.year_label ?? "",
+        semester: ay?.semester ?? "",
+      };
+    };
+    const list = lower.includes("da.teacher_id = $2")
+      ? store.adm_document_approvals.filter(
+          (d) => String(d.academic_year_id) === String(params[0]) && String(d.teacher_id) === String(params[1]),
+        )
+      : store.adm_document_approvals.filter((d) => String(d.academic_year_id) === String(params[0]));
+    return list
+      .sort((a, b) => String(b.updated_at || "").localeCompare(String(a.updated_at || "")))
+      .map(enrich);
+  }
+  if (/^insert into adm_document_approvals\b/i.test(sql)) {
+    const row = {
+      id: params[0],
+      academic_year_id: params[1],
+      teacher_id: params[2],
+      entity_type: params[3],
+      entity_id: params[4],
+      doc_title: params[5],
+      subject_name: params[6] ?? null,
+      class_name: params[7] ?? null,
+      status: "submitted",
+      submitted_at: params[8] ?? nowIso(),
+      reviewed_by: null,
+      reviewed_at: null,
+      revision_note: null,
+      verify_code: null,
+      signature_hash: null,
+      signer_name: null,
+      signer_nip: null,
+      signer_role: null,
+      created_at: nowIso(),
+      updated_at: params[8] ?? nowIso(),
+    };
+    store.adm_document_approvals.push(row);
+    return [{ ...row }];
+  }
+  if (/^update adm_document_approvals set doc_title = \$1/i.test(sql)) {
+    const row = store.adm_document_approvals.find((d) => String(d.id) === String(params[4]));
+    if (row) {
+      row.doc_title = params[0];
+      row.subject_name = params[1] ?? null;
+      row.class_name = params[2] ?? null;
+      row.status = "submitted";
+      row.submitted_at = params[3] ?? nowIso();
+      row.revision_note = null;
+      row.updated_at = params[3] ?? nowIso();
+    }
+    return [];
+  }
+  if (/^update adm_document_approvals set status = 'revision'/i.test(sql)) {
+    const row = store.adm_document_approvals.find((d) => String(d.id) === String(params[3]));
+    if (row) {
+      row.status = "revision";
+      row.reviewed_by = params[0];
+      row.reviewed_at = params[1];
+      row.revision_note = params[2];
+      row.verify_code = null;
+      row.signature_hash = null;
+      row.signer_name = null;
+      row.signer_nip = null;
+      row.signer_role = null;
+      row.updated_at = params[1];
+    }
+    return [];
+  }
+  if (/^update adm_document_approvals set status = 'approved'/i.test(sql)) {
+    const row = store.adm_document_approvals.find((d) => String(d.id) === String(params[8]));
+    if (row) {
+      row.status = "approved";
+      row.reviewed_by = params[0];
+      row.reviewed_at = params[1];
+      row.revision_note = params[2] ?? null;
+      row.verify_code = params[3];
+      row.signature_hash = params[4];
+      row.signer_name = params[5];
+      row.signer_nip = params[6] ?? null;
+      row.signer_role = params[7];
+      row.updated_at = params[1];
+    }
+    return [];
+  }
+  if (/^select \* from adm_approval_logs where approval_id in/i.test(sql)) {
+    const idSet = new Set(params.map((p) => String(p)));
+    return store.adm_approval_logs
+      .filter((l) => idSet.has(String(l.approval_id)))
+      .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")))
+      .map((l) => ({ ...l }));
+  }
+  if (/^insert into adm_approval_logs\b/i.test(sql)) {
+    const row = {
+      id: params[0],
+      approval_id: params[1],
+      actor_id: params[2] ?? null,
+      actor_name: params[3] ?? "",
+      actor_role: params[4] ?? "",
+      action: params[5],
+      note: params[6] ?? null,
+      created_at: params[7] ?? nowIso(),
+    };
+    store.adm_approval_logs.push(row);
+    return [{ ...row }];
+  }
+  if (/^update (adm_[a-z_]+) set status = \$1, updated_at = now\(\) where id = \$2/i.test(sql)) {
+    const m = sql.match(/^update (adm_[a-z_]+) set status = \$1/i);
+    const tbl = m?.[1] as keyof MockStore | undefined;
+    const arr = tbl && Array.isArray(store[tbl]) ? (store[tbl] as any[]) : null;
+    if (arr) {
+      const target = arr.find((r) => String(r.id) === String(params[1]));
+      if (target) {
+        target.status = params[0];
+        target.updated_at = nowIso();
+      }
+    }
     return [];
   }
 

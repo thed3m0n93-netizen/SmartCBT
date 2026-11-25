@@ -32,6 +32,7 @@ import {
   downloadFromBase64,
   duplicateAdmCpAtp,
   exportAdmPlanningXlsx,
+  fetchAdmApprovalLookup,
   fetchAdmPlanningBootstrap,
   resolveAssetUrl,
   syncAdmLessonPlanToLms,
@@ -41,6 +42,7 @@ import {
   updateAdmPromes,
   updateAdmProta,
   uploadAdmLessonPlanAttachment,
+  type AdmApprovalLookupItem,
   type AdmCpAtp,
   type AdmEffectiveWeeks,
   type AdmFase,
@@ -59,6 +61,7 @@ import {
 import { C, S, alpha } from "../../../styles/tokens";
 import { Btn, Field, Modal, Notice, PageHeader, StatCard, controlStyle } from "../../../components/ui";
 import AdmPrintPreviewModal from "../../../components/adm/AdmPrintPreviewModal";
+import AdmApprovalBadge from "../../../components/adm/AdmApprovalBadge";
 import { useI18n } from "../../../i18n";
 
 type PlanningTab = "cp_atp" | "kktp" | "prota" | "promes" | "lesson_plans";
@@ -200,7 +203,8 @@ export default function AdmPlanningPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<PlanningTab>("cp_atp");
 
-  // Shared print & delete confirm
+  // Shared print, approval lookup & delete confirm
+  const [approvalMap, setApprovalMap] = useState<Record<string, AdmApprovalLookupItem>>({});
   const [printTarget, setPrintTarget] = useState<PrintTarget>(null);
   const [confirmDelete, setConfirmDelete] = useState<{
     kind: "cp_atp" | "kktp" | "prota" | "promes" | "lesson_plan";
@@ -350,6 +354,11 @@ export default function AdmPlanningPage() {
       setData(res);
       if (!yearId && res.activeYear?.id) {
         setSelectedYearId(res.activeYear.id);
+      }
+      if (res.activeYear?.id) {
+        fetchAdmApprovalLookup(res.activeYear.id)
+          .then((lk) => setApprovalMap(lk.byKey || {}))
+          .catch(() => undefined);
       }
       const defaultSubj = res.assignedSubjectIds[0] ?? res.subjects[0]?.id ?? 0;
       const defaultGrade = res.classes[0]?.grade_level || "XII";
@@ -1505,7 +1514,14 @@ export default function AdmPlanningPage() {
                         </div>
                       )}
 
-                      <div className="flex flex-wrap items-center justify-end gap-1.5 pt-2" style={{ borderTop: `1px solid ${C.base.borderLight}` }}>
+                      <div className="flex flex-wrap items-center justify-between gap-2 pt-2" style={{ borderTop: `1px solid ${C.base.borderLight}` }}>
+                        <AdmApprovalBadge
+                          compact
+                          status={approvalMap[`kktp:${item.id}`]?.status ?? item.status}
+                          verifyCode={approvalMap[`kktp:${item.id}`]?.verify_code}
+                          revisionNote={approvalMap[`kktp:${item.id}`]?.revision_note}
+                        />
+                        <div className="flex flex-wrap items-center justify-end gap-1.5">
                         <Btn size="sm" onClick={() => handleExportXlsx("kktp", item.id)}>
                           <Download className="w-3.5 h-3.5" />
                           <span>Excel</span>
@@ -1524,6 +1540,7 @@ export default function AdmPlanningPage() {
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </Btn>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -1613,6 +1630,12 @@ export default function AdmPlanningPage() {
                       </div>
 
                       <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                        <AdmApprovalBadge
+                          compact
+                          status={approvalMap[`prota:${item.id}`]?.status ?? item.status}
+                          verifyCode={approvalMap[`prota:${item.id}`]?.verify_code}
+                          revisionNote={approvalMap[`prota:${item.id}`]?.revision_note}
+                        />
                         <Btn size="sm" onClick={() => handleExportXlsx("prota", item.id)}>
                           <Download className="w-3.5 h-3.5" />
                           <span>Excel</span>
@@ -1720,6 +1743,12 @@ export default function AdmPlanningPage() {
                       </div>
 
                       <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                        <AdmApprovalBadge
+                          compact
+                          status={approvalMap[`promes:${item.id}`]?.status ?? item.status}
+                          verifyCode={approvalMap[`promes:${item.id}`]?.verify_code}
+                          revisionNote={approvalMap[`promes:${item.id}`]?.revision_note}
+                        />
                         <Btn size="sm" onClick={() => handleExportXlsx("promes", item.id)}>
                           <Download className="w-3.5 h-3.5" />
                           <span>Excel</span>
@@ -1860,7 +1889,13 @@ export default function AdmPlanningPage() {
                                 : "Sinkron ke LMS"}
                           </span>
                         </Btn>
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <AdmApprovalBadge
+                            compact
+                            status={approvalMap[`lesson_plans:${lp.id}`]?.status ?? lp.status}
+                            verifyCode={approvalMap[`lesson_plans:${lp.id}`]?.verify_code}
+                            revisionNote={approvalMap[`lesson_plans:${lp.id}`]?.revision_note}
+                          />
                           <Btn size="sm" onClick={() => handleExportXlsx("lesson-plan", lp.id)}>
                             <Download className="w-3.5 h-3.5" />
                             <span>Excel</span>
@@ -3072,7 +3107,20 @@ export default function AdmPlanningPage() {
       )}
 
       {/* ── MODAL: PRINT PREVIEW PDF A4 ──────────────────────────────── */}
-      {printTarget && printModalMeta && (
+      {printTarget && printModalMeta && (() => {
+        const activePrintApproval: AdmApprovalLookupItem | null =
+          printTarget.kind === "kktp"
+            ? approvalMap[`kktp:${printTarget.item.id}`] ?? null
+            : printTarget.kind === "prota"
+              ? approvalMap[`prota:${printTarget.item.id}`] ?? null
+              : printTarget.kind === "promes"
+                ? approvalMap[`promes:${printTarget.item.id}`] ?? null
+                : printTarget.kind === "lesson_plan"
+                  ? approvalMap[`lesson_plans:${printTarget.item.id}`] ?? null
+                  : filteredCpAtp
+                      .map((r) => approvalMap[`cp_atp:${r.id}`])
+                      .find((ap) => ap?.status === "approved") ?? null;
+        return (
         <AdmPrintPreviewModal
           open={true}
           onClose={() => setPrintTarget(null)}
@@ -3082,6 +3130,11 @@ export default function AdmPlanningPage() {
           meta={printModalMeta.meta}
           teacherName={printModalMeta.teacherName || undefined}
           teacherNip={printModalMeta.teacherNip}
+          qrDataUrl={activePrintApproval?.status === "approved" ? activePrintApproval.qrDataUrl ?? null : null}
+          qrVerifyCode={activePrintApproval?.status === "approved" ? activePrintApproval.verify_code ?? null : null}
+          qrSignerName={activePrintApproval?.status === "approved" ? activePrintApproval.signer_name ?? null : null}
+          qrSignerRole={activePrintApproval?.status === "approved" ? activePrintApproval.signer_role ?? null : null}
+          qrReviewedAt={activePrintApproval?.status === "approved" ? activePrintApproval.reviewed_at ?? null : null}
         >
           {printTarget.kind === "cp_atp" && (
             <table className="w-full text-xs border-collapse border border-slate-400">
@@ -3261,7 +3314,8 @@ export default function AdmPlanningPage() {
             </div>
           )}
         </AdmPrintPreviewModal>
-      )}
+        );
+      })()}
     </div>
   );
 }

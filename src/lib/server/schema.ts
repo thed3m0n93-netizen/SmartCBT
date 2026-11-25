@@ -64,6 +64,8 @@ export const CORE_TABLES = [
   "adm_grade_assessments",
   "adm_student_grades",
   "adm_remedial_enrichment",
+  "adm_document_approvals",
+  "adm_approval_logs",
 ] as const;
 
 /**
@@ -156,6 +158,8 @@ export const SCHEMA_GROUPS: readonly SchemaGroup[] = [
       "adm_grade_assessments",
       "adm_student_grades",
       "adm_remedial_enrichment",
+      "adm_document_approvals",
+      "adm_approval_logs",
     ],
   },
 ];
@@ -1316,6 +1320,68 @@ CREATE INDEX IF NOT EXISTS idx_adm_sg_student  ON adm_student_grades (student_id
 CREATE INDEX IF NOT EXISTS idx_adm_re_ga       ON adm_remedial_enrichment (grade_assessment_id);
 CREATE INDEX IF NOT EXISTS idx_adm_re_teacher  ON adm_remedial_enrichment (teacher_id, academic_year_id, program_type);`,
   },
+  {
+    label: "Tabel adm_document_approvals (Validasi & Tanda Tangan QR Dokumen)",
+    sql: `CREATE TABLE IF NOT EXISTS adm_document_approvals (
+    id               UUID         NOT NULL DEFAULT gen_random_uuid(),
+    academic_year_id UUID         NOT NULL,
+    teacher_id       UUID         NOT NULL,
+    entity_type      VARCHAR(40)  NOT NULL,
+    entity_id        VARCHAR(64)  NOT NULL,
+    doc_title        VARCHAR(220) NOT NULL,
+    subject_name     VARCHAR(140) NULL,
+    class_name       VARCHAR(80)  NULL,
+    status           VARCHAR(16)  NOT NULL DEFAULT 'draft'
+                       CHECK (status IN ('draft','submitted','revision','approved')),
+    submitted_at     TIMESTAMPTZ  NULL,
+    reviewed_by      UUID         NULL,
+    reviewed_at      TIMESTAMPTZ  NULL,
+    revision_note    TEXT         NULL,
+    verify_code      VARCHAR(48)  NULL,
+    signature_hash   VARCHAR(128) NULL,
+    signer_name      VARCHAR(128) NULL,
+    signer_nip       VARCHAR(32)  NULL,
+    signer_role      VARCHAR(48)  NULL,
+    created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT pk_adm_document_approvals PRIMARY KEY (id),
+    CONSTRAINT uq_adm_da_entity UNIQUE (entity_type, entity_id),
+    CONSTRAINT uq_adm_da_verify UNIQUE (verify_code),
+    CONSTRAINT fk_adm_da_year FOREIGN KEY (academic_year_id)
+        REFERENCES adm_academic_years (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_da_teacher FOREIGN KEY (teacher_id)
+        REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_da_reviewer FOREIGN KEY (reviewed_by)
+        REFERENCES users (id) ON DELETE SET NULL ON UPDATE CASCADE
+);`,
+  },
+  {
+    label: "Tabel adm_approval_logs (Riwayat Validasi & Revisi)",
+    sql: `CREATE TABLE IF NOT EXISTS adm_approval_logs (
+    id          UUID         NOT NULL DEFAULT gen_random_uuid(),
+    approval_id UUID         NOT NULL,
+    actor_id    UUID         NULL,
+    actor_name  VARCHAR(128) NOT NULL DEFAULT '',
+    actor_role  VARCHAR(48)  NOT NULL DEFAULT '',
+    action      VARCHAR(24)  NOT NULL
+                  CHECK (action IN ('submitted','resubmitted','revision','approved','reset')),
+    note        TEXT         NULL,
+    created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT pk_adm_approval_logs PRIMARY KEY (id),
+    CONSTRAINT fk_adm_al_approval FOREIGN KEY (approval_id)
+        REFERENCES adm_document_approvals (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_al_actor FOREIGN KEY (actor_id)
+        REFERENCES users (id) ON DELETE SET NULL ON UPDATE CASCADE
+);`,
+  },
+  {
+    label: "Index Administrasi Guru Phase 5",
+    sql: `CREATE INDEX IF NOT EXISTS idx_adm_da_teacher ON adm_document_approvals (teacher_id, academic_year_id, status);
+CREATE INDEX IF NOT EXISTS idx_adm_da_year    ON adm_document_approvals (academic_year_id, status);
+CREATE INDEX IF NOT EXISTS idx_adm_al_app     ON adm_approval_logs (approval_id, created_at);`,
+  },
 ];
 
 export const MYSQL_DDL: DdlStatement[] = [
@@ -2391,6 +2457,63 @@ CREATE INDEX idx_audit_logs_actor      ON audit_logs (actor_id);`,
         REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`,
   },
+  {
+    label: "Tabel adm_document_approvals (Validasi & Tanda Tangan QR Dokumen)",
+    sql: `CREATE TABLE IF NOT EXISTS adm_document_approvals (
+    id               CHAR(36)     NOT NULL,
+    academic_year_id CHAR(36)     NOT NULL,
+    teacher_id       CHAR(36)     NOT NULL,
+    entity_type      VARCHAR(40)  NOT NULL,
+    entity_id        VARCHAR(64)  NOT NULL,
+    doc_title        VARCHAR(220) NOT NULL,
+    subject_name     VARCHAR(140) NULL,
+    class_name       VARCHAR(80)  NULL,
+    status           VARCHAR(16)  NOT NULL DEFAULT 'draft',
+    submitted_at     TIMESTAMP    NULL,
+    reviewed_by      CHAR(36)     NULL,
+    reviewed_at      TIMESTAMP    NULL,
+    revision_note    TEXT         NULL,
+    verify_code      VARCHAR(48)  NULL,
+    signature_hash   VARCHAR(128) NULL,
+    signer_name      VARCHAR(128) NULL,
+    signer_nip       VARCHAR(32)  NULL,
+    signer_role      VARCHAR(48)  NULL,
+    created_at       TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at       TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_adm_da_entity (entity_type, entity_id),
+    UNIQUE KEY uq_adm_da_verify (verify_code),
+    KEY idx_adm_da_teacher (teacher_id, academic_year_id, status),
+    KEY idx_adm_da_year (academic_year_id, status),
+    CONSTRAINT fk_adm_da_year FOREIGN KEY (academic_year_id)
+        REFERENCES adm_academic_years (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_da_teacher FOREIGN KEY (teacher_id)
+        REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_da_reviewer FOREIGN KEY (reviewed_by)
+        REFERENCES users (id) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`,
+  },
+  {
+    label: "Tabel adm_approval_logs (Riwayat Validasi & Revisi)",
+    sql: `CREATE TABLE IF NOT EXISTS adm_approval_logs (
+    id          CHAR(36)     NOT NULL,
+    approval_id CHAR(36)     NOT NULL,
+    actor_id    CHAR(36)     NULL,
+    actor_name  VARCHAR(128) NOT NULL DEFAULT '',
+    actor_role  VARCHAR(48)  NOT NULL DEFAULT '',
+    action      VARCHAR(24)  NOT NULL,
+    note        TEXT         NULL,
+    created_at  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (id),
+    KEY idx_adm_al_app (approval_id, created_at),
+    CONSTRAINT fk_adm_al_approval FOREIGN KEY (approval_id)
+        REFERENCES adm_document_approvals (id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adm_al_actor FOREIGN KEY (actor_id)
+        REFERENCES users (id) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`,
+  },
 ];
 
 /**
@@ -2443,6 +2566,8 @@ export const UPDATE_TABLES = [
   "adm_grade_assessments",
   "adm_student_grades",
   "adm_remedial_enrichment",
+  "adm_document_approvals",
+  "adm_approval_logs",
 ] as const;
 
 export const COLUMN_MIGRATIONS: ColumnMigration[] = [

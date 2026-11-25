@@ -636,6 +636,75 @@ const en: Dictionary = {
   "Ujian ini memiliki sesi siswa aktif atau riwayat pengerjaan.":
     "This exam has active student sessions or attempt history.",
   "Gagal memproses aksi ujian.": "Failed to process exam action.",
+
+  // ── Administrasi Guru (Kurikulum Merdeka) ────────────────────────────────
+  "Administrasi Guru": "Teacher Administration",
+  "Ringkasan & Kaldik": "Overview & Academic Calendar",
+  "Perencanaan (ATP & Modul)": "Planning (ATP & Modules)",
+  "Pelaksanaan (Jurnal & Presensi)": "Execution (Journal & Attendance)",
+  "Penilaian (Kisi-Kisi & Nilai)": "Assessment (Blueprints & Grades)",
+  "Validasi & Pengesahan": "Approvals & Certification",
+  "Administrasi Guru (adm)": "Teacher Administration (adm)",
+  "Progres Administrasi Guru (Kurikulum Merdeka)":
+    "Teacher Administration Progress (Kurikulum Merdeka)",
+  "Pantauan kelengkapan perangkat ajar, jurnal mengajar, asesmen, dan antrean validasi Kepala Sekolah":
+    "Overview of teaching documents, lesson journals, assessments, and Principal validation queue",
+  "Antrean Validasi": "Validation Queue",
+  "Buka Modul": "Open Module",
+  "Memuat progres Administrasi Guru…": "Loading Teacher Administration progress…",
+  "Belum ada tahun ajaran aktif pada modul Administrasi Guru.":
+    "No active academic year configured in Teacher Administration.",
+  "Konfigurasi Kalender & Tahun Ajaran": "Configure Calendar & Academic Year",
+  "Total Perangkat": "Total Documents",
+  "{n} guru aktif": "{n} active teachers",
+  "Menunggu Telaah": "Awaiting Review",
+  "Siap divalidasi kepala sekolah": "Ready for principal validation",
+  "Perlu Revisi": "Needs Revision",
+  "Remedial Pending": "Pending Remedial",
+  "Disetujui QR": "QR Approved",
+  Jurnal: "Journals",
+  Asesmen: "Assessments",
+  "Kesiapan Perangkat Per Guru": "Teacher Document Readiness",
+  guru: "teachers",
+  "Belum ada data guru terdaftar.": "No registered teachers found.",
+  Perangkat: "Documents",
+  Disetujui: "Approved",
+  Kesiapan: "Readiness",
+  "Antrean Validasi Terbaru": "Latest Validation Queue",
+  "Kelola Semua": "Manage All",
+  "Tidak ada dokumen perangkat ajar yang menunggu validasi.":
+    "No teaching documents waiting for validation.",
+  "Status Validasi Perangkat Sekolah": "School Teaching Document Validation Status",
+  "Ringkasan Status Perangkat Ajar Anda": "Your Teaching Document Readiness Summary",
+  Total: "Total",
+  Diajukan: "Submitted",
+  Revisi: "Revision",
+  "Buka Panel Persetujuan": "Open Approval Panel",
+  "Ajukan & Unduh Bundle": "Submit & Download Bundle",
+  "Administrasi Guru — Kaldik & Minggu Efektif":
+    "Teacher Administration — Calendar & Effective Weeks",
+  "Total Minggu Kalender": "Total Calendar Weeks",
+  "Minggu Efektif Semester": "Semester Effective Weeks",
+  "Hari Belajar Efektif": "Effective Learning Days",
+  "Dokumen Minggu Efektif": "Effective Weeks Documents",
+  "Seluruh guru pada periode ini": "All teachers in this period",
+  "Tersimpan oleh Anda": "Saved by you",
+  "Kalender Pendidikan (Kaldik)": "Academic Calendar (Kaldik)",
+  "Kalkulator Minggu Efektif & JP": "Effective Weeks & Hours Calculator",
+  "Tahun Ajaran": "Academic Year",
+  Semester: "Semester",
+  Ganjil: "Odd",
+  Genap: "Even",
+  "Validasi & Pengesahan Administrasi Guru":
+    "Teacher Administration Validation & Certification",
+  "Pengajuan Dokumen Guru": "Teacher Document Submissions",
+  "Panel Validasi Kepsek / Waka": "Principal / Vice Principal Review",
+  "Export Bundel (.xlsx)": "Export Bundle (.xlsx)",
+  "Mengekspor...": "Exporting...",
+  "Cetak Rekap PDF": "Print Summary PDF",
+  "Muat Ulang": "Reload",
+  "Gagal memuat ringkasan Administrasi Guru.":
+    "Failed to load Teacher Administration summary.",
 }
 
 const id: Dictionary = {
@@ -1706,6 +1775,27 @@ const id: Dictionary = {
   "Hasil Belum Dirilis": "Hasil Belum Dirilis",
   "Pratinjau Laporan Hasil Ujian (PDF)": "Pratinjau Laporan Hasil Ujian (PDF)",
   "Cetak / Simpan PDF": "Cetak / Simpan PDF",
+
+  // ── Administrasi Guru (Kurikulum Merdeka) ────────────────────────────────
+  "Administrasi Guru": "Administrasi Guru",
+  "Ringkasan & Kaldik": "Ringkasan & Kaldik",
+  "Perencanaan (ATP & Modul)": "Perencanaan (ATP & Modul)",
+  "Pelaksanaan (Jurnal & Presensi)": "Pelaksanaan (Jurnal & Presensi)",
+  "Penilaian (Kisi-Kisi & Nilai)": "Penilaian (Kisi-Kisi & Nilai)",
+  "Validasi & Pengesahan": "Validasi & Pengesahan",
+  "Administrasi Guru (adm)": "Administrasi Guru (adm)",
+  "Progres Administrasi Guru (Kurikulum Merdeka)":
+    "Progres Administrasi Guru (Kurikulum Merdeka)",
+  "Antrean Validasi": "Antrean Validasi",
+  "Buka Modul": "Buka Modul",
+  "Total Perangkat": "Total Perangkat",
+  "Menunggu Telaah": "Menunggu Telaah",
+  "Perlu Revisi": "Perlu Revisi",
+  "Disetujui QR": "Disetujui QR",
+  "Kesiapan Perangkat Per Guru": "Kesiapan Perangkat Per Guru",
+  "Antrean Validasi Terbaru": "Antrean Validasi Terbaru",
+  "Status Validasi Perangkat Sekolah": "Status Validasi Perangkat Sekolah",
+  "Ringkasan Status Perangkat Ajar Anda": "Ringkasan Status Perangkat Ajar Anda",
 }
 
 export const dictionaries: Record<Lang, Dictionary> = { id, en }

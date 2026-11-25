@@ -506,7 +506,7 @@
 
 ## 17. Modul Administrasi Guru — Kurikulum Merdeka (BLUEPRINT & ROADMAP)
 
-> **Status dokumen:** Phase 4 Selesai (**2026-11-24** — Penilaian & Evaluasi: Kisi-Kisi terhubung Bank Soal, Buku Nilai berbasis KKTP + sinkronisasi otomatis Ujian CBT & Tugas, Leger Nilai Multi-Asesmen, Analisis Remedial/Pengayaan otomatis, serta ekspor Excel & pratinjau cetak PDF terverifikasi; menunggu konfirmasi untuk Phase 5).
+> **Status dokumen:** Seluruh Phase 1–6 Selesai (**2026-11-25** — Fondasi Tahun Ajaran/Kaldik & Minggu Efektif, Perencanaan CP/ATP/KKTP/Prota/Promes/Modul Ajar, Pelaksanaan Jadwal/Jurnal/Presensi, Penilaian Kisi-Kisi/Buku Nilai/Sinkron CBT/Remedial, Validasi Kepala Sekolah/Waka + QR Code SHA-256 + Export `.xlsx` 12-sheet, hingga Audit Trail lengkap, Widget Progres Dashboard Admin & Guru, Paritas Backup/Restore 43 tabel + `mock-db.ts`, i18n ID/EN, dan Verifikasi E2E).
 > Blueprint ini dirancang 100% kompatibel dengan arsitektur **SmartCBT** yang sudah ada:
 > React 19 + TypeScript + Tailwind CSS v4 + React Router v8, backend Node HTTP dispatcher
 > (`src/lib/server/index.ts`, `standalone.ts`), dual-dialect DB **PostgreSQL/Supabase & MySQL/MariaDB**
@@ -663,15 +663,15 @@ Semua endpoint di bawah namespace `/api/adm/*` wajib melewati autentikasi sesi d
 - [x] Catat progres Phase 4 di `CHANGELOG.md` & verifikasi build + uji kalkulasi KKTP/remedial.
 
 #### Phase 5 — Alur Validasi Kepsek/Waka Kurikulum, Tanda Tangan Digital QR & Export PDF/Excel Lengkap
-- [ ] Tambah tabel `adm_document_approvals` & `adm_approval_logs` di `schema.ts`, `mock-db.ts`, `backup.ts`, dan *self-heal*.
-- [ ] Implementasi backend `src/lib/server/adm-guru/approval.ts` & `export.ts` (submit, revisi, approve, generate QR Code + signature hash, endpoint verifikasi publik `/api/adm/verify/:code`, dan ekspor `.xlsx` seluruh dokumen).
-- [ ] Buat UI `/teacher/adm/approvals` (tab Pengajuan Dokumen Guru & Panel Validasi Kepala Sekolah/Waka Kurikulum), halaman verifikasi publik `/verify-doc/:code`, serta `AdmPrintPreviewModal` PDF A4 dengan kop sekolah & QR pengesahan di semua sub-modul.
-- [ ] Catat progres Phase 5 di `CHANGELOG.md` & verifikasi matriks otorisasi (guru vs validator vs siswa) + uji cetak & QR.
+- [x] Tambah tabel `adm_document_approvals` & `adm_approval_logs` di `schema.ts`, `mock-db.ts`, `backup.ts`, dan *self-heal*.
+- [x] Implementasi backend `src/lib/server/adm-guru/approval.ts` & `export.ts` (submit, revisi, approve, generate QR Code + signature hash, endpoint verifikasi publik `/api/adm/verify/:code`, dan ekspor `.xlsx` seluruh dokumen).
+- [x] Buat UI `/teacher/adm/approvals` (tab Pengajuan Dokumen Guru & Panel Validasi Kepala Sekolah/Waka Kurikulum), halaman verifikasi publik `/verify-doc/:code`, serta `AdmPrintPreviewModal` PDF A4 dengan kop sekolah & QR pengesahan di semua sub-modul.
+- [x] Catat progres Phase 5 di `CHANGELOG.md` & verifikasi matriks otorisasi (guru vs validator vs siswa) + uji cetak & QR.
 
 #### Phase 6 — Audit Trail, Integrasi Dashboard, Paritas Backup/MockDB & Verifikasi E2E
-- [ ] Lengkapi `recordAuditLog` di seluruh aksi kritikal Administrasi Guru (aktivasi tahun ajaran, submit, revisi, approve, sinkronisasi nilai) dan pastikan backup/restore + `mock-db.ts` mencakup seluruh 16 entitas baru.
-- [ ] Tambah widget progres Administrasi Guru di `AdminDashboard.tsx` & ringkasan status dokumen guru, serta lengkapi terjemahan `src/i18n/dictionaries.ts`.
-- [ ] Jalankan uji regresi menyeluruh (`tsc --noEmit`, unit & API tests, `npm run build`, `npm run build:server`) dan sinkronkan status final di `FEATURES.md` & `CHANGELOG.md`.
+- [x] Lengkapi `recordAuditLog` di seluruh aksi kritikal Administrasi Guru (aktivasi tahun ajaran, duplikasi CP/ATP, submit, revisi, approve, update kisi-kisi, remedial, sinkronisasi nilai) dan pastikan backup/restore + `mock-db.ts` mencakup seluruh 18 tabel `adm_*` + 25 tabel inti (43 tabel).
+- [x] Tambah widget progres Administrasi Guru di `AdminDashboard.tsx`, filter kategori audit `adm`, ringkasan status dokumen guru di `AdmOverviewPage.tsx`, dan lengkapi terjemahan `src/i18n/dictionaries.ts`.
+- [x] Jalankan uji regresi menyeluruh (`tsc --noEmit`, API & backup/restore E2E tests, `npm run build`, `npm run build:server`) dan sinkronkan status final di `FEATURES.md` & `CHANGELOG.md`.
 
 ---
 

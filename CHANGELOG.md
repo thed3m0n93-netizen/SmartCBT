@@ -4,6 +4,59 @@ Format pencatatan mengikuti standar [Keep a Changelog](https://keepachangelog.co
 
 ## [Unreleased] — Modul Administrasi Guru (Kurikulum Merdeka)
 
+### [0.6.0 - Phase 6: Audit Trail, Integrasi Dashboard, Paritas Backup/MockDB & Verifikasi E2E] — 2026-11-25
+#### Added
+- **Ringkasan Progres Administrasi Guru (Dashboard Admin, Kepsek/Waka & Guru):**
+  - `src/lib/server/adm-guru/approval.ts` (`GET /api/adm/dashboard-summary`): Endpoint statistik terpadu mengembalikan `activeYear`, informasi `caller`, metrik `totals` (`totalDocuments`, `draft`, `submitted`, `revision`, `approved`, `approvalRatePercent`, `journalsCount`, `assessmentsCount`, `remedialPendingCount`), rincian `byModule`, kesiapan `teacherProgress`, dan `pendingQueue` (terscope otomatis ke validator/admin atau guru bersangkutan).
+  - `src/lib/api.ts`: Kontrak `AdmDashboardSummaryResponse` dan helper `fetchAdmDashboardSummary(academicYearId?)`.
+  - `src/pages/admin/AdminDashboard.tsx`: Widget **Progres Administrasi Guru (Kurikulum Merdeka)** menampilkan strip KPI kesiapan perangkat ajar, tabel **Kesiapan Perangkat Per Guru**, serta **Antrean Validasi Terbaru** dengan tautan langsung ke `/teacher/adm/approvals` dan `/teacher/adm/overview`.
+  - `src/pages/teacher/adm/AdmOverviewPage.tsx`: Strip **Ringkasan Status Perangkat Ajar** di bawah kartu KPI Kaldik untuk memantau status dokumen `Draft`/`Diajukan`/`Revisi`/`Disetujui QR` dan akses cepat ke panel pengajuan/bundel.
+- **Cakupan Audit Trail & Filter Kategori `adm`:**
+  - `src/lib/server/adm-guru/planning.ts` & `assessment.ts`: Penambahan `recordAuditLog` pada `adm.cp_atp.duplicate`, `adm.blueprint.update`, `adm.remedial.upsert`, `adm.remedial.update`, dan `adm.remedial.delete` untuk melengkapi jejak audit lintas seluruh 6 fase modul Administrasi Guru.
+  - `src/pages/admin/AdminDashboard.tsx`: Opsi filter kategori `"Administrasi Guru (adm)"` pada **Log Audit Sistem** (`GET /api/audit-logs?category=adm`).
+- **Terjemahan i18n:**
+  - `src/i18n/dictionaries.ts`: Penambahan kamus Bahasa Inggris (`en`) dan Bahasa Indonesia (`id`) untuk menu sidebar Administrasi Guru, widget dashboard, filter log audit `adm`, status dokumen, serta label overview/validasi.
+
+#### Changed
+- **Paritas Penuh Backup/Restore & MockDB (43 Tabel):**
+  - `src/lib/server/backup.ts`: Penambahan 4 tabel inti yang sebelumnya terlewat (`news`, `learning_module_classes`, `teacher_assignments`, `subject_class_assignments`) ke `DELETE_ORDER` bersama seluruh 18 tabel `adm_*` (total 43 tabel, versi snapshot `"2.6.0"`), serialisasi otomatis kolom JSON/object via `JSON.stringify` saat restore untuk kompatibilitas ketat PostgreSQL `JSONB` & MySQL `JSON`, serta penanda `/* restore */ INSERT INTO ...`.
+  - `src/lib/mock-db.ts`: Penambahan `assignment_submission_files` ke `MockStore` + handler generik `/* restore */`, `SELECT * FROM <table>`, dan `DELETE FROM <table>` agar Backup & Restore di mode preview/mock bekerja penuh lintas semua 43 tabel termasuk kolom JSON terstruktur.
+  - `src/pages/admin/BackupRestorePage.tsx`: Penggantian konfirmasi `window.confirm` dengan modal konfirmasi in-app (`confirmRestoreOpen`) serta pembaruan deskripsi cakupan backup Administrasi Guru.
+
+#### Verified
+- `npx tsc --noEmit`, `npm run build`, dan `npm run build:server` lulus bersih tanpa error.
+- Pengujian E2E menyeluruh Phase 6 (`MOCK_DB=true`): alur lintas sub-modul (`effective-weeks`, `cp-atp` + duplikasi, `journals`, `blueprints`, `grades`, `remedial-enrichment`, `approvals/submit` + `review` QR), filter `GET /api/audit-logs?category=adm` memverifikasi entri `adm.*`, RBAC `GET /api/adm/dashboard-summary` (`403 STAFF_ONLY` untuk siswa vs admin validator vs guru), serta uji siklus penuh `POST /api/backup` (43 tabel) → mutasi/hapus data → `POST /api/backup/restore` dengan keutuhan kolom JSON dan verifikasi publik `/api/adm/verify/:code`.
+
+### [0.5.0 - Phase 5: Validasi Kepsek/Waka Kurikulum, Tanda Tangan Digital QR & Export Lengkap] — 2026-11-25
+#### Added
+- **Skema Database Phase 5 & Dukungan Update Database (`/setup`):**
+  - `src/lib/server/schema.ts`: Penambahan 2 tabel baru (`adm_document_approvals`, `adm_approval_logs`) lengkap dengan constraint & indeks pada `CORE_TABLES`, `SCHEMA_GROUPS` (`adm_guru`), `UPDATE_TABLES`, `PG_DDL`, dan `MYSQL_DDL` agar siap diperbarui melalui tombol **Update Database** di `/setup`.
+  - `src/lib/server/adm-guru/schema-init.ts`: Helper `ensureAdmPhase5Schema()` (*self-heal* idempoten untuk PostgreSQL & MySQL yang memanggil `ensureAdmPhase4Schema()`).
+- **Backend API Validasi, Tanda Tangan QR & Bundel Ekspor:**
+  - `src/lib/server/adm-guru/approval.ts`:
+    - `GET /api/adm/approvals/bootstrap`: Menggabungkan daftar seluruh perangkat ajar lintas sub-modul (Minggu Efektif, CP/ATP, KKTP, Prota, Promes, Modul Ajar/RPP, Jadwal, Jurnal, Kisi-Kisi, Buku Nilai) beserta status pengesahan, ringkasan KPI, dan `academic_role` pengguna.
+    - `GET /api/adm/approvals` & `GET /api/adm/approvals/lookup`: Antrean pengajuan validasi dengan riwayat log dan peta lookup cepat `entity_type:entity_id` untuk lencana dan stempel QR pada tiap halaman sub-modul.
+    - `POST /api/adm/approvals/submit`: Pengajuan & pengajuan ulang (`resubmitted`) dokumen milik guru sendiri dengan proteksi kepemilikan `403 NOT_OWNER`, proteksi ganda `409 ALREADY_APPROVED`, dan sinkronisasi kolom `status` pada tabel sumber.
+    - `POST /api/adm/approvals/:id/review`: Telaah khusus **Kepala Sekolah / Waka Kurikulum / Admin** (`403 VALIDATOR_ONLY` untuk guru biasa) — mendukung pengembalian `revision` (wajib catatan minimal 3 karakter) maupun `approved` (menghasilkan kode verifikasi unik `SCBT-ADM-*`, tanda tangan hash `SHA-256`, serta Data URL QR Code dari `qrcode`).
+    - `GET /api/adm/verify/:code` *(publik read-only, tanpa autentikasi)*: Mengembalikan keaslian dokumen, identitas guru & pengesah, tanda tangan digital, serta QR verifikasi tanpa membocorkan data sensitif siswa atau kredensial.
+  - `src/lib/server/adm-guru/export.ts`: `GET /api/adm/export/bundle/:academicYearId/xlsx` untuk mengekspor **Bundel Lengkap Administrasi Guru** 12 sheet (*Ringkasan, Kaldik, Minggu Efektif, CP & ATP, KKTP, Prota, Promes, Modul Ajar, Jadwal Mengajar, Jurnal Mengajar, Penilaian, Pengesahan QR*) dalam format `FileDownloadResult`.
+- **Frontend UI, Verifikasi Publik & Integrasi QR Cetak (`/teacher/adm/approvals`, `/verify-doc/:code`):**
+  - `src/components/adm/AdmApprovalBadge.tsx`: Lencana status konsisten (`Draft`, `Diajukan`, `Revisi`, `Disetujui QR`) beserta tooltip catatan revisi/kode QR.
+  - `src/pages/teacher/adm/AdmApprovalsPage.tsx`: Halaman terpadu **Validasi & Pengesahan** dengan 5 KPI `StatCard`, tab **Pengajuan Dokumen Guru** (ajukan/ajukan ulang perangkat ajar + modal catatan), tab **Panel Validasi Kepsek/Waka Kurikulum** (kembalikan revisi + sahkan QR + modal detail QR & riwayat log), cetak rekap PDF A4, dan ekspor Bundel Lengkap `.xlsx`.
+  - `src/pages/VerifyDocPage.tsx`: Halaman publik verifikasi keaslian QR Code di `/verify-doc/:code` (mendukung input ulang kode manual).
+
+#### Changed
+- `src/lib/server/index.ts`: Registrasi rute `./adm-guru/approval.js` dan `./adm-guru/export.js`, serta whitelist rute publik read-only `GET /api/adm/verify/:code`.
+- `src/lib/server/setup.ts` & `src/lib/server/backup.ts`: Penambahan `adm_approval_logs` & `adm_document_approvals` pada `DROP_ORDER`, `DELETE_ORDER`, serta indeks PostgreSQL di `runUpdateMigrations()`.
+- `src/lib/mock-db.ts`: Dukungan lengkap mock in-memory untuk `adm_document_approvals`, `adm_approval_logs`, sinkronisasi status dokumen sumber, kueri daftar guru, dan cascade delete tahun ajaran.
+- `src/components/adm/AdmPrintPreviewModal.tsx`: Penambahan stempel pengesah QR (`qrSignerName`, `qrSignerRole`, `qrReviewedAt`) pada tata letak cetak PDF A4.
+- `src/pages/teacher/adm/AdmOverviewPage.tsx`, `AdmPlanningPage.tsx`, `AdmExecutionPage.tsx`, `AdmAssessmentPage.tsx`: Integrasi `fetchAdmApprovalLookup`, lencana status validasi, dan QR Code pengesahan otomatis saat mencetak PDF A4.
+- `src/lib/api.ts`, `src/components/Sidebar.tsx`, `src/app/routes.tsx`: Kontrak API Phase 5, menu sidebar `"Validasi & Pengesahan"` (`/teacher/adm/approvals`), dan rute publik `/verify-doc/:code`.
+
+#### Verified
+- Pengujian integrasi endpoint Phase 5 (`MOCK_DB=true`): ketercakupan 2 tabel baru di `/api/setup/status`, proteksi auth `401`/`403 STAFF_ONLY`, isolasi kepemilikan `403 NOT_OWNER`, pembatasan review `403 VALIDATOR_ONLY` untuk guru biasa, validasi catatan revisi minimal 3 karakter (`400`), alur `submit → revision → resubmit → approved` dengan generasi `SCBT-ADM-*`, hash SHA-256 (64 hex), Data URL QR PNG, proteksi `409 ALREADY_APPROVED`, verifikasi publik tanpa token (`200` valid, `404` tidak ditemukan, bebas kebocoran PII siswa), dan validasi workbook bundel `.xlsx` 12 sheet.
+- `npx tsc --noEmit` lulus tanpa error.
+
 ### [0.4.0 - Phase 4: Penilaian & Evaluasi (Kisi-Kisi, Buku Nilai & Remedial/Pengayaan)] — 2026-11-24
 #### Added
 - **Skema Database Phase 4 & Dukungan Update Database (`/setup`):**

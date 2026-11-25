@@ -38,11 +38,17 @@ const ADM_PHASE4_TABLES = [
   "adm_remedial_enrichment",
 ] as const;
 
+const ADM_PHASE5_TABLES = [
+  "adm_document_approvals",
+  "adm_approval_logs",
+] as const;
+
 let userColsPromise: Promise<void> | null = null;
 let phase1ReadyPromise: Promise<void> | null = null;
 let phase2ReadyPromise: Promise<void> | null = null;
 let phase3ReadyPromise: Promise<void> | null = null;
 let phase4ReadyPromise: Promise<void> | null = null;
+let phase5ReadyPromise: Promise<void> | null = null;
 
 function ddlForTables(ddl: DdlStatement[], tables: readonly string[]): DdlStatement[] {
   return ddl.filter((st) => {
@@ -320,4 +326,39 @@ export function ensureAdmPhase4Schema(): Promise<void> {
     });
   }
   return phase4ReadyPromise;
+}
+
+/**
+ * Create Phase 5 approval & signature log tables (`adm_document_approvals`,
+ * `adm_approval_logs`) lazily on first use after ensuring Phases 1–4.
+ */
+export function ensureAdmPhase5Schema(): Promise<void> {
+  if (!phase5ReadyPromise) {
+    phase5ReadyPromise = (async () => {
+      await ensureAdmPhase4Schema();
+      const mysqlLike = isMySqlLike(getDbType());
+      const familyDdl = mysqlLike ? MYSQL_DDL : PG_DDL;
+      for (const st of ddlForTables(familyDdl, ADM_PHASE5_TABLES)) {
+        const statements = mysqlLike
+          ? st.sql.split(";").map((s) => s.trim()).filter(Boolean)
+          : [st.sql];
+        for (const sql of statements) {
+          await query(sql).catch(() => undefined);
+        }
+      }
+      if (!mysqlLike) {
+        for (const sql of [
+          `CREATE INDEX IF NOT EXISTS idx_adm_da_teacher ON adm_document_approvals (teacher_id, academic_year_id, status)`,
+          `CREATE INDEX IF NOT EXISTS idx_adm_da_year    ON adm_document_approvals (academic_year_id, status)`,
+          `CREATE INDEX IF NOT EXISTS idx_adm_al_app     ON adm_approval_logs (approval_id, created_at)`,
+        ]) {
+          await query(sql).catch(() => undefined);
+        }
+      }
+    })().catch((err) => {
+      phase5ReadyPromise = null;
+      throw err;
+    });
+  }
+  return phase5ReadyPromise;
 }

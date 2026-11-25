@@ -3981,6 +3981,286 @@ export function exportAdmAssessmentXlsx(
   );
 }
 
+// ── Administrasi Guru Phase 5 (Validasi, Pengesahan QR & Export Lengkap) ──
 
+export type AdmEntityType =
+  | "effective_weeks"
+  | "cp_atp"
+  | "kktp"
+  | "prota"
+  | "promes"
+  | "lesson_plans"
+  | "teaching_schedules"
+  | "teaching_journals"
+  | "assessment_blueprints"
+  | "grade_assessments";
 
+export type AdmApprovalStatus = "draft" | "submitted" | "revision" | "approved";
 
+export interface AdmApprovalLog {
+  id: string;
+  approval_id: string;
+  actor_id?: string | null;
+  actor_name: string;
+  actor_role: string;
+  action: "submitted" | "resubmitted" | "revision" | "approved" | "reset";
+  note?: string | null;
+  created_at: string;
+}
+
+export interface AdmDocumentApproval {
+  id: string;
+  academic_year_id: string;
+  teacher_id: string;
+  teacher_name?: string | null;
+  teacher_nip?: string | null;
+  entity_type: AdmEntityType;
+  entity_label?: string;
+  module_group?: string;
+  entity_id: string;
+  doc_title: string;
+  subject_name?: string | null;
+  class_name?: string | null;
+  year_label?: string;
+  semester?: string;
+  status: AdmApprovalStatus;
+  submitted_at?: string | null;
+  reviewed_by?: string | null;
+  reviewer_name?: string | null;
+  reviewer_nip?: string | null;
+  reviewed_at?: string | null;
+  revision_note?: string | null;
+  verify_code?: string | null;
+  signature_hash?: string | null;
+  signer_name?: string | null;
+  signer_nip?: string | null;
+  signer_role?: string | null;
+  qrDataUrl?: string | null;
+  logs: AdmApprovalLog[];
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface AdmUnifiedDocumentItem {
+  key: string;
+  entity_type: AdmEntityType;
+  entity_label: string;
+  module_group: string;
+  entity_id: string;
+  academic_year_id: string;
+  teacher_id: string;
+  teacher_name: string;
+  teacher_nip?: string | null;
+  doc_title: string;
+  subject_name?: string | null;
+  class_name?: string | null;
+  status: AdmApprovalStatus;
+  updated_at?: string | null;
+  approval: AdmDocumentApproval | null;
+}
+
+export interface AdmApprovalsBootstrapResponse {
+  caller: {
+    id: string;
+    name: string;
+    role: string;
+    academic_role: AcademicRole;
+    nip: string | null;
+    isValidator: boolean;
+  };
+  school: AdmSchoolHeaderInfo;
+  academicYears: AdmAcademicYear[];
+  activeAcademicYear: AdmAcademicYear | null;
+  teachers: Array<{
+    id: string;
+    username: string;
+    full_name: string;
+    role: string;
+    academic_role: AcademicRole;
+    nip: string | null;
+  }>;
+  documents: AdmUnifiedDocumentItem[];
+  approvals: AdmDocumentApproval[];
+  summary: {
+    totalDocs: number;
+    draft: number;
+    submitted: number;
+    revision: number;
+    approved: number;
+  };
+}
+
+export interface AdmApprovalLookupItem {
+  id: string;
+  entity_type: AdmEntityType;
+  entity_id: string;
+  status: AdmApprovalStatus;
+  revision_note?: string | null;
+  verify_code?: string | null;
+  signature_hash?: string | null;
+  signer_name?: string | null;
+  signer_nip?: string | null;
+  signer_role?: string | null;
+  reviewed_at?: string | null;
+  qrDataUrl?: string | null;
+}
+
+export interface AdmPublicVerifyResponse {
+  verified: boolean;
+  status?: AdmApprovalStatus;
+  error?: string;
+  document?: {
+    verify_code: string;
+    signature_hash: string;
+    entity_type: AdmEntityType;
+    entity_label: string;
+    module_group: string;
+    doc_title: string;
+    subject_name?: string | null;
+    class_name?: string | null;
+    year_label: string;
+    semester: string;
+    teacher_name: string;
+    teacher_nip?: string | null;
+    submitted_at?: string | null;
+    reviewed_at?: string | null;
+    signer_name?: string | null;
+    signer_nip?: string | null;
+    signer_role?: string | null;
+  };
+  school?: AdmSchoolHeaderInfo;
+  qrDataUrl?: string | null;
+}
+
+export function fetchAdmApprovalsBootstrap(params?: {
+  academicYearId?: string;
+  teacherId?: string;
+}): Promise<AdmApprovalsBootstrapResponse> {
+  const qs = new URLSearchParams();
+  if (params?.academicYearId) qs.set("academicYearId", params.academicYearId);
+  if (params?.teacherId && params.teacherId !== "all") qs.set("teacherId", params.teacherId);
+  const queryStr = qs.toString();
+  return apiFetch<AdmApprovalsBootstrapResponse>(
+    `/api/adm/approvals/bootstrap${queryStr ? `?${queryStr}` : ""}`,
+  );
+}
+
+export function fetchAdmApprovals(params?: {
+  academicYearId?: string;
+  teacherId?: string;
+  status?: string;
+  entityType?: string;
+}): Promise<{ approvals: AdmDocumentApproval[]; activeAcademicYear: AdmAcademicYear | null }> {
+  const qs = new URLSearchParams();
+  if (params?.academicYearId) qs.set("academicYearId", params.academicYearId);
+  if (params?.teacherId && params.teacherId !== "all") qs.set("teacherId", params.teacherId);
+  if (params?.status && params.status !== "all") qs.set("status", params.status);
+  if (params?.entityType && params.entityType !== "all") qs.set("entityType", params.entityType);
+  const queryStr = qs.toString();
+  return apiFetch(`/api/adm/approvals${queryStr ? `?${queryStr}` : ""}`);
+}
+
+export function fetchAdmApprovalLookup(
+  academicYearId?: string,
+): Promise<{ byKey: Record<string, AdmApprovalLookupItem>; items: AdmApprovalLookupItem[] }> {
+  const qs = academicYearId ? `?academicYearId=${encodeURIComponent(academicYearId)}` : "";
+  return apiFetch(`/api/adm/approvals/lookup${qs}`);
+}
+
+export function submitAdmApproval(payload: {
+  entityType: AdmEntityType;
+  entityId: string;
+  note?: string;
+  docTitle?: string;
+}): Promise<{ success: boolean; approvalId: string; approval: AdmDocumentApproval | null }> {
+  return apiPost("/api/adm/approvals/submit", payload);
+}
+
+export function reviewAdmApproval(
+  approvalId: string,
+  payload: {
+    action: "approved" | "revision";
+    revisionNote?: string;
+    note?: string;
+  },
+): Promise<{ success: boolean; approval: AdmDocumentApproval | null }> {
+  return apiPost(`/api/adm/approvals/${encodeURIComponent(approvalId)}/review`, payload);
+}
+
+export function verifyAdmDocumentPublic(code: string): Promise<AdmPublicVerifyResponse> {
+  return apiFetch<AdmPublicVerifyResponse>(`/api/adm/verify/${encodeURIComponent(code)}`, {
+    anonymous: true,
+  });
+}
+
+export function exportAdmBundleXlsx(
+  academicYearId: string,
+  teacherId?: string | null,
+): Promise<FileDownloadResult> {
+  const qs = teacherId && teacherId !== "all" ? `?teacherId=${encodeURIComponent(teacherId)}` : "";
+  return apiFetch<FileDownloadResult>(
+    `/api/adm/export/bundle/${encodeURIComponent(academicYearId)}/xlsx${qs}`,
+  );
+}
+
+export interface AdmDashboardSummaryResponse {
+  activeYear: AdmAcademicYear | null;
+  caller: {
+    id: string;
+    name: string;
+    role: string;
+    academicRole: AcademicRole;
+    isValidator: boolean;
+  };
+  totals: {
+    totalTeachers: number;
+    totalDocuments: number;
+    draft: number;
+    submitted: number;
+    revision: number;
+    approved: number;
+    approvalRatePercent: number;
+    journalsCount: number;
+    assessmentsCount: number;
+    remedialPendingCount: number;
+  };
+  byModule: Array<{
+    entityType: AdmEntityType;
+    label: string;
+    moduleGroup: string;
+    total: number;
+    draft: number;
+    submitted: number;
+    revision: number;
+    approved: number;
+  }>;
+  teacherProgress: Array<{
+    teacherId: string;
+    teacherName: string;
+    nip: string | null;
+    academicRole: string;
+    totalDocs: number;
+    draft: number;
+    submitted: number;
+    revision: number;
+    approved: number;
+    journalsCount: number;
+    readinessPercent: number;
+  }>;
+  pendingQueue: Array<{
+    id: string;
+    entityType: AdmEntityType;
+    entityLabel: string;
+    docTitle: string;
+    teacherName: string;
+    status: AdmApprovalStatus;
+    submittedAt: string | null;
+  }>;
+}
+
+export function fetchAdmDashboardSummary(
+  academicYearId?: string,
+): Promise<AdmDashboardSummaryResponse> {
+  const qs = academicYearId ? `?academicYearId=${encodeURIComponent(academicYearId)}` : "";
+  return apiFetch<AdmDashboardSummaryResponse>(`/api/adm/dashboard-summary${qs}`);
+}

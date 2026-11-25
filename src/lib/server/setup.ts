@@ -24,6 +24,8 @@ import { seedAdmPhase1Defaults } from "./adm-guru/schema-init.js";
 
 /** Drop order must respect foreign keys (children before parents). */
 const DROP_ORDER: string[] = [
+  "adm_approval_logs",
+  "adm_document_approvals",
   "adm_remedial_enrichment",
   "adm_student_grades",
   "adm_grade_assessments",
@@ -259,7 +261,10 @@ CREATE TRIGGER trg_student_answers_updated_at
     await query(`CREATE INDEX IF NOT EXISTS idx_adm_sg_student ON adm_student_grades (student_id)`).catch(() => undefined);
     await query(`CREATE INDEX IF NOT EXISTS idx_adm_re_ga ON adm_remedial_enrichment (grade_assessment_id)`).catch(() => undefined);
     await query(`CREATE INDEX IF NOT EXISTS idx_adm_re_teacher ON adm_remedial_enrichment (teacher_id, academic_year_id, program_type)`).catch(() => undefined);
-    log("  · Index Administrasi Guru (Phase 1, 2, 3 & 4): dipastikan ada.");
+    await query(`CREATE INDEX IF NOT EXISTS idx_adm_da_teacher ON adm_document_approvals (teacher_id, academic_year_id, status)`).catch(() => undefined);
+    await query(`CREATE INDEX IF NOT EXISTS idx_adm_da_year ON adm_document_approvals (academic_year_id, status)`).catch(() => undefined);
+    await query(`CREATE INDEX IF NOT EXISTS idx_adm_al_app ON adm_approval_logs (approval_id, created_at)`).catch(() => undefined);
+    log("  · Index Administrasi Guru (Phase 1–5): dipastikan ada.");
   }
   if (await checkTable("adm_academic_years")) {
     await seedAdmPhase1Defaults(log);

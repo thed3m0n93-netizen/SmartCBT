@@ -28,6 +28,8 @@ const APP_NAME = "SmartCBT";
 
 /** Child-first order: safe for DELETE / TRUNCATE (children before parents). */
 const DELETE_ORDER = [
+  "adm_approval_logs",
+  "adm_document_approvals",
   "adm_remedial_enrichment",
   "adm_student_grades",
   "adm_grade_assessments",
@@ -47,7 +49,9 @@ const DELETE_ORDER = [
   "exam_results",
   "student_answers",
   "student_sessions",
+  "news",
   "learning_module_progress",
+  "learning_module_classes",
   "learning_modules",
   "assignment_submission_files",
   "assignment_submissions",
@@ -57,6 +61,8 @@ const DELETE_ORDER = [
   "exams",
   "questions",
   "question_banks",
+  "teacher_assignments",
+  "subject_class_assignments",
   "student_profiles",
   "game_nusantara_state",
   "uploads",
@@ -105,7 +111,7 @@ addRoute("POST", /^\/api\/backup(\/create)?$/, async (req: AuthenticatedRequest,
 
   const snapshot = {
     app: APP_NAME,
-    version: "2.4.1",
+    version: "2.6.0",
     createdAt: new Date().toISOString(),
     databaseType: getDbType(),
     tables,
@@ -232,8 +238,14 @@ function insertRows(table: string, rows: any[], counts: Record<string, number>):
       const cols = Object.keys(row);
       if (cols.length === 0) continue;
       const placeholders = cols.map((_, i) => `$${i + 1}`).join(", ");
-      const values = cols.map((c) => row[c]);
-      await query(`INSERT INTO ${table} (${cols.join(", ")}) VALUES (${placeholders})`, values);
+      const values = cols.map((c) => {
+        const v = row[c];
+        if (v !== null && typeof v === "object" && !(v instanceof Date) && !Buffer.isBuffer(v)) {
+          return JSON.stringify(v);
+        }
+        return v;
+      });
+      await query(`/* restore */ INSERT INTO ${table} (${cols.join(", ")}) VALUES (${placeholders})`, values);
       inserted += 1;
     }
     counts[table] = inserted;

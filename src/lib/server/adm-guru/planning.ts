@@ -877,6 +877,15 @@ addRoute("POST", /^\/api\/adm\/cp-atp\/duplicate$/, async (req: AuthenticatedReq
     created++;
   }
 
+  await recordAuditLog({
+    req,
+    action: "adm.cp_atp.duplicate",
+    entityType: "adm_cp_atp",
+    entityId: targetYear.id,
+    summary: `Menduplikasi ${created} butir CP/ATP ke TA ${targetYear.year_label} (${targetSemester})`,
+    metadata: { duplicatedCount: created, targetSemester, targetGrade: targetGrade || null },
+  });
+
   json(res, { success: true, duplicatedCount: created }, 201);
 });
 

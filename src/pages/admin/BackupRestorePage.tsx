@@ -3,13 +3,14 @@ import { AlertTriangle, Download, RotateCcw } from 'lucide-react';
 import { useI18n } from '../../i18n';
 import { createBackup, restoreBackup, downloadFromBase64, type BackupRestoreResult } from '../../lib/api';
 import { C, S } from '../../styles/tokens';
-import { Btn, Notice, SectionCard, Card, controlStyle } from '../../components/ui';
+import { Btn, Notice, SectionCard, Card, Modal, controlStyle } from '../../components/ui';
 
 export default function BackupRestorePage() {
   const { t } = useI18n();
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [creating, setCreating] = useState(false);
   const [restoring, setRestoring] = useState(false);
+  const [confirmRestoreOpen, setConfirmRestoreOpen] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [lastRestore, setLastRestore] = useState<BackupRestoreResult | null>(null);
@@ -35,18 +36,17 @@ export default function BackupRestorePage() {
     }
   };
 
-  const handleRestore = async () => {
+  const requestRestore = () => {
     if (!selectedFile) {
       setError(t('Pilih file backup (.json) terlebih dahulu.'));
       return;
     }
-    if (
-      !window.confirm(
-        t('Restore akan MENGHAPUS semua data saat ini lalu menggantinya dari backup. Lanjutkan?')
-      )
-    ) {
-      return;
-    }
+    setConfirmRestoreOpen(true);
+  };
+
+  const executeRestore = async () => {
+    if (!selectedFile) return;
+    setConfirmRestoreOpen(false);
     setRestoring(true);
     setError(null);
     setSuccess(null);
@@ -79,10 +79,10 @@ export default function BackupRestorePage() {
       {error && <Notice type='error'>{error}</Notice>}
 
       {/* Backup */}
-      <SectionCard title={t('Buat Backup')} subtitle={t('Unduh snapshot seluruh tabel (users, ujian, soal, hasil, dsb.) sebagai file .json.')}>
+      <SectionCard title={t('Buat Backup')} subtitle={t('Unduh snapshot seluruh tabel (users, ujian, soal, hasil, Administrasi Guru, dsb.) sebagai file .json.')}>
         <div className='flex flex-col gap-4'>
           <p className='text-xs' style={{ color: C.base.textMuted }}>
-            {t('Backup menyimpan seluruh data aplikasi termasuk akun, bank soal, ujian, sesi, jawaban, hasil, materi belajar, dan pengaturan.')}
+            {t('Backup menyimpan seluruh data aplikasi termasuk akun, bank soal, ujian, sesi, jawaban, hasil, materi belajar, perangkat Administrasi Guru, dan pengaturan.')}
           </p>
           <div className='flex justify-end'>
             <Btn onClick={handleBackup} disabled={creating}>
@@ -126,7 +126,7 @@ export default function BackupRestorePage() {
           </div>
           <div className='flex justify-end'>
             <Btn
-              onClick={handleRestore}
+              onClick={requestRestore}
               disabled={restoring || !selectedFile}
               style={{ background: C.danger.main, color: '#FFFFFF' }}
             >
@@ -139,13 +139,13 @@ export default function BackupRestorePage() {
             <Card pad>
               <div className='flex items-center justify-between mb-3'>
                 <div className='font-semibold text-sm' style={{ color: C.ok.dark }}>{t('Hasil restore')}</div>
-                <span className='text-sm font-bold' style={{ color: C.ok.main }}>{t('{n} baris', { n: lastRestore.total ?? 0 })}</span>
+                <span className='text-sm font-bold tabular-nums' style={{ color: C.ok.main }}>{t('{n} baris', { n: lastRestore.total ?? 0 })}</span>
               </div>
               <div className='grid grid-cols-2 gap-x-4 gap-y-1.5 max-h-64 overflow-y-auto pr-1'>
                 {Object.entries(lastRestore.restored ?? {}).map(([table, count]) => (
                   <div key={table} className='flex justify-between text-xs'>
                     <span style={{ fontFamily: 'var(--font-mono)', color: C.base.textMuted }}>{table}</span>
-                    <span style={{ color: C.base.text }}>{count}</span>
+                    <span className='tabular-nums' style={{ color: C.base.text }}>{count}</span>
                   </div>
                 ))}
               </div>
@@ -157,6 +157,27 @@ export default function BackupRestorePage() {
           )}
         </div>
       </SectionCard>
+
+      {confirmRestoreOpen && (
+        <Modal
+          title={t('Konfirmasi Restore Database')}
+          onClose={() => !restoring && setConfirmRestoreOpen(false)}
+          actions={
+            <>
+              <Btn onClick={() => setConfirmRestoreOpen(false)} disabled={restoring} style={{ flex: 1 }}>
+                {t('Batal')}
+              </Btn>
+              <Btn variant='danger' onClick={executeRestore} disabled={restoring} style={{ flex: 1 }}>
+                {restoring ? t('Merestore…') : t('Ya, Restore Sekarang')}
+              </Btn>
+            </>
+          }
+        >
+          <p className='text-sm leading-relaxed' style={{ color: C.base.textBody }}>
+            {t('Restore akan MENGHAPUS semua data saat ini lalu menggantinya dari backup. Lanjutkan?')}
+          </p>
+        </Modal>
+      )}
     </div>
   );
 }

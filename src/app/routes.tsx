@@ -22,6 +22,8 @@ import AdmOverviewPage from "../pages/teacher/adm/AdmOverviewPage";
 import AdmPlanningPage from "../pages/teacher/adm/AdmPlanningPage";
 import AdmExecutionPage from "../pages/teacher/adm/AdmExecutionPage";
 import AdmAssessmentPage from "../pages/teacher/adm/AdmAssessmentPage";
+import AdmApprovalsPage from "../pages/teacher/adm/AdmApprovalsPage";
+import VerifyDocPage from "../pages/VerifyDocPage";
 import StudentDashboard from "../pages/student/StudentDashboard";
 import StudentSummaryPage from "../pages/student/SummaryPage";
 import NewsDetailPage from "../pages/student/NewsDetailPage";
@@ -46,6 +48,7 @@ export const router = createBrowserRouter([
   { path: "/login", element: <LoginPage /> },
   { path: "/register", element: <StudentRegisterPage /> },
   { path: "/setup", element: <DatabaseSetupPage /> },
+  { path: "/verify-doc/:code", element: <VerifyDocPage /> },
   {
     path: "/",
     element: <AppLayout />,
@@ -69,6 +72,7 @@ export const router = createBrowserRouter([
       { path: "teacher/adm/planning", element: <AdmPlanningPage /> },
       { path: "teacher/adm/execution", element: <AdmExecutionPage /> },
       { path: "teacher/adm/assessment", element: <AdmAssessmentPage /> },
+      { path: "teacher/adm/approvals", element: <AdmApprovalsPage /> },
       { path: "student/dashboard", element: <StudentDashboard /> },
       { path: "student/summary", element: <StudentSummaryPage /> },
       // Detail berita dibuka dari slider headline di dashboard siswa. Path-nya

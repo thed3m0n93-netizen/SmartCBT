@@ -22,6 +22,9 @@ export interface AdmPrintPreviewModalProps {
   rightSignatoryRole?: string;
   qrDataUrl?: string | null;
   qrVerifyCode?: string | null;
+  qrSignerName?: string | null;
+  qrSignerRole?: string | null;
+  qrReviewedAt?: string | null;
   children: ReactNode;
 }
 
@@ -42,6 +45,9 @@ export default function AdmPrintPreviewModal({
   rightSignatoryRole = "Guru Mata Pelajaran",
   qrDataUrl,
   qrVerifyCode,
+  qrSignerName,
+  qrSignerRole,
+  qrReviewedAt,
   children,
 }: AdmPrintPreviewModalProps) {
   const { t } = useI18n();
@@ -197,15 +203,32 @@ export default function AdmPrintPreviewModal({
             </div>
 
             {qrDataUrl && (
-              <div className="text-center shrink-0">
+              <div
+                className="text-center shrink-0 rounded-lg px-2.5 py-2"
+                style={{
+                  border: `1px solid ${C.base.border}`,
+                  background: C.base.surfaceMuted,
+                }}
+              >
                 <img
                   src={qrDataUrl}
                   alt="QR Pengesahan"
                   className="w-20 h-20 object-contain mx-auto"
                 />
                 {qrVerifyCode && (
-                  <div className="text-[10px] font-mono mt-0.5" style={{ color: C.base.textMuted }}>
+                  <div className="text-[10px] font-mono font-semibold mt-1" style={{ color: C.base.text }}>
                     {qrVerifyCode}
+                  </div>
+                )}
+                {qrSignerName && (
+                  <div className="text-[9px] mt-0.5 leading-tight max-w-[140px]" style={{ color: C.base.textMuted }}>
+                    Sah: {qrSignerName}
+                    {qrSignerRole ? ` (${qrSignerRole})` : ""}
+                  </div>
+                )}
+                {qrReviewedAt && (
+                  <div className="text-[9px]" style={{ color: C.base.textMuted }}>
+                    {new Date(qrReviewedAt).toLocaleDateString("id-ID")}
                   </div>
                 )}
               </div>
