@@ -810,11 +810,54 @@ export async function executeMockQuery(sqlText: string, params: any[] = []): Pro
   }
 
   // Question banks & questions
+  if (/^select count\(\*\) as count from exams where bank_id = \$1/i.test(sql)) {
+    const n = store.exams.filter((e) => String(e.bank_id) === String(params[0])).length;
+    return [{ count: n }];
+  }
+  if (/^select count\(\*\) as count from questions where bank_id = \$1/i.test(sql)) {
+    const n = store.questions.filter((q) => String(q.bank_id) === String(params[0])).length;
+    return [{ count: n }];
+  }
+  if (/^select count\(\*\) as count from student_answers where question_id = \$1/i.test(sql)) {
+    const n = store.student_answers.filter((a) => String(a.question_id) === String(params[0])).length;
+    return [{ count: n }];
+  }
+  if (/^insert into question_banks\b/i.test(sql)) {
+    const row = {
+      id: params[0],
+      subject_id: Number(params[1]),
+      teacher_id: String(params[2]),
+      title: String(params[3] ?? ""),
+      total_questions: 0,
+      created_at: nowIso(),
+    };
+    store.question_banks.unshift(row);
+    return [{ ...row }];
+  }
+  if (/^update question_banks set total_questions = \$1 where id = \$2/i.test(sql)) {
+    const qb = store.question_banks.find((b) => String(b.id) === String(params[1]));
+    if (qb) qb.total_questions = Number(params[0] ?? 0);
+    return [];
+  }
+  if (/^update question_banks set title = \$1, subject_id = \$2 where id = \$3/i.test(sql)) {
+    const qb = store.question_banks.find((b) => String(b.id) === String(params[2]));
+    if (qb) {
+      qb.title = String(params[0] ?? qb.title);
+      qb.subject_id = Number(params[1] ?? qb.subject_id);
+    }
+    return [];
+  }
+  if (/^delete from question_banks where id = \$1/i.test(sql)) {
+    const bankId = String(params[0]);
+    store.question_banks = store.question_banks.filter((b) => String(b.id) !== bankId);
+    store.questions = store.questions.filter((q) => String(q.bank_id) !== bankId);
+    return [];
+  }
   if (lower.includes("from question_banks where id = $1")) {
     const qb = store.question_banks.find((b) => String(b.id) === String(params[0]));
     return qb ? [{ ...qb }] : [];
   }
-  if (lower.includes("from question_banks") && !lower.includes("count(")) {
+  if (lower.includes("from question_banks") && !/^select count\(/i.test(sql)) {
     return store.question_banks.map((qb) => {
       const subj = store.subjects.find((s) => Number(s.id) === Number(qb.subject_id));
       const teacher = store.users.find((u) => String(u.id) === String(qb.teacher_id));
@@ -825,13 +868,86 @@ export async function executeMockQuery(sqlText: string, params: any[] = []): Pro
         subject_code: subj?.subject_code ?? "",
         teacher_name: teacher?.full_name ?? "",
         question_count: qCount,
+        actual_questions: qCount,
         total_questions: qCount,
       };
     });
   }
-  if (lower.includes("from questions") && !lower.includes("count(")) {
-    const bankId = params[0];
-    return store.questions.filter((q) => (!bankId ? true : String(q.bank_id) === String(bankId)));
+  if (/^insert into questions\b/i.test(sql)) {
+    const parseJsonCol = (val: any) => {
+      if (val == null || typeof val !== "string") return val ?? null;
+      try { return JSON.parse(val); } catch { return val; }
+    };
+    const row = {
+      id: params[0],
+      bank_id: String(params[1]),
+      question_type: String(params[2]),
+      content: String(params[3] ?? ""),
+      media_type: String(params[4] ?? "none"),
+      media_url: params[5] ?? null,
+      formula_latex: params[6] ?? null,
+      options: parseJsonCol(params[7]),
+      correct_answer: parseJsonCol(params[8]),
+      score_weight: Number(params[9] ?? 1),
+      difficulty_level: String(params[10] ?? "medium"),
+      ai_source: params.length > 11 ? (params[11] ?? null) : null,
+      ai_source_ref: params.length > 12 ? (params[12] ?? null) : null,
+      created_at: nowIso(),
+    };
+    store.questions.unshift(row);
+    return [{ ...row }];
+  }
+  if (/^update questions\b/i.test(sql)) {
+    const parseJsonCol = (val: any) => {
+      if (val == null || typeof val !== "string") return val ?? null;
+      try { return JSON.parse(val); } catch { return val; }
+    };
+    const q = store.questions.find((item) => String(item.id) === String(params[10]));
+    if (q) {
+      q.bank_id = String(params[0]);
+      q.question_type = String(params[1]);
+      q.content = String(params[2] ?? "");
+      q.media_type = String(params[3] ?? "none");
+      q.media_url = params[4] ?? null;
+      q.formula_latex = params[5] ?? null;
+      q.options = parseJsonCol(params[6]);
+      q.correct_answer = parseJsonCol(params[7]);
+      q.score_weight = Number(params[8] ?? 1);
+      q.difficulty_level = String(params[9] ?? "medium");
+    }
+    return [];
+  }
+  if (/^delete from questions where id = \$1/i.test(sql)) {
+    store.questions = store.questions.filter((q) => String(q.id) !== String(params[0]));
+    return [];
+  }
+  if (lower.includes("from questions") && !/^select count\(/i.test(sql)) {
+    const enrichQuestion = (q: any) => {
+      const qb = store.question_banks.find((b) => String(b.id) === String(q.bank_id));
+      const subj = qb ? store.subjects.find((s) => Number(s.id) === Number(qb.subject_id)) : null;
+      const teacher = qb ? store.users.find((u) => String(u.id) === String(qb.teacher_id)) : null;
+      return {
+        ...q,
+        bank_title: qb?.title ?? "",
+        teacher_id: qb?.teacher_id ?? null,
+        teacher_name: teacher?.full_name ?? "",
+        subject_name: subj?.subject_name ?? "",
+        subject_code: subj?.subject_code ?? "",
+      };
+    };
+    if (lower.includes("where q.id = $1") || lower.includes("where id = $1")) {
+      const row = store.questions.find((q) => String(q.id) === String(params[0]));
+      return row ? [enrichQuestion(row)] : [];
+    }
+    if (lower.includes("where bank_id = $1") || lower.includes("where q.bank_id = $1")) {
+      const bankId = String(params[0]);
+      return store.questions
+        .filter((q) => String(q.bank_id) === bankId)
+        .map(enrichQuestion);
+    }
+    return [...store.questions]
+      .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")))
+      .map(enrichQuestion);
   }
 
   if (lower.includes("from exams e") && lower.includes("where e.id = $1")) {

@@ -36,22 +36,44 @@ import {
 
 const DB_TYPE: Record<string, string> = {
   single: "single_choice",
+  single_choice: "single_choice",
+  mcq: "single_choice",
+  pilihan_ganda: "single_choice",
+  pg: "single_choice",
   multiple: "multiple_choice",
+  multiple_choice: "multiple_choice",
+  multi: "multiple_choice",
   truefalse: "true_false",
+  true_false: "true_false",
+  boolean: "true_false",
+  benar_salah: "true_false",
   matching: "matching",
+  menjodohkan: "matching",
   essay: "essay",
+  esai: "essay",
+  uraian: "essay",
 };
 
 interface AiQuestion {
   type?: string;
   question_type?: string;
   content?: string;
+  question?: string;
+  text?: string;
+  soal?: string;
+  pertanyaan?: string;
+  stem?: string;
   difficulty?: string;
-  points?: number;
-  score_weight?: number;
-  options?: Array<{ key: string; text: string }> | { left: Array<{ id: string; text: string }>; right: Array<{ id: string; text: string }> } | null;
-  correct_answer?: { keys?: string[]; pairs?: Array<{ left_id: string; right_id: string }> } | null;
-  answer?: string | string[];
+  points?: number | string;
+  score_weight?: number | string;
+  options?: unknown;
+  choices?: unknown;
+  correct_answer?: unknown;
+  correctAnswer?: unknown;
+  answer?: unknown;
+  kunci?: unknown;
+  kunci_jawaban?: unknown;
+  pairs?: unknown;
   explanation?: string;
   topic?: string;
   formula_latex?: string | null;
@@ -135,6 +157,47 @@ const AI_GENERATE_TIMEOUT_MS = 8 * 60 * 1000;
  *  - `anthropic` → POST {base}/messages              (x-api-key + anthropic-version)
  *  - `gemini`    → POST {base}/models/{model}:generateContent (key as query param)
  */
+function extractReadableAiError(raw: unknown, fallback: string): string {
+  let msg = typeof raw === "string" ? raw.trim() : raw instanceof Error ? raw.message.trim() : "";
+  if (msg.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(msg);
+      const inner =
+        parsed?.error?.message ||
+        parsed?.message ||
+        (typeof parsed?.error === "string" ? parsed.error : "");
+      if (inner) msg = String(inner).trim();
+    } catch {
+      /* keep original string */
+    }
+  }
+  return msg || fallback;
+}
+
+function extractOpenAiMessageText(data: any): string {
+  const choice = data?.choices?.[0];
+  const message = choice?.message;
+  let text = "";
+  if (typeof message?.content === "string") {
+    text = message.content;
+  } else if (Array.isArray(message?.content)) {
+    text = message.content
+      .map((part: any) =>
+        typeof part === "string"
+          ? part
+          : typeof part?.text === "string"
+            ? part.text
+            : typeof part?.content === "string"
+              ? part.content
+              : ""
+      )
+      .join("");
+  }
+  if (text.trim().length > 0) return text;
+  const fallback = message?.reasoning_content || message?.reasoning || choice?.text || "";
+  return typeof fallback === "string" ? fallback : "";
+}
+
 export async function callProvider(
   prompt: string,
   provider: string,
@@ -155,6 +218,7 @@ export async function callProvider(
   }
 
   const system = `You are a SmartCBT question author. Return ONLY a valid JSON object with a top-level field "questions". Each question must have fields: type, content, difficulty, points, options, answer, explanation, topic, and formula_latex. Use JSON schema only. Use type values: single, multiple, truefalse, matching, essay. For single/multiple choices use exactly five options as an array of {key,text} using keys A, B, C, D, E in order; never generate fewer or more than five choices. For truefalse use options null, answer array keys ["true"] or ["false"]; for matching use options as {left:[{id,text}],right:[{id,text}]} and answer as {pairs:[{left_id,right_id}]}; for essay use options null and answer null.`;
+
   if (protocol === "gemini") {
     const ai = new GoogleGenAI({
       apiKey: key,
@@ -164,37 +228,73 @@ export async function callProvider(
         },
       },
     });
-    const response = await ai.models.generateContent({
-      model: finalModel,
-      contents: prompt,
-      config: {
-        systemInstruction: system,
-        responseMimeType: "application/json",
-      },
-    });
-    return (response.text ?? "").trim();
+    const runGemini = (withStrictConfig: boolean) =>
+      Promise.race([
+        ai.models.generateContent({
+          model: finalModel,
+          contents: withStrictConfig ? prompt : `${system}\n\n${prompt}`,
+          ...(withStrictConfig
+            ? {
+                config: {
+                  systemInstruction: system,
+                  responseMimeType: "application/json",
+                },
+              }
+            : {}),
+        }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("Timeout saat menghubungi Google Gemini API.")), AI_GENERATE_TIMEOUT_MS),
+        ),
+      ]);
+
+    try {
+      const response = await runGemini(true);
+      const txt = (response.text ?? "").trim();
+      if (txt) return txt;
+    } catch (err: any) {
+      const msg = extractReadableAiError(err, "");
+      // Some Gemini/Gemma models or proxies pass `/api/ai/test` (no config)
+      // but reject `responseMimeType` or `systemInstruction` with 400 / INVALID_ARGUMENT.
+      if (!/400|invalid_argument|responsemimetype|json|systeminstruction|developer instruction|not supported|unsupported/i.test(msg)) {
+        throw new Error(msg || "Google Gemini AI generation failed");
+      }
+    }
+
+    try {
+      const fallbackResponse = await runGemini(false);
+      return (fallbackResponse.text ?? "").trim();
+    } catch (fallbackErr: any) {
+      throw new Error(extractReadableAiError(fallbackErr, "Google Gemini AI generation failed"));
+    }
   }
 
   if (protocol === "anthropic") {
     const url = `${base}/messages`;
-    const body = {
-      model: finalModel,
-      max_tokens: 4096,
-      temperature: 0.6,
-      system,
-      messages: [{ role: "user", content: prompt }],
+    const sendAnthropic = async (maxTokens: number) => {
+      const resp = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": key,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: finalModel,
+          max_tokens: maxTokens,
+          temperature: 0.6,
+          system,
+          messages: [{ role: "user", content: prompt }],
+        }),
+        signal: AbortSignal.timeout(AI_GENERATE_TIMEOUT_MS),
+      });
+      const data = await resp.json().catch(() => null);
+      return { resp, data };
     };
-    const resp = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": key,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(AI_GENERATE_TIMEOUT_MS),
-    });
-    const data = await resp.json().catch(() => null);
+
+    let { resp, data } = await sendAnthropic(8192);
+    if (!resp.ok && resp.status === 400 && /max_tokens/i.test(String(data?.error?.message || ""))) {
+      ({ resp, data } = await sendAnthropic(4096));
+    }
     if (!resp.ok) {
       const detail = data?.error?.message || data?.error?.type;
       throw new Error(detail || `Anthropic AI generation failed (HTTP ${resp.status})`);
@@ -207,119 +307,146 @@ export async function callProvider(
   }
 
   if (protocol === "ollama") {
-    // `base` already went through `resolveAiBaseUrl()` above (explicit setting →
-    // catalog default → DEFAULT_AI_BASE_URL), so an empty `ai_base_url` no longer
-    // produces a request to the relative path "/api/generate".
     const url = `${base}/api/generate`;
-    const body = {
-      model: finalModel,
-      prompt: `${system}\n\n${prompt}`,
-      format: "json",
-      stream: false,
-      // Small models (gemma3:4b and friends) often truncate long JSON replies
-      // when `num_predict` falls back to a low default — the truncated tail
-      // then fails to parse and the generation "silently" yields 0 questions.
-      // Request a generous token budget explicitly and keep the temperature
-      // low so the JSON stays stable.
-      options: { num_predict: 4096, temperature: 0.6 },
+    const sendOllama = async (useJsonFormat: boolean) => {
+      const resp = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: finalModel,
+          prompt: `${system}\n\n${prompt}`,
+          ...(useJsonFormat ? { format: "json" } : {}),
+          stream: false,
+          options: { num_predict: 8192, temperature: 0.6 },
+        }),
+        signal: AbortSignal.timeout(AI_GENERATE_TIMEOUT_MS),
+      });
+      const data = await resp.json().catch(() => null);
+      return { resp, data };
     };
-    const resp = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-      // Generating a 10-question JSON blob on a CPU-only VM can take minutes.
-      // Without an explicit signal a hung Ollama would pin the API request
-      // forever; 8 minutes is a safe ceiling (reverse proxies in front of the
-      // standalone server should allow proxy_read_timeout >= this value).
-      signal: AbortSignal.timeout(AI_GENERATE_TIMEOUT_MS),
-    });
-    const data = await resp.json().catch(() => null);
+
+    let { resp, data } = await sendOllama(true);
+    if (!resp.ok || !String(data?.response || "").trim()) {
+      const retry = await sendOllama(false);
+      if (retry.resp.ok && String(retry.data?.response || "").trim()) {
+        resp = retry.resp;
+        data = retry.data;
+      }
+    }
     if (!resp.ok) {
       throw new Error(
         data?.error || `Ollama AI generation failed (HTTP ${resp.status})`
       );
     }
-    return data?.response || "";
+    return String(data?.response || "");
   }
 
   // Default branch: OpenAI-compatible `chat/completions`.
-  // Covers OpenAI itself plus every provider that speaks the same dialect
-  // (DeepSeek, GLM/Zhipu, Mistral, Groq, OpenRouter, xAI, vLLM, LM Studio,
-  // LocalAI, and Ollama's own `/v1` shim). The base URL comes from the shared
-  // catalog, so only the API key + model need to be configured per school.
   const url = `${base}/chat/completions`;
   const params = descriptor.defaultParams ?? {};
   const body: Record<string, unknown> = {
     model: finalModel,
     temperature: params.temperature ?? 0.6,
-    max_tokens: params.maxTokens ?? 4096,
+    max_tokens: Math.max(params.maxTokens ?? 8192, 8192),
     stream: false,
     ...(params.topP !== undefined ? { top_p: params.topP } : {}),
     ...(params.frequencyPenalty !== undefined ? { frequency_penalty: params.frequencyPenalty } : {}),
     ...(params.presencePenalty !== undefined ? { presence_penalty: params.presencePenalty } : {}),
     ...(params.reasoningEffort !== undefined ? { reasoning_effort: params.reasoningEffort } : {}),
-    // JSON mode is honoured by OpenAI, DeepSeek, Groq, Mistral and OpenRouter,
-    // but a handful of OpenAI-compatible gateways (older vLLM builds, some
-    // self-hosted proxies) reject the field with HTTP 400. The request is sent
-    // with it first and transparently retried without it below, so a school can
-    // point the "custom" provider at any endpoint without editing the payload.
     ...(descriptor.supportsJsonMode === false ? {} : { response_format: { type: "json_object" } }),
     messages: [
       { role: "system", content: system },
       { role: "user", content: prompt },
     ],
   };
-  const send = () =>
-    fetch(url, {
+
+  const sendOpenAi = async (payload: Record<string, unknown>) => {
+    const resp = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json",
-        Authorization: `Bearer ${key}`,
+        ...(key ? { Authorization: `Bearer ${key}` } : {}),
       },
-      body: JSON.stringify(body),
+      body: JSON.stringify(payload),
       signal: AbortSignal.timeout(AI_GENERATE_TIMEOUT_MS),
     });
+    const data = await resp.json().catch(() => null);
+    return { resp, data };
+  };
 
-  let resp = await send();
-  let data = await resp.json().catch(() => null);
+  let { resp, data } = await sendOpenAi(body);
 
-  // Retry once without `response_format` or `reasoning_effort` when an endpoint rejects them.
-  if (!resp.ok && (body.response_format || body.reasoning_effort)) {
-    const message = String(
-      data?.error?.message || (typeof data?.error === "string" ? data.error : "") || ""
+  const errorDetail = (d: any) =>
+    String(
+      d?.error?.message ||
+      d?.detail ||
+      d?.message ||
+      (typeof d?.error === "string" ? d.error : "") ||
+      ""
     );
-    if (
-      resp.status === 400 ||
-      /response_format|json_object|reasoning_effort|unsupported|extra_forbidden/i.test(message)
-    ) {
-      delete body.response_format;
-      if (/reasoning_effort|extra_forbidden|unsupported/i.test(message) || resp.status === 400) {
-        delete body.reasoning_effort;
+
+  // Retry 1: Many gateways/models pass `/api/ai/test` (which uses a minimal payload)
+  // but reject `response_format`, `reasoning_effort`, sampling penalties, or large `max_tokens`
+  // with HTTP 400 or 422. Strip those optional fields cleanly.
+  if (!resp.ok && (resp.status === 400 || resp.status === 422)) {
+    const msg1 = errorDetail(data);
+    const minimalBody: Record<string, unknown> = {
+      model: finalModel,
+      temperature: 0.6,
+      max_tokens: /max_tokens/i.test(msg1) ? 4096 : (params.maxTokens ?? 4096),
+      stream: false,
+      messages: body.messages,
+    };
+    ({ resp, data } = await sendOpenAi(minimalBody));
+
+    // Retry 2: Some models (e.g., Gemma via OpenAI-compatible shim, o-series)
+    // reject `role: "system"`, `temperature`, or `max_tokens` (expecting `max_completion_tokens`).
+    if (!resp.ok && (resp.status === 400 || resp.status === 422)) {
+      const msg2 = errorDetail(data);
+      const ultraMinimal: Record<string, unknown> = {
+        model: finalModel,
+        stream: false,
+        messages: [{ role: "user", content: `${system}\n\n${prompt}` }],
+      };
+      if (/max_completion_tokens/i.test(msg2)) {
+        ultraMinimal.max_completion_tokens = 4096;
+      } else if (!/max_tokens/i.test(msg2)) {
+        ultraMinimal.max_tokens = 4096;
       }
-      resp = await send();
-      data = await resp.json().catch(() => null);
+      if (!/temperature/i.test(msg2)) {
+        ultraMinimal.temperature = 0.6;
+      }
+      ({ resp, data } = await sendOpenAi(ultraMinimal));
     }
   }
 
   if (!resp.ok) {
-    const detail =
-      data?.error?.message ||
-      data?.message ||
-      (typeof data?.error === "string" ? data.error : "");
+    const detail = errorDetail(data);
     throw new Error(
       detail || `${descriptor.label} AI generation failed (HTTP ${resp.status})`
     );
   }
-  // Reasoning models (gpt-oss, GLM thinking, Nemotron) sometimes answer with
-  // `content: null` and put the real answer in `reasoning_content` — the
-  // previous `content || ""` turned that into an empty string, which the
-  // JSON parser then reported as a cryptic "no JSON" error. Fall back to the
-  // reasoning text so the payload is still usable.
-  const message = data?.choices?.[0]?.message;
-  const content = String(
-    message?.content || message?.reasoning_content || message?.reasoning || "",
-  );
+
+  let content = extractOpenAiMessageText(data);
+
+  // If a reasoning model burned all tokens in reasoning with empty visible content,
+  // retry once without `reasoning_effort` so it outputs the JSON payload directly.
+  if (!content.trim() && body.reasoning_effort !== undefined) {
+    const noReasoningBody: Record<string, unknown> = {
+      model: finalModel,
+      temperature: 0.6,
+      max_tokens: 8192,
+      stream: false,
+      messages: body.messages,
+    };
+    const retry = await sendOpenAi(noReasoningBody);
+    if (retry.resp.ok) {
+      const retryText = extractOpenAiMessageText(retry.data);
+      if (retryText.trim()) content = retryText;
+    }
+  }
+
   return content;
 }
 
@@ -339,27 +466,156 @@ function normalizeSourceRef(raw: unknown): string | null {
   return labels.length ? JSON.stringify(labels) : null;
 }
 
+function normalizeChoiceList(rawOptions: unknown): Array<{ key: string; text: string }> {
+  const letters = OPTION_LETTERS;
+  const rawList: unknown =
+    rawOptions && typeof rawOptions === "object" && !Array.isArray(rawOptions)
+      ? (rawOptions as any).choices ?? (rawOptions as any).options ?? rawOptions
+      : rawOptions;
+
+  const parsed: Array<{ key: string; text: string }> = [];
+
+  if (Array.isArray(rawList)) {
+    for (let i = 0; i < rawList.length && parsed.length < letters.length; i++) {
+      const item = rawList[i];
+      if (typeof item === "string") {
+        let text = item.trim();
+        let key = letters[parsed.length];
+        const prefix = text.match(/^([A-Ha-h])[.):\]]\s+([\s\S]+)$/);
+        if (prefix) {
+          key = prefix[1].toUpperCase();
+          text = prefix[2].trim();
+        }
+        if (text) parsed.push({ key, text });
+      } else if (item && typeof item === "object") {
+        const obj = item as Record<string, unknown>;
+        const rawKey = String(obj.key ?? obj.label ?? obj.id ?? obj.option ?? letters[parsed.length]).trim().toUpperCase();
+        const key = letters.includes(rawKey) ? rawKey : letters[parsed.length];
+        const text = String(obj.text ?? obj.value ?? obj.content ?? obj.label_text ?? obj.description ?? "").trim();
+        if (text) parsed.push({ key, text });
+      }
+    }
+  } else if (rawList && typeof rawList === "object") {
+    const entries = Object.entries(rawList as Record<string, unknown>);
+    for (const [k, v] of entries) {
+      const key = k.trim().toUpperCase();
+      if (!letters.includes(key)) continue;
+      const text =
+        typeof v === "string"
+          ? v.trim()
+          : v && typeof v === "object"
+            ? String((v as any).text ?? (v as any).value ?? (v as any).content ?? "").trim()
+            : "";
+      if (text) parsed.push({ key, text });
+    }
+  }
+
+  // Deduplicate & sort in A..H order
+  const byKey = new Map<string, string>();
+  for (const item of parsed) {
+    if (!byKey.has(item.key)) byKey.set(item.key, item.text);
+  }
+  return letters
+    .filter((key) => byKey.has(key))
+    .map((key) => ({ key, text: byKey.get(key)! }));
+}
+
+function extractAnswerTokens(rawAns: unknown): string[] {
+  if (rawAns === undefined || rawAns === null) return [];
+  if (Array.isArray(rawAns)) {
+    return rawAns.flatMap((v) => extractAnswerTokens(v));
+  }
+  if (typeof rawAns === "object") {
+    const obj = rawAns as Record<string, unknown>;
+    if ("keys" in obj) return extractAnswerTokens(obj.keys);
+    if ("key" in obj) return extractAnswerTokens(obj.key);
+    if ("answer" in obj) return extractAnswerTokens(obj.answer);
+    if ("value" in obj) return extractAnswerTokens(obj.value);
+    return [];
+  }
+  if (typeof rawAns === "boolean" || typeof rawAns === "number") {
+    return [String(rawAns)];
+  }
+  const s = String(rawAns).trim();
+  if (!s) return [];
+  // Split comma/semicolon-separated multiple keys (unless it looks like a full sentence matching an option)
+  if (/^[A-Ha-h0-9]+(?:\s*[,;/]\s*[A-Ha-h0-9]+)+$/.test(s)) {
+    return s.split(/[,;/]/).map((v) => v.trim()).filter(Boolean);
+  }
+  return [s];
+}
+
+function mapAnswerTokenToOptionKey(token: string, choices: Array<{ key: string; text: string }>): string | null {
+  const validKeys = new Set(choices.map((c) => c.key));
+  const clean = token.trim();
+  if (!clean) return null;
+  const upper = clean.toUpperCase();
+  if (validKeys.has(upper)) return upper;
+
+  // Match patterns like "A. text", "A) text", "Option A", "Pilihan B", "Jawaban: C"
+  const prefixMatch = clean.match(/^(?:option|opsi|pilihan|jawaban|key|huruf)?\s*[:\-]?\s*([A-Ha-h])(?:[.):\]]\s*.*)?$/i);
+  if (prefixMatch && validKeys.has(prefixMatch[1].toUpperCase())) {
+    return prefixMatch[1].toUpperCase();
+  }
+
+  // Numeric index (0 -> A, 1 -> B, ...)
+  if (/^\d+$/.test(clean)) {
+    const num = Number(clean);
+    if (num >= 0 && num < choices.length) {
+      return choices[num].key;
+    }
+  }
+
+  // Exact text match against option text
+  const lower = clean.toLowerCase();
+  const textMatch = choices.find((c) => c.text.toLowerCase() === lower);
+  if (textMatch) return textMatch.key;
+
+  return null;
+}
+
+function normalizeTrueFalseToken(rawAns: unknown): "true" | "false" | null {
+  const tokens = extractAnswerTokens(rawAns);
+  for (const t of tokens) {
+    const v = t.trim().toLowerCase();
+    if (["true", "t", "benar", "b", "ya", "yes", "1"].includes(v)) return "true";
+    if (["false", "f", "salah", "s", "tidak", "no", "0"].includes(v)) return "false";
+  }
+  return null;
+}
+
 function normalizeGeneratedQuestion(raw: AiQuestion, idx: number): ParsedQuestion {
-  const type = String(raw.type || raw.question_type || "single").trim().toLowerCase();
-  const mappedType = DB_TYPE[type] || DB_TYPE[type] || "single_choice";
-  const content = String(raw.content || "").trim();
-  const difficulty = DIFFICULTIES.includes(String(raw.difficulty || "medium") as any)
-    ? String(raw.difficulty || "medium")
-    : "medium";
-  const scoreWeight = Number(raw.points ?? raw.score_weight ?? 1);
+  const rawTypeStr = String(raw.type || raw.question_type || "single").trim().toLowerCase();
+  const normalizedKey = rawTypeStr.replace(/[^a-z_]/g, "");
+  const mappedType = DB_TYPE[rawTypeStr] || DB_TYPE[normalizedKey] || "single_choice";
+  const content = String(
+    raw.content ?? raw.question ?? raw.text ?? raw.soal ?? raw.pertanyaan ?? raw.stem ?? ""
+  ).trim();
+
+  const rawDiff = String(raw.difficulty || "medium").trim().toLowerCase();
+  const difficulty =
+    rawDiff === "mudah" || rawDiff === "easy"
+      ? "easy"
+      : rawDiff === "sulit" || rawDiff === "susah" || rawDiff === "hard"
+        ? "hard"
+        : DIFFICULTIES.includes(rawDiff as any)
+          ? rawDiff
+          : "medium";
+
+  const rawWeight = Number(raw.points ?? raw.score_weight ?? 1);
+  const scoreWeight = Number.isFinite(rawWeight) && rawWeight > 0 ? Math.min(999, Math.max(0.01, rawWeight)) : 1;
+
   const q: ParsedQuestion = {
     rowNum: idx + 1,
     questionType: mappedType,
     content,
     difficulty,
-    scoreWeight: Number.isFinite(scoreWeight) && scoreWeight > 0 ? scoreWeight : 1,
+    scoreWeight,
     options: null,
     correctAnswer: null,
     formulaLatex: typeof raw.formula_latex === "string" && raw.formula_latex.trim() ? raw.formula_latex.trim() : null,
     topic: String(raw.topic || "").trim() || undefined,
     explanation: String(raw.explanation || "").trim() || undefined,
-    // Build 140 — hanya nilai yang dikenal yang disimpan; model yang
-    // "berbohong" dengan label aneh tetap aman tersimpan sebagai null.
     aiSource:
       String(raw.source || "").trim().toLowerCase() === "materi"
         ? "materi"
@@ -369,42 +625,79 @@ function normalizeGeneratedQuestion(raw: AiQuestion, idx: number): ParsedQuestio
     aiSourceRef: normalizeSourceRef(raw.source_ref),
   };
 
-  if (type === "single" || type === "multiple" || type === "single_choice" || type === "multiple_choice") {
-    const arr = Array.isArray(raw.options) ? raw.options as Array<{ key: string; text: string }> : [];
-    const rawOptions = arr
-      .map((c) => ({
-        key: String(c.key || "").trim().toUpperCase(),
-        text: String(c.text || "").trim(),
-      }))
-      .filter((c) => c.text.length > 0 && OPTION_LETTERS.slice(0, 5).includes(c.key));
+  const rawAnswerSource =
+    raw.answer !== undefined
+      ? raw.answer
+      : raw.correct_answer !== undefined
+        ? raw.correct_answer
+        : raw.correctAnswer !== undefined
+          ? raw.correctAnswer
+          : raw.kunci !== undefined
+            ? raw.kunci
+            : raw.kunci_jawaban;
 
-    const byKey = new Map(rawOptions.map((c) => [c.key, c.text]));
-    q.options = OPTION_LETTERS.slice(0, 5).map((key) => ({
-      key,
-      text: String(byKey.get(key) ?? ""),
-    }));
+  if (mappedType === "single_choice" || mappedType === "multiple_choice") {
+    const choices = normalizeChoiceList(raw.options ?? raw.choices);
+    q.options = choices;
 
-    const rawKeys = typeof raw.answer === "string"
-      ? raw.answer.split(",").map((v) => v.trim()).filter(Boolean)
-      : Array.isArray(raw.answer)
-        ? raw.answer.map((v) => String(v).trim()).filter(Boolean)
-        : [];
-    const safeKeys = rawKeys.map((v) => String(v).trim().toUpperCase()).filter((v) => OPTION_LETTERS.slice(0, 5).includes(v));
-    if (type === "single" || type === "single_choice") {
-      q.correctAnswer = { keys: safeKeys.slice(0, 1) };
-    } else {
-      q.correctAnswer = { keys: safeKeys };
-    }
-  } else if (type === "truefalse" || type === "true_false") {
+    const rawTokens = extractAnswerTokens(rawAnswerSource);
+    const mappedKeys = Array.from(
+      new Set(
+        rawTokens
+          .map((tok) => mapAnswerTokenToOptionKey(tok, choices))
+          .filter((k): k is string => Boolean(k))
+      )
+    );
+    q.correctAnswer =
+      mappedType === "single_choice"
+        ? { keys: mappedKeys.slice(0, 1) }
+        : { keys: mappedKeys };
+  } else if (mappedType === "true_false") {
     q.questionType = "true_false";
     q.options = null;
-    q.correctAnswer = { keys: [String(raw.answer || "true").trim().toLowerCase()] };
-  } else if (type === "matching") {
-    const options = raw.options as { left: Array<{ id: string; text: string }>; right: Array<{ id: string; text: string }> } | undefined;
-    q.options = { left: options?.left || [], right: options?.right || [] };
-    q.correctAnswer = typeof raw.answer === "object" && raw.answer && "pairs" in (raw.answer as any)
-      ? { pairs: (raw.answer as any).pairs }
-      : { pairs: [] };
+    const tf = normalizeTrueFalseToken(rawAnswerSource);
+    q.correctAnswer = tf ? { keys: [tf] } : { keys: [] };
+  } else if (mappedType === "matching") {
+    const optsObj = (raw.options ?? raw.choices ?? {}) as Record<string, unknown>;
+    const rawLeft = Array.isArray(optsObj?.left) ? optsObj.left : [];
+    const rawRight = Array.isArray(optsObj?.right) ? optsObj.right : [];
+    const left = rawLeft
+      .map((item: any, i: number) =>
+        typeof item === "string"
+          ? { id: `L${i + 1}`, text: item.trim() }
+          : { id: String(item?.id ?? item?.key ?? `L${i + 1}`).trim(), text: String(item?.text ?? item?.value ?? "").trim() }
+      )
+      .filter((item) => item.text.length > 0);
+    const right = rawRight
+      .map((item: any, i: number) =>
+        typeof item === "string"
+          ? { id: `R${i + 1}`, text: item.trim() }
+          : { id: String(item?.id ?? item?.key ?? `R${i + 1}`).trim(), text: String(item?.text ?? item?.value ?? "").trim() }
+      )
+      .filter((item) => item.text.length > 0);
+    q.options = { left, right };
+
+    const pairSource =
+      rawAnswerSource && typeof rawAnswerSource === "object" && !Array.isArray(rawAnswerSource) && "pairs" in (rawAnswerSource as any)
+        ? (rawAnswerSource as any).pairs
+        : Array.isArray(rawAnswerSource)
+          ? rawAnswerSource
+          : Array.isArray(raw.pairs)
+            ? raw.pairs
+            : [];
+    const pairs = Array.isArray(pairSource)
+      ? pairSource
+          .map((p: any) =>
+            Array.isArray(p)
+              ? { left_id: String(p[0] ?? "").trim(), right_id: String(p[1] ?? "").trim() }
+              : {
+                  left_id: String(p?.left_id ?? p?.left ?? "").trim(),
+                  right_id: String(p?.right_id ?? p?.right ?? "").trim(),
+                }
+          )
+          .filter((p) => p.left_id && p.right_id)
+      : [];
+    q.correctAnswer = { pairs };
   } else {
     q.options = null;
     q.correctAnswer = null;
@@ -413,43 +706,136 @@ function normalizeGeneratedQuestion(raw: AiQuestion, idx: number): ParsedQuestio
   return q;
 }
 
-function parseGeneratedPayload(text: string): { questions: AiQuestion[]; parseError?: string } {
-  // Small models love wrapping JSON in markdown fences — strip them first.
-  const cleaned = text
-    .trim()
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/```\s*$/i, "")
-    .trim();
-  let payload: any = null;
-  let parseError: string | undefined;
-  try {
-    payload = JSON.parse(cleaned);
-  } catch {
-    // Truncated replies often still contain one complete object mid-text.
-    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      try {
-        payload = JSON.parse(jsonMatch[0]);
-      } catch {
-        payload = null;
-      }
+function extractQuestionsFromParsedObject(payload: any): AiQuestion[] {
+  if (!payload) return [];
+  if (Array.isArray(payload)) return payload;
+  if (typeof payload === "object") {
+    for (const key of ["questions", "items", "data", "quiz", "soal", "results", "result"]) {
+      if (Array.isArray(payload[key])) return payload[key];
+    }
+    if (
+      typeof payload.content === "string" ||
+      typeof payload.question === "string" ||
+      typeof payload.soal === "string"
+    ) {
+      return [payload];
     }
   }
-  const list = Array.isArray(payload?.questions) ? payload.questions : Array.isArray(payload) ? payload : [];
-  if (list.length === 0) {
-    const head = cleaned.replace(/\s+/g, " ").slice(0, 160);
-    parseError =
-      head.length > 0
-        ? `Model tidak menghasilkan soal yang bisa diparse. Jawaban model: "${head}${cleaned.length > 160 ? "…" : ""}"`
-        : "Model mengembalikan jawaban kosong.";
-  }
-  return { questions: list as AiQuestion[], parseError };
+  return [];
 }
 
-let provenanceColumnsReady: Promise<void> | null = null;
+/**
+ * Salvage complete question `{...}` objects from a truncated JSON array/object
+ * (e.g. when a model hit max_tokens mid-way through question 9 of 10).
+ */
+function recoverTruncatedQuestions(text: string): AiQuestion[] {
+  const startMatch = text.match(/"(?:questions|items|data|quiz|soal|results)"\s*:\s*\[/i);
+  const startIdx = startMatch ? (startMatch.index ?? 0) + startMatch[0].length : text.indexOf("[");
+  if (startIdx < 0) return [];
+
+  const recovered: AiQuestion[] = [];
+  let inString = false;
+  let escape = false;
+  let depth = 0;
+  let objStart = -1;
+
+  for (let i = startIdx; i < text.length; i++) {
+    const ch = text[i];
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (ch === "\\" && inString) {
+      escape = true;
+      continue;
+    }
+    if (ch === "\"") {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+
+    if (ch === "{") {
+      if (depth === 0) objStart = i;
+      depth++;
+    } else if (ch === "}") {
+      if (depth > 0) {
+        depth--;
+        if (depth === 0 && objStart >= 0) {
+          const slice = text.slice(objStart, i + 1);
+          try {
+            const parsedObj = JSON.parse(slice);
+            if (parsedObj && typeof parsedObj === "object") {
+              recovered.push(parsedObj as AiQuestion);
+            }
+          } catch {
+            /* skip malformed slice */
+          }
+          objStart = -1;
+        }
+      }
+    } else if (ch === "]" && depth === 0) {
+      break;
+    }
+  }
+  return recovered;
+}
+
+function parseGeneratedPayload(text: string): { questions: AiQuestion[]; parseError?: string } {
+  // Strip reasoning tags (<think>...</think>) before looking for JSON.
+  let cleaned = String(text ?? "")
+    .replace(/<think(?:ing)?\b[^>]*>[\s\S]*?<\/think(?:ing)?>/gi, "")
+    .trim();
+
+  // If a reasoning model left an unclosed <think> tag before outputting JSON elsewhere, strip up to JSON start if helpful.
+  if (/^<think(?:ing)?\b/i.test(cleaned)) {
+    const braceIdx = cleaned.indexOf("{");
+    if (braceIdx >= 0) cleaned = cleaned.slice(braceIdx);
+  }
+
+  // Extract content inside markdown ```json ... ``` fences anywhere in the response.
+  const fenceMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const candidate = fenceMatch ? fenceMatch[1].trim() : cleaned.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
+
+  const tryParse = (s: string): AiQuestion[] => {
+    try {
+      return extractQuestionsFromParsedObject(JSON.parse(s));
+    } catch {
+      return [];
+    }
+  };
+
+  let list = tryParse(candidate);
+
+  if (list.length === 0) {
+    const objMatch = candidate.match(/\{[\s\S]*\}/);
+    if (objMatch) list = tryParse(objMatch[0]);
+  }
+
+  if (list.length === 0) {
+    const arrMatch = candidate.match(/\[[\s\S]*\]/);
+    if (arrMatch) list = tryParse(arrMatch[0]);
+  }
+
+  if (list.length === 0) {
+    list = recoverTruncatedQuestions(candidate);
+  }
+
+  let parseError: string | undefined;
+  if (list.length === 0) {
+    const head = candidate.replace(/\s+/g, " ").slice(0, 160);
+    parseError =
+      head.length > 0
+        ? `Model tidak menghasilkan JSON soal yang valid. Cuplikan jawaban: "${head}${candidate.length > 160 ? "…" : ""}"`
+        : "Model mengembalikan jawaban kosong.";
+  }
+  return { questions: list, parseError };
+}
+
+let provenanceColumnsReady: Promise<boolean> | null = null;
 
 /** Self-heal kolom provenance build 140 (dibuat sekali saat pertama dipakai). */
-function ensureQuestionsProvenanceColumns(): Promise<void> {
+function ensureQuestionsProvenanceColumns(): Promise<boolean> {
   if (!provenanceColumnsReady) {
     provenanceColumnsReady = (async () => {
       await ensureColumn("questions", "ai_source", {
@@ -460,9 +846,11 @@ function ensureQuestionsProvenanceColumns(): Promise<void> {
         pg: "TEXT NULL",
         mysql: "TEXT NULL",
       });
+      return true;
     })().catch((err) => {
       provenanceColumnsReady = null;
-      throw err;
+      console.error("[ai] ensure provenance columns failed:", err);
+      return false;
     });
   }
   return provenanceColumnsReady;
@@ -471,16 +859,15 @@ function ensureQuestionsProvenanceColumns(): Promise<void> {
 async function insertGeneratedQuestions(bankId: string, questions: ParsedQuestion[]) {
   const inserted: any[] = [];
   const errors: string[] = [];
-  try {
-    await ensureQuestionsProvenanceColumns();
-  } catch (err) {
-    // Jangan gagalkan import hanya karena self-heal kolom gagal (mis. DB read-
-    // only); soal tetap masuk, provenansinya saja yang hilang.
-    console.error("[ai] ensure provenance columns failed:", err);
-  }
+  let hasProvenanceCols = await ensureQuestionsProvenanceColumns();
+
   for (let i = 0; i < questions.length; i++) {
     const q = questions[i];
     const rowNum = q.rowNum ?? i + 1;
+    if (!q.content) {
+      errors.push(`Soal #${rowNum} ditolak: teks soal kosong`);
+      continue;
+    }
     const opts = normalizeOptions(q.questionType, q.options);
     if (opts.error) {
       errors.push(`Soal #${rowNum} ditolak: ${opts.error}`);
@@ -492,28 +879,49 @@ async function insertGeneratedQuestions(bankId: string, questions: ParsedQuestio
       continue;
     }
 
+    const id = randomUUID();
+    const baseValues = [
+      id,
+      bankId,
+      q.questionType,
+      q.content,
+      "none",
+      null,
+      q.formulaLatex,
+      opts.value === null ? null : JSON.stringify(opts.value),
+      ans.value === null ? null : JSON.stringify(ans.value),
+      q.scoreWeight,
+      q.difficulty,
+    ];
+
     try {
-      const id = randomUUID();
-      await query(
-        `INSERT INTO questions (id, bank_id, question_type, content, media_type, media_url, formula_latex, options, correct_answer, score_weight, difficulty_level, ai_source, ai_source_ref)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
-        [
-          id,
-          bankId,
-          q.questionType,
-          q.content,
-          "none",
-          null,
-          q.formulaLatex,
-          opts.value === null ? null : JSON.stringify(opts.value),
-          ans.value === null ? null : JSON.stringify(ans.value),
-          q.scoreWeight,
-          q.difficulty,
-          q.aiSource ?? null,
-          q.aiSourceRef ?? null,
-        ]
-      );
-      inserted.push({ id, content: q.content, questionType: q.questionType, aiSource: q.aiSource ?? null });
+      if (hasProvenanceCols) {
+        try {
+          await query(
+            `INSERT INTO questions (id, bank_id, question_type, content, media_type, media_url, formula_latex, options, correct_answer, score_weight, difficulty_level, ai_source, ai_source_ref)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+            [...baseValues, q.aiSource ?? null, q.aiSourceRef ?? null]
+          );
+        } catch (provErr: any) {
+          if (/ai_source|unknown column|does not exist/i.test(String(provErr?.message || ""))) {
+            hasProvenanceCols = false;
+            await query(
+              `INSERT INTO questions (id, bank_id, question_type, content, media_type, media_url, formula_latex, options, correct_answer, score_weight, difficulty_level)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+              baseValues
+            );
+          } else {
+            throw provErr;
+          }
+        }
+      } else {
+        await query(
+          `INSERT INTO questions (id, bank_id, question_type, content, media_type, media_url, formula_latex, options, correct_answer, score_weight, difficulty_level)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+          baseValues
+        );
+      }
+      inserted.push({ id, content: q.content, questionType: q.questionType, aiSource: hasProvenanceCols ? (q.aiSource ?? null) : null });
     } catch (err: any) {
       errors.push(`Soal #${rowNum} gagal disimpan: ${err?.message || "database error"}`);
     }
@@ -762,7 +1170,8 @@ addRoute("POST", /^\/api\/ai\/questions\/generate$/, async (req: AuthenticatedRe
 
   const bankId = typeof body.bankId === "string" ? body.bankId.trim() : "";
   const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
-  const count = Math.min(Math.max(Number(body.count ?? 10) || 10, 1), 50);  const rawTypes: unknown[] = Array.isArray(body.questionTypes)
+  const count = Math.min(Math.max(Number(body.count ?? 10) || 10, 1), 50);
+  const rawTypes: unknown[] = Array.isArray(body.questionTypes)
     ? body.questionTypes
     : typeof body.questionType === "string"
       ? [body.questionType]
@@ -770,13 +1179,12 @@ addRoute("POST", /^\/api\/ai\/questions\/generate$/, async (req: AuthenticatedRe
   const requestedTypes = rawTypes
     .map((item: unknown) => String(item ?? "").trim().toLowerCase())
     .filter((item) => Boolean(item));
-  const requestedTypeSet = new Set(requestedTypes.map((item) => item.replace(/_choice|_answer|_pairs| /g, "")));
+  const requestedTypeSet = new Set(requestedTypes.map((item) => item.replace(/_choice|_answer|_pairs|_| /g, "")));
   const mappedTypes = Array.from(requestedTypeSet)
     .map((type) => {
       if (type === "single") return "single";
       if (type === "multiple") return "multiple";
       if (type === "truefalse") return "truefalse";
-      if (type === "true_false") return "truefalse";
       if (type === "matching") return "matching";
       if (type === "essay") return "essay";
       return "";
@@ -877,14 +1285,18 @@ addRoute("POST", /^\/api\/ai\/questions\/generate$/, async (req: AuthenticatedRe
     if (parseError) errors.unshift(parseError);
 
     if (inserted.length === 0) {
+      const note = parseError
+        ? config.provider === "ollama"
+          ? "Periksa bahwa model sudah di-pull di server Ollama dan coba dengan jumlah soal lebih sedikit."
+          : "Model tidak mengembalikan format JSON soal yang valid. Coba kurangi jumlah soal atau ganti model lain."
+        : "Semua soal dari model ditolak validator — lihat detail alasan di bawah.";
       return json(res, {
         success: false,
         imported: 0,
         totalParsed: parsed.length,
+        error: errors[0] || note,
         errors,
-        note: parseError
-          ? "Periksa bahwa model sudah di-pull di server Ollama dan coba dengan jumlah soal lebih sedikit."
-          : "Semua soal dari model ditolak validator — lihat daftar errors untuk per-soal.",
+        note,
       }, 400);
     }
 
@@ -912,11 +1324,12 @@ addRoute("POST", /^\/api\/ai\/questions\/generate$/, async (req: AuthenticatedRe
     });
   } catch (err: any) {
     // Timeout vs other failure get distinct, actionable messages.
-    const timedOut = err?.name === "TimeoutError" || /timeout|abort/i.test(String(err?.message || ""));
+    const msg = extractReadableAiError(err, "AI question generation failed");
+    const timedOut = err?.name === "TimeoutError" || /timeout|abort/i.test(msg);
     return json(res, {
       error: timedOut
         ? "Model AI tidak merespons dalam batas waktu 8 menit. Coba jumlah soal lebih sedikit atau gunakan model yang lebih cepat."
-        : err?.message || "AI question generation failed",
+        : msg,
     }, 400);
   }
 });

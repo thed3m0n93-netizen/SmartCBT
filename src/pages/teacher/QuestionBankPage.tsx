@@ -459,7 +459,7 @@ export default function QuestionBankPage() {
       // Stage timeline: prompt → dispatch → generating → persisting.
       const ratio = 1 - Math.exp(-seconds / k);
       if (seconds < 0.8) setAiStage("Preparing prompt…");
-      else if (seconds < 2.5) setAiStage("Sending request to AI ({model})…");
+      else if (seconds < 2.5) setAiStage("Sending request to AI…");
       else if (ratio < 0.82) setAiStage("AI is composing questions…");
       else setAiStage("Saving questions to bank…");
     }, 200);
@@ -873,6 +873,11 @@ export default function QuestionBankPage() {
         questions: [],
       });
       if (result.imported > 0) {
+        setSelectedBankId(importBankId);
+        setSelectedSubject("All");
+        setSelectedType("all");
+        setSelectedDifficulty("all");
+        setSearch("");
         await Promise.all([reloadQuestions(), reloadBanks()]);
       }
     } catch (err: any) {
@@ -2185,34 +2190,39 @@ export default function QuestionBankPage() {
                 </div>
               )}
 
-              {importResult && (
-                <div className="rounded-xl px-3.5 py-2.5 text-xs" style={importResult.imported > 0 ? { background: C.ok.msgBg, color: C.ok.msgText } : { background: C.danger.bgLight, color: C.danger.text }}>
-                  <strong>{importResult.imported}</strong> dari <strong>{importResult.totalParsed}</strong> soal terimport.
-                  {importResult.errors.length > 0 && (
-                    <div className="mt-1.5 max-h-32 overflow-y-auto">
-                      {importResult.errors.slice(0, 12).map((e) => (
-                        <div key={e} className="flex items-start gap-1">
-                          <span style={{ color: C.danger.text }}>•</span>
-                          <span>{e}</span>
-                        </div>
-                      ))}
-                      {importResult.errors.length > 12 && (
-                        <div style={{ color: C.base.textMuted }}>… dan {importResult.errors.length - 12} lainnya</div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {importError && (
-                <div
-                  className="rounded-xl px-3.5 py-2.5 text-xs"
-                  style={{ background: C.danger.bgLight, color: C.danger.text, border: `1px solid ${C.danger.border}` }}
-                >
-                  {importError}
-                </div>
-              )}
             </div>
+
+            {(importResult || importError) && (
+              <div className="shrink-0 px-4 sm:px-6 pt-3 pb-1 space-y-2 border-t" style={{ borderColor: C.base.borderLight, background: C.base.surface }}>
+                {importResult && (
+                  <div className="rounded-xl px-3.5 py-2.5 text-xs" style={importResult.imported > 0 ? { background: C.ok.msgBg, color: C.ok.msgText } : { background: C.danger.bgLight, color: C.danger.text }}>
+                    <strong>{importResult.imported}</strong> dari <strong>{importResult.totalParsed}</strong> soal terimport.
+                    {importResult.errors.length > 0 && (
+                      <div className="mt-1.5 max-h-28 overflow-y-auto">
+                        {importResult.errors.slice(0, 12).map((e) => (
+                          <div key={e} className="flex items-start gap-1">
+                            <span style={{ color: C.danger.text }}>•</span>
+                            <span>{e}</span>
+                          </div>
+                        ))}
+                        {importResult.errors.length > 12 && (
+                          <div style={{ color: C.base.textMuted }}>… dan {importResult.errors.length - 12} lainnya</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {importError && (
+                  <div
+                    className="rounded-xl px-3.5 py-2.5 text-xs max-h-28 overflow-y-auto"
+                    style={{ background: C.danger.bgLight, color: C.danger.text, border: `1px solid ${C.danger.border}` }}
+                  >
+                    {importError}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Sticky Footer — Action buttons always visible on desktop & mobile */}
             <div

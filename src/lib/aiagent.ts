@@ -102,16 +102,35 @@ export async function importQuestionsFromPrompt(
 
   const data = await res.json().catch(() => null);
   if (!res.ok) {
-    // Sertakan alasan per-berkas (payload.skipped) supaya guru tahu kenapa
-    // referensi ditolak, bukan hanya pesan umum dari server.
+    // Sertakan alasan per-berkas (payload.skipped) dan detail error per-soal
+    // supaya guru tahu persis penyebab kegagalan dari model/validator.
     const skipped = Array.isArray((data as any)?.skipped)
       ? (data as any).skipped
           .map((s: any) => `${s.file}: ${s.reason}`)
           .slice(0, 4)
           .join("; ")
       : "";
-    const base = (data as { error?: string })?.error || "AI import failed";
-    throw new Error(skipped ? `${base} (${skipped}${(data as any).skipped.length > 4 ? "…" : ""})` : base);
+    const serverErrors = Array.isArray((data as any)?.errors)
+      ? (data as any).errors
+          .map((e: unknown) => String(e ?? "").trim())
+          .filter(Boolean)
+          .slice(0, 3)
+      : [];
+    const note = typeof (data as any)?.note === "string" ? (data as any).note.trim() : "";
+    const explicitError = typeof (data as any)?.error === "string" ? (data as any).error.trim() : "";
+    const base =
+      explicitError ||
+      (serverErrors.length > 0 ? serverErrors.join(" | ") : "") ||
+      note ||
+      `AI import failed (HTTP ${res.status})`;
+    const suffixParts: string[] = [];
+    if (skipped) {
+      suffixParts.push(`${skipped}${(data as any).skipped.length > 4 ? "…" : ""}`);
+    }
+    if (note && base !== note && !base.includes(note)) {
+      suffixParts.push(note);
+    }
+    throw new Error(suffixParts.length > 0 ? `${base} (${suffixParts.join(" — ")})` : base);
   }
 
   return {
