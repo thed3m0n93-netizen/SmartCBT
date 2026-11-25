@@ -45,6 +45,12 @@ export interface SetupSeedEntry {
   detail: string;
 }
 
+export interface SetupApiCapabilities {
+  totalRoutes: number;
+  admRoutes: number;
+  aiRoutes: number;
+}
+
 export interface SetupStatus {
   reachable: boolean;
   installed: boolean;
@@ -59,6 +65,8 @@ export interface SetupStatus {
   counts: Record<string, number>;
   /** Evidence of the server we are really connected to. */
   info?: DbProbeInfo;
+  /** Live backend route counts to catch stale backend bundles on VPS deploys. */
+  apiCapabilities?: SetupApiCapabilities;
   error?: string;
 }
 

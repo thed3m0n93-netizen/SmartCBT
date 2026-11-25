@@ -499,6 +499,10 @@ function UpdateDatabasePanel({
   const missingTables = (status?.tables ?? []).filter((tb) => !tb.exists);
   const missingColumns = (status?.columns ?? []).filter((c) => !c.exists);
   const appliedColumns = (status?.columns ?? []).filter((c) => c.exists);
+  const admTables = (status?.tables ?? []).filter((tb) => tb.group === "adm_guru");
+  const admReadyCount = admTables.filter((tb) => tb.exists).length;
+  const caps = status?.apiCapabilities;
+  const backendOutdated = !!status && (!caps || caps.admRoutes === 0 || caps.aiRoutes === 0);
   const pendingTotal = missingTables.length + missingColumns.length;
   const upToDate = !!status?.reachable && pendingTotal === 0;
 
@@ -543,6 +547,23 @@ function UpdateDatabasePanel({
         </div>
       )}
 
+      {backendOutdated && (
+        <div
+          className="rounded-xl px-3.5 py-2.5 text-xs mb-4 flex items-start gap-2"
+          style={{ background: C.danger.bgLight, color: C.danger.text, border: `1px solid ${C.danger.border}` }}
+        >
+          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+          <div>
+            <div className="font-semibold">
+              {t("Backend server belum memuat rute API Administrasi Guru terbaru.")}
+            </div>
+            <div className="mt-0.5 opacity-90">
+              {t("Perbarui bundle backend (`npm run build:server` / rebuild container backend) agar `/api/adm/*` dan `/api/ai/config` aktif dan volume `server-config` tersinkronisasi.")}
+            </div>
+          </div>
+        </div>
+      )}
+
       <ul className="text-xs mb-4 list-disc pl-5 space-y-1.5" style={{ color: C.base.textMuted }}>
         {missingTables.length > 0 && (
           <li>
@@ -566,7 +587,29 @@ function UpdateDatabasePanel({
             {appliedColumns.length > 0 ? appliedColumns.map((c) => c.label).join(", ") : t("belum ada")}
           </span>
         </li>
-        <li>{t("Trigger & index: student_answers.updated_at (PostgreSQL) + idx_student_answers_flagged")}</li>
+        {admTables.length > 0 && (
+          <li>
+            {t("Administrasi Guru:")}{" "}
+            <span
+              className="font-mono"
+              style={{ color: admReadyCount === admTables.length ? C.ok.dark : C.warn.dark }}
+            >
+              {admReadyCount}/{admTables.length} {t("tabel siap")}
+            </span>
+            {caps && (
+              <>
+                {" · "}
+                <span
+                  className="font-mono"
+                  style={{ color: caps.admRoutes > 0 ? C.ok.dark : C.danger.text }}
+                >
+                  {caps.admRoutes} {t("rute /api/adm/*")} · {caps.aiRoutes} {t("rute /api/ai/*")} ({caps.totalRoutes} {t("total rute")})
+                </span>
+              </>
+            )}
+          </li>
+        )}
+        <li>{t("Trigger & index: student_answers.updated_at (PostgreSQL) + idx_student_answers_flagged + index adm_*")}</li>
         <li>
           {t("Settings: school_*, active_academic_year, active_semester, principal_*, curriculum_vice_*, ai_*")} ({status?.settingsKeys ?? 0} {t("kunci")})
         </li>

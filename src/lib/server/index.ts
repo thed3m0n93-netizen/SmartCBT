@@ -6,7 +6,7 @@
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { routes, json, type AuthenticatedRequest } from "./utils.js";
+import { routes, getRouteCapabilities, json, type AuthenticatedRequest } from "./utils.js";
 import { getBearerToken, getSession } from "./auth-session.js";
 import { hasSetupAccess, isSetupProtectedUrl } from "./setup-auth.js";
 
@@ -51,6 +51,7 @@ import "./setup-auth.js";
 
 /** Number of registered routes - useful for logging on startup. */
 export const routeCount = routes.length;
+export { getRouteCapabilities };
 
 /**
  * Dispatch an incoming HTTP request to the matching registered route.
@@ -73,19 +74,28 @@ export async function handleRequest(
   const method = req.method || "GET";
 
   // Vite's `server.middlewares.use('/api', ...)` may strip the `/api` prefix
-  // from `req.url` before dispatching. The registered route patterns expect
-  // the `/api` prefix (`^/api/...`), so re-apply it when missing.
+  // from `req.url` before dispatching. Also normalize repeated slashes
+  // (`//api/...`) and trailing slashes (`/api/adm/.../`) from reverse proxies.
   const rawUrl: string =
-    (req as any).originalUrl || (req as any).url || "";
-  const incoming = rawUrl.includes("/api")
-    ? rawUrl
-    : "/api" + (rawUrl.startsWith("/") ? rawUrl : "/" + rawUrl);
-  const url = incoming.split("?")[0];
+    (req as any).originalUrl || (req as any).url || "/";
+  const qIdx = rawUrl.indexOf("?");
+  const rawPath = qIdx >= 0 ? rawUrl.slice(0, qIdx) : rawUrl;
+  const queryPart = qIdx >= 0 ? rawUrl.slice(qIdx) : "";
+
+  let cleanPath = rawPath.replace(/\/{2,}/g, "/");
+  if (!cleanPath.startsWith("/")) cleanPath = "/" + cleanPath;
+  if (cleanPath.length > 1 && cleanPath.endsWith("/")) {
+    cleanPath = cleanPath.replace(/\/+$/, "");
+  }
+
+  const url = /^\/api(?:\/|$)/.test(cleanPath)
+    ? cleanPath
+    : cleanPath === "/"
+      ? "/api"
+      : `/api${cleanPath}`;
 
   // Expose the normalized URL (with the `/api` prefix re-applied) to handlers.
-  // Vite's `middlewares.use('/api', ...)` strips the prefix from `req.url`,
-  // which would break handlers that re-parse `req.url` for path parameters.
-  req.url = incoming;
+  req.url = url + queryPart;
 
   // Setup gate (added after the initial /setup was found to be fully open):
   // `/api/setup/*` and `/api/db-config` stay on the public list because the

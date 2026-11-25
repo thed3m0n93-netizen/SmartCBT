@@ -27,16 +27,9 @@ fi
 # 2. Masuk ke folder project
 cd "$PROJECT_DIR" || { echo "[ERROR] Folder $PROJECT_DIR tidak ditemukan"; exit 1; }
 
-# 3. Pastikan server/dist sudah di-build (backend bundle)
+# 3. Info bundle backend
 if [ ! -f "server/dist/server.mjs" ]; then
-  echo "[WARNING] server/dist/server.mjs tidak ditemukan."
-  echo "          Jalankan 'npm run build:server' di komputer lokal dulu,"
-  echo "          lalu upload hasilnya ke server."
-  echo ""
-  read -p "Lanjutkan tanpa build backend? (y/N): " confirm
-  if [ "$confirm" != "y" ] && [ "$confirm" != "Y" ]; then
-    exit 1
-  fi
+  echo "[INFO] server/dist/server.mjs tidak ada di workspace lokal — image Docker akan menggunakan bundle dari registry / build multi-stage."
 fi
 
 # 4. Buat .env dari .env.docker jika belum ada

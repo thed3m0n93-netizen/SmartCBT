@@ -4,6 +4,21 @@ Format pencatatan mengikuti standar [Keep a Changelog](https://keepachangelog.co
 
 ## [Unreleased] — Modul Administrasi Guru (Kurikulum Merdeka)
 
+### [0.6.1 - Sinkronisasi Rute API Backend VPS, Docker & Hardening Update Database] — 2026-11-25
+#### Fixed
+- **Sinkronisasi Bundle Backend Docker/VPS (`Dockerfile.backend`, `deploy/backend-entrypoint.sh`, `deploy/aapanel-setup.sh`):**
+  - `Dockerfile.backend` dikonversi menjadi *multi-stage build* yang selalu mengompilasi `server/dist/server.mjs` langsung dari `src/` (`npm run build:server`) dan menyimpannya di `/app/server/image-dist/` serta `/app/server/dist/`.
+  - `deploy/backend-entrypoint.sh`: menyalin `server.mjs` (dan `.map`) terbaru dari `/app/server/image-dist/` ke volume `server-config` (`/app/server/dist`) setiap kali container boot, tanpa menimpa `db-config.json` maupun `setup-auth.json`. Mengatasi kasus container VPS yang tetap menjalankan `server.mjs` versi lama dari volume sehingga `/api/adm/*` dan `/api/ai/config` mengembalikan `404 API route not found`.
+- **Normalisasi Path & Trailing/Double Slash (`src/lib/server/standalone.ts`, `src/lib/server/index.ts`):**
+  - Menormalkan slash ganda (`//api/...`) dan *trailing slash* (`/api/adm/approvals/bootstrap/`) serta pencocokan prefiks `/^\/api(?:\/|$)/` sebelum pencocokan pola rute, sekaligus menjaga jalur `/game-socket.io` tetap utuh.
+- **Dialek `ensureColumn` MariaDB (`src/lib/server/schema.ts`):**
+  - Menggunakan `isMySqlLike(getDbType())` agar kolom lazy-migration di MariaDB memakai definisi MySQL/MariaDB secara konsisten.
+
+#### Improved
+- **Update Database & Diagnostik Rute API (`/setup`, `src/lib/server/setup.ts`, `src/lib/setupApi.ts`, `src/pages/DatabaseSetupPage.tsx`):**
+  - `DROP_ORDER` kini mencakup seluruh 43 tabel inti (`CORE_TABLES`), `runUpdateMigrations` memastikan `fn_set_updated_at()` tersedia di PostgreSQL sebelum memasang trigger, dan `runSeeds` menyetel `academic_role = 'guru'` pada akun demo `guru_matematika`.
+  - `GET /api/setup/status` dan `/api/health` melaporkan `apiCapabilities` (`totalRoutes`, `admRoutes`, `aiRoutes`) serta log `Update Database` menampilkan status kesiapan 18 tabel `adm_*` + jumlah rute API aktif; UI `/setup` menampilkan peringatan apabila proses backend di VPS belum memakai bundle `server.mjs` terbaru.
+
 ### [0.6.0 - Phase 6: Audit Trail, Integrasi Dashboard, Paritas Backup/MockDB & Verifikasi E2E] — 2026-11-25
 #### Added
 - **Ringkasan Progres Administrasi Guru (Dashboard Admin, Kepsek/Waka & Guru):**

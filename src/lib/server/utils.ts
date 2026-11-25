@@ -64,6 +64,27 @@ export function addRoute(method: string, pattern: RegExp, handler: ApiHandler) {
   routes.push({ method, pattern, handler });
 }
 
+export interface RouteCapabilities {
+  totalRoutes: number;
+  admRoutes: number;
+  aiRoutes: number;
+}
+
+export function getRouteCapabilities(): RouteCapabilities {
+  let admRoutes = 0;
+  let aiRoutes = 0;
+  for (const r of routes) {
+    const src = r.pattern.source;
+    if (src.includes("\\/api\\/adm\\/")) admRoutes++;
+    if (src.includes("\\/api\\/ai\\/")) aiRoutes++;
+  }
+  return {
+    totalRoutes: routes.length,
+    admRoutes,
+    aiRoutes,
+  };
+}
+
 /* ── Server-side pagination & sorting ─────────────────────────────────── */
 
 export interface PagedRequest {

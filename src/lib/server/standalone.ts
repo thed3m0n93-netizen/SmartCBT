@@ -29,7 +29,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { accessSync, constants as fsConstants, createReadStream, mkdirSync, statSync } from "node:fs";
 import { extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { handleRequest, routeCount } from "./index.js";
+import { getRouteCapabilities, handleRequest, routeCount } from "./index.js";
 import { getDatabaseConfig } from "../db.js";
 import { attachNusantaraGame, GAME_SOCKET_PATH } from "./nusantara-game.js";
 
@@ -128,12 +128,14 @@ function sendJson(res: ServerResponse, data: unknown, status = 200): void {
 
 function handleHealth(_req: IncomingMessage, res: ServerResponse): void {
   const cfg = getDatabaseConfig();
+  const capabilities = getRouteCapabilities();
   sendJson(res, {
     ok: true,
     service: "smartcbt-api",
     time: new Date().toISOString(),
     uptimeSec: Math.round(process.uptime()),
     routes: routeCount,
+    capabilities,
     db: { type: cfg.type, host: cfg.host, port: cfg.port, database: cfg.database },
   });
 }
@@ -241,16 +243,30 @@ function serveStatic(base: string, pathname: string, res: ServerResponse): void 
 
 // ── Main request pipeline ─────────────────────────────────────────────────
 
+function normalizeRequestTarget(rawUrl: string): { pathname: string; search: string } {
+  const raw = (rawUrl || "/").trim();
+  const qIdx = raw.indexOf("?");
+  const rawPath = qIdx >= 0 ? raw.slice(0, qIdx) : raw;
+  const search = qIdx >= 0 ? raw.slice(qIdx) : "";
+  let cleanPath = rawPath.replace(/\/{2,}/g, "/");
+  if (!cleanPath.startsWith("/")) cleanPath = "/" + cleanPath;
+  if (cleanPath.length > 1 && cleanPath.endsWith("/")) {
+    cleanPath = cleanPath.replace(/\/+$/, "");
+  }
+  return { pathname: cleanPath, search };
+}
+
 async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
-  const url = new URL(req.url || "/", "http://localhost");
-  const pathname = url.pathname;
+  const { pathname, search } = normalizeRequestTarget(req.url || "/");
 
   // 0. Game socket (Nusantara High, build 141) — engine.io owns this path via
   //    its own listener on the same http.Server. Returning here (without ever
-  //    touching `res`) is what lets the polling handshake succeed.
+  //    touching `res` or mutating `req.url`) is what lets the polling handshake succeed.
   if (pathname === GAME_SOCKET_PATH || pathname.startsWith(`${GAME_SOCKET_PATH}/`)) {
     return;
   }
+
+  req.url = pathname + search;
 
   // 1. Liveness probe — public and cheap (used by monitoring / systemd).
   if (pathname === "/api/health") {

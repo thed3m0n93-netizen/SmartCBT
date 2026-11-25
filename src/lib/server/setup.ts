@@ -15,7 +15,7 @@
  * (simple query protocol) and split on ";" for MySQL (no multi-statements).
  */
 import { mkdirSync } from "node:fs";
-import { query, queryOne, addRoute, json } from "./utils.js";
+import { query, queryOne, addRoute, getRouteCapabilities, json } from "./utils.js";
 import { getDbType, isMySqlLike, probeActiveDatabase } from "../db.js";
 import { getUploadDir } from "./storage.js";
 import { CORE_TABLES, PG_DDL, MYSQL_DDL, COLUMN_MIGRATIONS, UPDATE_TABLES, SETTINGS_SEED_KEYS, SCHEMA_GROUPS, TABLE_GROUP, SEED_SUMMARY, type DdlStatement } from "./schema.js";
@@ -46,6 +46,7 @@ const DROP_ORDER: string[] = [
   "student_answers",
   "student_sessions",
   "learning_module_progress",
+  "learning_module_classes",
   "learning_modules",
   "assignment_submission_files",
   "assignment_submissions",
@@ -55,8 +56,12 @@ const DROP_ORDER: string[] = [
   "exams",
   "questions",
   "question_banks",
+  "subject_class_assignments",
   "teacher_assignments",
   "student_profiles",
+  "news",
+  "audit_logs",
+  "game_nusantara_state",
   "uploads",
   "settings",
   "classes",
@@ -168,6 +173,19 @@ function tableOfCreate(sql: string): string | null {
 async function runUpdateMigrations(log: LogFn): Promise<void> {
   const mysqlLike = isMySqlLike(getDbType());
 
+  // 0. PostgreSQL helper trigger function (idempotent so triggers always attach cleanly).
+  if (!mysqlLike) {
+    await query(`CREATE OR REPLACE FUNCTION fn_set_updated_at()
+RETURNS TRIGGER
+LANGUAGE plpgsql AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$;`);
+    log("  · Fungsi bantu fn_set_updated_at() dipastikan tersedia.");
+  }
+
   // 1. Missing tables — re-use the family DDL so PG & MySQL stay identical.
   const familyDdl = mysqlLike ? MYSQL_DDL : PG_DDL;
   for (const st of ddlForTables(familyDdl, UPDATE_TABLES)) {
@@ -269,6 +287,16 @@ CREATE TRIGGER trg_student_answers_updated_at
   if (await checkTable("adm_academic_years")) {
     await seedAdmPhase1Defaults(log);
   }
+
+  const admGroupTables = SCHEMA_GROUPS.find((g) => g.id === "adm_guru")?.tables ?? [];
+  let admReadyCount = 0;
+  for (const tbl of admGroupTables) {
+    if (await checkTable(tbl)) admReadyCount++;
+  }
+  const caps = getRouteCapabilities();
+  log(
+    `  · Administrasi Guru: ${admReadyCount}/${admGroupTables.length} tabel siap, ${caps.admRoutes} rute API aktif (AI: ${caps.aiRoutes} rute).`
+  );
 }
 
 /** Insert a seed row only when its unique key is not present yet. */
@@ -302,6 +330,7 @@ async function runSeeds(log: LogFn): Promise<void> {
       hash: HASH_ADMIN,
       fullName: "Administrator Sistem",
       role: "super_admin",
+      academicRole: "none",
     },
     {
       id: "00000000-0000-0000-0000-000000000002",
@@ -309,6 +338,7 @@ async function runSeeds(log: LogFn): Promise<void> {
       hash: HASH_TEACHER,
       fullName: "Budi Santoso, S.Pd.",
       role: "teacher",
+      academicRole: "guru",
     },
     {
       id: "00000000-0000-0000-0000-000000000003",
@@ -316,6 +346,7 @@ async function runSeeds(log: LogFn): Promise<void> {
       hash: HASH_STUDENT,
       fullName: "Andi Prasetyo",
       role: "student",
+      academicRole: "none",
     },
   ];
   for (const u of demoUsers) {
@@ -324,9 +355,9 @@ async function runSeeds(log: LogFn): Promise<void> {
       `user "${u.username}" (${u.role})`,
       `SELECT 1 FROM users WHERE username = $1`,
       [u.username],
-      `INSERT INTO users (id, username, password_hash, full_name, role, status)
-       VALUES ($1, $2, $3, $4, $5, 'active')`,
-      [u.id, u.username, u.hash, u.fullName, u.role]
+      `INSERT INTO users (id, username, password_hash, full_name, role, academic_role, status)
+       VALUES ($1, $2, $3, $4, $5, $6, 'active')`,
+      [u.id, u.username, u.hash, u.fullName, u.role, u.academicRole]
     );
   }
 
@@ -582,6 +613,7 @@ async function runSeeds(log: LogFn): Promise<void> {
 }
 // GET /api/setup/status - report whether the schema is installed
 addRoute("GET", /^\/api\/setup\/status$/, async (_req, res) => {
+  const apiCapabilities = getRouteCapabilities();
   let probe: { ok?: number } | null = null;
   try {
     probe = await queryOne("SELECT 1 AS ok");
@@ -597,6 +629,7 @@ addRoute("GET", /^\/api\/setup\/status$/, async (_req, res) => {
       ddlSteps: 0,
       settingsKeys: SETTINGS_SEED_KEYS.length,
       counts: {},
+      apiCapabilities,
     });
   }
 
@@ -678,6 +711,7 @@ addRoute("GET", /^\/api\/setup\/status$/, async (_req, res) => {
     settingsKeys: SETTINGS_SEED_KEYS.length,
     counts,
     info,
+    apiCapabilities,
   });
 });
 

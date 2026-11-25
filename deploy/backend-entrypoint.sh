@@ -17,8 +17,19 @@ set -e
 # UPLOADS_DIR defaults to /app/uploads (from Dockerfile ENV).
 UPLOADS_DIR="${UPLOADS_DIR:-/app/uploads}"
 
-# Create the uploads dir if it doesn't exist yet.
-mkdir -p "$UPLOADS_DIR"
+# Create the uploads & dist dirs if they don't exist yet.
+mkdir -p "$UPLOADS_DIR" /app/server/dist
+
+# Sync the newest backend bundle baked inside the image into the mounted
+# server-config volume (/app/server/dist) without overwriting persisted
+# runtime files (db-config.json, setup-auth.json).
+if [ -f /app/server/image-dist/server.mjs ]; then
+  cp -f /app/server/image-dist/server.mjs /app/server/dist/server.mjs
+  if [ -f /app/server/image-dist/server.mjs.map ]; then
+    cp -f /app/server/image-dist/server.mjs.map /app/server/dist/server.mjs.map
+  fi
+  echo "[entrypoint] Bundle server.mjs disinkronkan dari image terbaru (konfigurasi tersimpan tetap aman)."
+fi
 
 # Fix ownership so appuser can write to uploads and the dist dir
 # (where db-config.json is persisted by the /setup page).

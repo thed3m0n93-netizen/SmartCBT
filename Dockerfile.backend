@@ -1,16 +1,29 @@
 # ──────────────────────────────────────────────────────────────────────────────
-# SmartCBT — Backend (Standalone API Server) Dockerfile
+# SmartCBT — Backend (Standalone API Server) Dockerfile (multi-stage)
 #
-# The application ships a pre-built, self-contained ESM bundle at
-# server/dist/server.mjs (created by `npm run build:server`). esbuild
-# inlines ALL npm dependencies (pg, mysql2, bcryptjs, jszip, xlsx, mammoth,
-# katex, qrcode...) into that single file. The only external requires are
-# Node.js built-ins (fs, crypto, net, tls, dns, etc.) — all shipped with
-# the official Node.js image.
+# Stage 1 builds the self-contained ESM bundle `server/dist/server.mjs` directly
+# from TypeScript source (`npm run build:server`), so `docker build` /
+# `docker compose up -d --build` NEVER ships a stale or missing bundle even
+# right after `git pull` on a VPS.
 #
-# This image therefore needs only the base Node.js runtime — no package.json
-# installation step, no TypeScript compiler, no Vite.
+# Stage 2 copies the bundle into BOTH `/app/server/image-dist/` and
+# `/app/server/dist/`. When `server-config:/app/server/dist` is mounted as a
+# persistent Docker volume (holding `db-config.json` and `setup-auth.json`),
+# `deploy/backend-entrypoint.sh` syncs the newest `server.mjs` from
+# `/app/server/image-dist/` on every container start without touching saved
+# config files.
 # ──────────────────────────────────────────────────────────────────────────────
+FROM node:22-alpine AS builder
+
+WORKDIR /app
+
+COPY package.json package-lock.json* ./
+RUN npm ci || npm install
+
+COPY . .
+RUN npm run build:server
+
+# ── Runtime image ─────────────────────────────────────────────────────────────
 FROM node:22-alpine AS runtime
 
 # Create a non-root user for the app process.
@@ -21,18 +34,16 @@ RUN apk add --no-cache curl
 
 WORKDIR /app/server
 
-# Copy the pre-built standalone server bundle and its runtime companions.
-# server/dist/server.mjs was built with esbuild (platform: node, target: node18).
-COPY server/dist/ /app/server/dist/
-COPY server/package.json /app/server/
+# Keep an immutable copy of the newly built bundle in image-dist so the
+# entrypoint can refresh /app/server/dist/server.mjs across volume mounts.
+COPY --from=builder /app/server/dist/ /app/server/image-dist/
+COPY --from=builder /app/server/dist/ /app/server/dist/
+COPY --from=builder /app/server/package.json /app/server/
 
-# Build 146: runtime credentials must NEVER ship in the image. .dockerignore now
-# excludes **/setup-auth.json and **/db-config.json, but this rm is belt-and-braces
-# so even a `docker build --no-cache` from a dirty context (or a force-added file)
-# yields a clean image. On first boot the server re-seeds the default setup PIN
-# ("Admin@123") and writes db-config.json from the /setup page / PG* env — so a
-# fresh Docker install can log into /setup with the documented default.
-RUN rm -f /app/server/dist/setup-auth.json /app/server/dist/db-config.json
+# Runtime credentials must NEVER ship in the image.
+RUN rm -f \
+  /app/server/image-dist/setup-auth.json /app/server/image-dist/db-config.json \
+  /app/server/dist/setup-auth.json /app/server/dist/db-config.json
 
 # Runtime environment — can be overridden by docker-compose / `docker run -e ...`.
 ENV NODE_ENV=production
@@ -41,21 +52,12 @@ ENV HOST=0.0.0.0
 # Uploads live in a mounted volume at /app/uploads (see docker-compose).
 ENV UPLOADS_DIR=/app/uploads
 
-# Make the dist folder writable so the /setup page can persist db-config.json.
-# Also set up an uploads init script — Docker volumes are created as root, so
-# we need to fix ownership before dropping to the non-root user.
 RUN chown -R appuser:appgroup /app/server
 
-# The uploads dir is created at runtime by the server (mkdirSync recursive),
-# but the volume mount point must be writable by appuser. We use a tiny
-# entrypoint wrapper to fix volume ownership on first start.
 COPY deploy/backend-entrypoint.sh /app/server/entrypoint.sh
-# Build 145: buang CR agar `set -eu` baris pertama tidak terbaca `set -e\r`
-# oleh dash Alpine ("illegal option -").
+# Buang CR agar shebang / shell directives tidak rusak di Alpine.
 RUN sed -i 's/\r$//' /app/server/entrypoint.sh && chmod +x /app/server/entrypoint.sh
 
 EXPOSE 8441
 
-# Node 22 can run ESM .mjs directly without flags.
-# The entrypoint fixes volume ownership, then exec's node as appuser.
 ENTRYPOINT ["sh", "/app/server/entrypoint.sh"]

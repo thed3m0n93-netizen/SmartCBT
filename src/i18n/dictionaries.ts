@@ -1794,8 +1794,19 @@ const id: Dictionary = {
   "Disetujui QR": "Disetujui QR",
   "Kesiapan Perangkat Per Guru": "Kesiapan Perangkat Per Guru",
   "Antrean Validasi Terbaru": "Antrean Validasi Terbaru",
-  "Status Validasi Perangkat Sekolah": "Status Validasi Perangkat Sekolah",
-  "Ringkasan Status Perangkat Ajar Anda": "Ringkasan Status Perangkat Ajar Anda",
+  "Status Validasi Perangkat Sekolah": "School Device Validation Status",
+  "Ringkasan Status Perangkat Ajar Anda": "Summary of Your Teaching Document Status",
+  "Administrasi Guru:": "Teacher Administration:",
+  "Backend server belum memuat rute API Administrasi Guru terbaru.":
+    "The running backend server has not loaded the latest Teacher Administration API routes yet.",
+  "Perbarui bundle backend (`npm run build:server` / rebuild container backend) agar `/api/adm/*` dan `/api/ai/config` aktif dan volume `server-config` tersinkronisasi.":
+    "Update the backend bundle (`npm run build:server` / rebuild the backend container) so `/api/adm/*` and `/api/ai/config` are active and synced into `server-config`.",
+  "tabel siap": "tables ready",
+  "rute /api/adm/*": "/api/adm/* routes",
+  "rute /api/ai/*": "/api/ai/* routes",
+  "total rute": "total routes",
+  "Trigger & index: student_answers.updated_at (PostgreSQL) + idx_student_answers_flagged + index adm_*":
+    "Triggers & indexes: student_answers.updated_at (PostgreSQL) + idx_student_answers_flagged + adm_* indexes",
 }
 
 export const dictionaries: Record<Lang, Dictionary> = { id, en }

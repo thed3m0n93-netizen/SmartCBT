@@ -16,7 +16,7 @@ export interface DdlStatement {
 }
 
 /** Query helpers for the lazy column self-heal (`ensureColumn`). */
-import { query, getDbType } from "../db.js";
+import { query, getDbType, isMySqlLike } from "../db.js";
 
 /**
  * The core tables the application reads and writes. A database is considered
@@ -2644,7 +2644,7 @@ export async function ensureColumn(
   column: string,
   defs: { pg: string; mysql: string },
 ): Promise<void> {
-  const mysqlLike = getDbType() === "mysql";
+  const mysqlLike = isMySqlLike(getDbType());
   const def = mysqlLike ? defs.mysql : defs.pg;
   if (!mysqlLike) {
     try {
